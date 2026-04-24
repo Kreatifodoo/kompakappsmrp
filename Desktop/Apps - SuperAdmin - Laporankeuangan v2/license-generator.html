@@ -1,0 +1,1047 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FinReport — License Key Generator</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --primary: #2563eb; --primary-dark: #1d4ed8; --success: #22c55e;
+    --danger: #ef4444; --warning: #f59e0b; --border: #e2e8f0;
+    --bg: #f1f5f9; --card: #ffffff; --text: #1e293b; --muted: #64748b;
+    --radius: 12px; --radius-sm: 8px;
+  }
+  body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    background: var(--bg); color: var(--text); min-height: 100vh; }
+
+  /* ===== AUTH SCREEN ===== */
+  #authScreen {
+    display: flex; align-items: center; justify-content: center;
+    min-height: 100vh; padding: 24px;
+  }
+  .auth-card {
+    background: var(--card); border-radius: var(--radius); padding: 40px;
+    width: 100%; max-width: 400px; box-shadow: 0 4px 24px rgba(0,0,0,0.10);
+    text-align: center;
+  }
+  .auth-card h1 { font-size: 22px; font-weight: 700; margin-bottom: 6px; }
+  .auth-card p  { color: var(--muted); font-size: 14px; margin-bottom: 28px; }
+  .auth-badge {
+    display: inline-block; background: #fef3c7; color: #92400e;
+    border: 1px solid #fcd34d; border-radius: 99px; padding: 4px 14px;
+    font-size: 12px; font-weight: 600; margin-bottom: 24px;
+  }
+
+  /* ===== MAIN APP ===== */
+  #mainApp { display: none; }
+  .topbar {
+    background: var(--text); color: #fff; padding: 0 32px; height: 60px;
+    display: flex; align-items: center; justify-content: space-between;
+    position: sticky; top: 0; z-index: 100;
+  }
+  .topbar-brand { font-size: 16px; font-weight: 700; }
+  .topbar-brand span { color: #60a5fa; }
+  .topbar-badge {
+    background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5;
+    border-radius: 99px; padding: 3px 12px; font-size: 11px; font-weight: 600;
+  }
+  .topbar-right { display: flex; align-items: center; gap: 16px; }
+  .btn-logout { background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2);
+    color: #fff; border-radius: 8px; padding: 6px 14px; cursor: pointer; font-size: 13px; }
+  .btn-logout:hover { background: rgba(255,255,255,0.2); }
+
+  .page-container { max-width: 960px; margin: 0 auto; padding: 32px 24px; }
+  .page-title { font-size: 24px; font-weight: 700; margin-bottom: 4px; }
+  .page-sub   { color: var(--muted); font-size: 14px; margin-bottom: 28px; }
+
+  /* ===== CARDS ===== */
+  .card { background: var(--card); border-radius: var(--radius);
+    box-shadow: 0 1px 4px rgba(0,0,0,0.06); overflow: hidden; }
+  .card-header { padding: 20px 24px; border-bottom: 1px solid var(--border);
+    font-size: 15px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+  .card-body { padding: 24px; }
+
+  /* ===== FORM ===== */
+  .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .form-group { display: flex; flex-direction: column; gap: 6px; }
+  .form-group.full { grid-column: 1 / -1; }
+  label { font-size: 13px; font-weight: 500; color: var(--text); }
+  .form-control {
+    border: 1px solid var(--border); border-radius: var(--radius-sm);
+    padding: 10px 14px; font-size: 14px; font-family: inherit;
+    transition: border-color .15s; outline: none; width: 100%;
+  }
+  .form-control:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(37,99,235,0.1); }
+  select.form-control { cursor: pointer; }
+
+  .btn { border: none; border-radius: var(--radius-sm); padding: 10px 20px;
+    cursor: pointer; font-size: 14px; font-weight: 600; transition: all .15s; }
+  .btn-primary { background: var(--primary); color: #fff; }
+  .btn-primary:hover { background: var(--primary-dark); }
+  .btn-primary:disabled { opacity: .6; cursor: not-allowed; }
+  .btn-outline { background: #fff; border: 1px solid var(--border); color: var(--text); }
+  .btn-outline:hover { background: var(--bg); border-color: #94a3b8; }
+  .btn-danger { background: var(--danger); color: #fff; }
+  .btn-danger:hover { background: #dc2626; }
+  .btn-success { background: var(--success); color: #fff; }
+  .btn-xs { padding: 4px 10px; font-size: 12px; }
+
+  .btn-row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 20px; }
+
+  /* ===== RESULT BOX ===== */
+  .result-box {
+    display: none; background: #0f172a; border-radius: var(--radius-sm);
+    padding: 20px 24px; margin-top: 24px;
+  }
+  .result-label { color: #94a3b8; font-size: 12px; font-weight: 500;
+    letter-spacing: .04em; margin-bottom: 8px; }
+  .result-key {
+    font-family: 'Courier New', monospace; font-size: 18px; font-weight: 700;
+    color: #4ade80; letter-spacing: 2px; word-break: break-all;
+    margin-bottom: 16px;
+  }
+  .result-meta { display: flex; gap: 16px; flex-wrap: wrap; font-size: 12px; color: #64748b; }
+  .result-meta span { background: #1e293b; padding: 3px 8px; border-radius: 4px; }
+  .copy-row { display: flex; gap: 10px; align-items: center; margin-top: 16px; flex-wrap: wrap; }
+
+  /* ===== TABLE ===== */
+  .table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  thead th { background: #f8fafc; color: var(--muted); font-weight: 600;
+    font-size: 11px; letter-spacing: .05em; text-transform: uppercase;
+    padding: 10px 16px; text-align: left; border-bottom: 1px solid var(--border); }
+  tbody td { padding: 12px 16px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+  tbody tr:hover { background: #f8fafc; }
+  tbody tr:last-child td { border-bottom: none; }
+
+  .key-cell { font-family: 'Courier New', monospace; font-size: 12px; color: #374151; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 99px;
+    font-size: 11px; font-weight: 600; }
+  .badge-starter    { background: #e0f2fe; color: #0369a1; }
+  .badge-pro        { background: #ede9fe; color: #6d28d9; }
+  .badge-enterprise { background: #fef3c7; color: #92400e; }
+  .badge-active  { background: #dcfce7; color: #166534; }
+  .badge-expiring{ background: #fef3c7; color: #92400e; }
+  .badge-expired { background: #fee2e2; color: #991b1b; }
+
+  .empty-state { text-align: center; padding: 48px 24px; color: var(--muted); font-size: 14px; }
+  .empty-state .empty-icon { font-size: 40px; margin-bottom: 12px; }
+
+  /* ===== STATS ===== */
+  .stats-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 16px; margin-bottom: 28px; }
+  .stat-card { background: var(--card); border-radius: var(--radius-sm);
+    padding: 16px 20px; box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
+  .stat-label { font-size: 12px; color: var(--muted); font-weight: 500; margin-bottom: 4px; }
+  .stat-value { font-size: 24px; font-weight: 700; }
+
+  /* ===== NOTIFICATION ===== */
+  .notif { display: none; padding: 12px 16px; border-radius: var(--radius-sm);
+    font-size: 13px; font-weight: 500; margin-bottom: 16px; }
+  .notif-error   { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
+  .notif-success { background: #dcfce7; color: #166534; border: 1px solid #86efac; }
+
+  /* ===== MISC ===== */
+  .section-gap { margin-bottom: 28px; }
+  .text-muted { color: var(--muted); font-size: 13px; }
+  .mt-16 { margin-top: 16px; }
+
+  @media (max-width: 600px) {
+    .form-grid { grid-template-columns: 1fr; }
+    .page-container { padding: 16px; }
+    .result-key { font-size: 13px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ===== AUTH SCREEN ===== -->
+<div id="authScreen">
+  <div class="auth-card">
+    <div class="auth-badge">🔐 PRIVATE TOOL</div>
+    <h1>License Generator</h1>
+    <p>Masukkan master password untuk mengakses generator kunci lisensi FinReport.</p>
+    <div class="form-group" style="text-align:left;margin-bottom:20px">
+      <label>Master Password</label>
+      <input type="password" id="authPassword" class="form-control"
+             placeholder="Masukkan master password"
+             onkeydown="if(event.key==='Enter') checkAuth()">
+    </div>
+    <div id="authError" class="notif notif-error"></div>
+    <button class="btn btn-primary" style="width:100%" onclick="checkAuth()">Masuk</button>
+    <p style="font-size:11px;color:var(--muted);margin-top:20px">
+      Jangan bagikan file ini kepada siapapun. Hanya untuk developer/admin.
+    </p>
+  </div>
+</div>
+
+<!-- ===== MAIN APP ===== -->
+<div id="mainApp">
+  <!-- Topbar -->
+  <div class="topbar">
+    <div class="topbar-brand">FinReport <span>License Generator</span></div>
+    <div class="topbar-right">
+      <span class="topbar-badge">⚠ PRIVATE — Jangan kirim ke klien</span>
+      <button class="btn-logout" onclick="doLogout()">Keluar</button>
+    </div>
+  </div>
+
+  <div class="page-container">
+    <div class="page-title">Generate Kunci Lisensi</div>
+    <div class="page-sub">Isi detail klien di bawah ini untuk membuat kunci lisensi baru.</div>
+
+    <!-- Stats -->
+    <div class="stats-row" id="statsRow">
+      <div class="stat-card">
+        <div class="stat-label">Total Kunci Terbit</div>
+        <div class="stat-value" id="statTotal">0</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Aktif</div>
+        <div class="stat-value" id="statActive" style="color:var(--success)">0</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Expired</div>
+        <div class="stat-value" id="statExpired" style="color:var(--danger)">0</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Client ID Berikutnya</div>
+        <div class="stat-value" id="statNextId" style="color:var(--primary)">1</div>
+      </div>
+    </div>
+
+    <!-- Generate Form -->
+    <div class="card section-gap">
+      <div class="card-header">
+        ➕ Generate Kunci Baru
+      </div>
+      <div class="card-body">
+        <div id="genError" class="notif notif-error"></div>
+        <div class="form-grid">
+          <div class="form-group full">
+            <label>Nama Perusahaan Klien *</label>
+            <input type="text" id="genName" class="form-control"
+                   placeholder="Contoh: PT Maju Jaya Indonesia">
+            <small class="text-muted">Klien harus memasukkan nama ini PERSIS saat aktivasi (tidak case-sensitive)</small>
+          </div>
+          <div class="form-group">
+            <label>Plan</label>
+            <select id="genPlan" class="form-control">
+              <option value="Starter">Starter</option>
+              <option value="Pro" selected>Pro</option>
+              <option value="Enterprise">Enterprise</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Masa Berlaku</label>
+            <select id="genExpiryType" class="form-control" onchange="toggleExpiryDate(this.value)">
+              <option value="date">Tanggal Tertentu</option>
+              <option value="lifetime">♾️ Lifetime (Tidak Ada Expired)</option>
+            </select>
+          </div>
+          <div class="form-group" id="expiryDateRow">
+            <label>Tanggal Expired</label>
+            <input type="date" id="genExpiry" class="form-control">
+          </div>
+          <div class="form-group" id="expiryLifetimeRow" style="display:none">
+            <label>Masa Berlaku</label>
+            <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:10px 14px;font-size:14px;font-weight:600;color:#166534">
+              ♾️ Lifetime — Kunci tidak akan pernah kedaluwarsa
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Maks. Pengguna</label>
+            <select id="genMaxUsers" class="form-control">
+              <option value="5">5 Pengguna</option>
+              <option value="10" selected>10 Pengguna</option>
+              <option value="25">25 Pengguna</option>
+              <option value="50">50 Pengguna</option>
+              <option value="100">100 Pengguna</option>
+              <option value="255">Unlimited</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Client ID (auto)</label>
+            <input type="number" id="genClientId" class="form-control" min="1" max="4294967295">
+            <small class="text-muted">Otomatis di-increment setiap generate</small>
+          </div>
+        </div>
+
+        <div class="btn-row">
+          <button class="btn btn-primary" id="btnGenerate" onclick="generateKey()">
+            ✨ Generate Kunci Lisensi
+          </button>
+          <button class="btn btn-outline" onclick="resetForm()">Reset Form</button>
+        </div>
+
+        <!-- Result -->
+        <div id="resultBox" class="result-box">
+          <div class="result-label">KUNCI LISENSI BARU</div>
+          <div class="result-key" id="resultKey"></div>
+          <div class="result-meta" id="resultMeta"></div>
+          <div class="copy-row">
+            <button class="btn btn-success" onclick="copyKey()">📋 Salin Kunci</button>
+            <button class="btn btn-outline btn-xs" onclick="copyEmailTemplate()">✉️ Salin Template Email</button>
+            <button class="btn btn-primary" id="btnDownloadPackage" onclick="downloadClientPackage()">📦 Download Paket Klien</button>
+            <span id="copyConfirm" style="color:#4ade80;font-size:13px;display:none">✓ Tersalin!</span>
+          </div>
+          <div id="downloadNote" style="display:none;margin-top:12px;padding:10px 14px;background:#1e293b;border-radius:6px;font-size:12px;color:#94a3b8">
+            ⚠️ Fitur ini membutuhkan server lokal. Jalankan <strong style="color:#e2e8f0">start.sh</strong> / <strong style="color:#e2e8f0">start.bat</strong> lalu buka <strong style="color:#60a5fa">http://localhost:8081/license-generator.html</strong>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- History Table -->
+    <div class="card">
+      <div class="card-header" style="justify-content:space-between">
+        <span>📋 Riwayat Kunci Terbit</span>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-outline btn-xs" onclick="exportCSV()">⬇ Export CSV</button>
+          <button class="btn btn-danger btn-xs" onclick="clearHistory()">🗑 Hapus Semua</button>
+        </div>
+      </div>
+      <div class="card-body" style="padding:0">
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Nama Perusahaan</th>
+                <th>Plan</th>
+                <th>Max Users</th>
+                <th>Expired</th>
+                <th>Status</th>
+                <th>Kunci Lisensi</th>
+                <th>Aksi</th>
+              </tr>
+            </thead>
+            <tbody id="historyTableBody"></tbody>
+          </table>
+          <div id="historyEmpty" class="empty-state" style="display:none">
+            <div class="empty-icon">📄</div>
+            <div>Belum ada kunci yang di-generate</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- end page-container -->
+</div><!-- end mainApp -->
+
+<script>
+// ===== MASTER SECRET (harus identik dengan di license.js) =====
+const _p1 = 'finrep'; const _p2 = '2024'; const _p3 = 'gki';
+const _p4 = 'lic';    const _p5 = 'k9x2'; const _p6 = 'mstr';
+const MASTER_SECRET = _p1 + _p2 + _p4 + _p6 + _p5 + _p3;
+
+const PLAN_MAP  = { 0: 'Starter', 1: 'Pro', 2: 'Enterprise' };
+const PLAN_RMAP = { 'Starter': 0, 'Pro': 1, 'Enterprise': 2 };
+const B32CHARS  = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+const GEN_HISTORY_KEY = 'finreport_gen_history_v1';
+const GEN_COUNTER_KEY = 'finreport_gen_counter_v1';
+const GEN_AUTH_KEY    = 'finreport_gen_auth_v1';
+
+// ===== AUTH =====
+// Master password hash di-generate dari MASTER_SECRET saat pertama kali
+async function sha256(str) {
+  const data = new TextEncoder().encode(str + '_gen_salt_2024');
+  const hash = await crypto.subtle.digest('SHA-256', data);
+  return Array.from(new Uint8Array(hash)).map(b=>b.toString(16).padStart(2,'0')).join('');
+}
+
+async function checkAuth() {
+  const pw = document.getElementById('authPassword').value;
+  const errEl = document.getElementById('authError');
+  errEl.style.display = 'none';
+
+  if (!pw) {
+    errEl.textContent = 'Masukkan master password';
+    errEl.style.display = 'block';
+    return;
+  }
+
+  // Master password = MASTER_SECRET itu sendiri (developer tahu ini)
+  // Untuk keamanan tambahan, hash dibandingkan
+  const inputHash = await sha256(pw);
+  const masterHash = await sha256(MASTER_SECRET);
+
+  if (inputHash !== masterHash) {
+    errEl.textContent = 'Password salah';
+    errEl.style.display = 'block';
+    document.getElementById('authPassword').value = '';
+    return;
+  }
+
+  // Simpan sesi auth (tab-level)
+  sessionStorage.setItem(GEN_AUTH_KEY, '1');
+  document.getElementById('authScreen').style.display = 'none';
+  document.getElementById('mainApp').style.display = 'block';
+  initApp();
+}
+
+function doLogout() {
+  sessionStorage.removeItem(GEN_AUTH_KEY);
+  document.getElementById('authScreen').style.display = 'flex';
+  document.getElementById('mainApp').style.display = 'none';
+  document.getElementById('authPassword').value = '';
+}
+
+// Check if already authed (reload case)
+window.addEventListener('load', () => {
+  if (sessionStorage.getItem(GEN_AUTH_KEY) === '1') {
+    document.getElementById('authScreen').style.display = 'none';
+    document.getElementById('mainApp').style.display = 'block';
+    initApp();
+  }
+  // Set default expiry = 1 tahun dari hari ini
+  const d = new Date();
+  d.setFullYear(d.getFullYear() + 1);
+  const expiryInput = document.getElementById('genExpiry');
+  if (expiryInput) expiryInput.value = d.toISOString().split('T')[0];
+});
+
+// ===== INIT =====
+function initApp() {
+  const counter = parseInt(localStorage.getItem(GEN_COUNTER_KEY) || '1');
+  document.getElementById('genClientId').value = counter;
+  renderHistory();
+  updateStats();
+}
+
+// ===== BASE32 ENCODE =====
+function base32Encode(bytes) {
+  let bits = 0, value = 0, output = '';
+  for (let i = 0; i < bytes.length; i++) {
+    value = (value << 8) | bytes[i];
+    bits += 8;
+    while (bits >= 5) {
+      bits -= 5;
+      output += B32CHARS[(value >>> bits) & 31];
+    }
+  }
+  if (bits > 0) output += B32CHARS[(value << (5 - bits)) & 31];
+  return output;
+}
+
+// ===== CRC16-CCITT =====
+function crc16(str) {
+  const bytes = new TextEncoder().encode(str);
+  let crc = 0xFFFF;
+  for (const b of bytes) {
+    crc ^= b << 8;
+    for (let i = 0; i < 8; i++) {
+      crc = (crc & 0x8000) ? ((crc << 1) ^ 0x1021) : (crc << 1);
+      crc &= 0xFFFF;
+    }
+  }
+  return crc;
+}
+
+// ===== HMAC-SHA256 =====
+async function hmacSign(secret, dataBytes) {
+  const keyBytes  = new TextEncoder().encode(secret);
+  const cryptoKey = await crypto.subtle.importKey(
+    'raw', keyBytes, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']
+  );
+  const sig = await crypto.subtle.sign('HMAC', cryptoKey, dataBytes);
+  return new Uint8Array(sig).slice(0, 4);
+}
+
+// ===== LIFETIME SENTINEL =====
+const LIFETIME_SENTINEL = 0xFFFFFFFF; // Kunci tidak pernah expired
+
+// ===== BUILD PAYLOAD =====
+function buildPayload(clientId, expiresAt, plan, maxUsers, clientName, isLifetime) {
+  const buf  = new Uint8Array(12);
+  const view = new DataView(buf.buffer);
+  view.setUint32(0, clientId >>> 0, false);
+  if (isLifetime) {
+    view.setUint32(4, LIFETIME_SENTINEL, false); // Sentinel = lifetime
+  } else {
+    const daysSinceEpoch = Math.floor(expiresAt.getTime() / 86400000);
+    view.setUint32(4, daysSinceEpoch >>> 0, false);
+  }
+  buf[8] = PLAN_RMAP[plan] ?? 0;
+  buf[9] = Math.min(Math.max(maxUsers, 1), 255);
+  const nameNorm = clientName.trim().toUpperCase();
+  const crc = crc16(nameNorm);
+  view.setUint16(10, crc, false);
+  return buf;
+}
+
+// ===== GENERATE KEY =====
+async function generateLicenseKey({ clientId, clientName, plan, expiresAt, maxUsers, isLifetime }) {
+  const payload = buildPayload(clientId, expiresAt, plan, maxUsers, clientName, isLifetime);
+  const sig     = await hmacSign(MASTER_SECRET, payload);
+  const full    = new Uint8Array(16);
+  full.set(payload, 0);
+  full.set(sig, 12);
+  const encoded = base32Encode(full);
+  const padded  = encoded.padEnd(28, B32CHARS[0]);
+  const groups  = [];
+  for (let i = 0; i < 28; i += 4) groups.push(padded.slice(i, i + 4));
+  return 'FREP-' + groups.join('-');
+}
+
+// ===== FORM HANDLER =====
+let _lastGeneratedKey = null;
+let _lastGeneratedRecord = null;
+
+async function generateKey() {
+  const errEl = document.getElementById('genError');
+  errEl.style.display = 'none';
+
+  const name       = document.getElementById('genName').value.trim();
+  const plan       = document.getElementById('genPlan').value;
+  const expiryType = document.getElementById('genExpiryType').value;
+  const expiryStr  = document.getElementById('genExpiry').value;
+  const maxUsers   = parseInt(document.getElementById('genMaxUsers').value) || 10;
+  const clientId   = parseInt(document.getElementById('genClientId').value) || 1;
+  const isLifetime = expiryType === 'lifetime';
+
+  if (!name) {
+    errEl.textContent = 'Nama perusahaan tidak boleh kosong';
+    errEl.style.display = 'block';
+    document.getElementById('genName').focus();
+    return;
+  }
+  let expiresAt = null;
+  if (!isLifetime) {
+    if (!expiryStr) {
+      errEl.textContent = 'Tanggal expired harus diisi';
+      errEl.style.display = 'block';
+      return;
+    }
+    expiresAt = new Date(expiryStr + 'T00:00:00');
+    if (expiresAt <= new Date()) {
+      errEl.textContent = 'Tanggal expired harus di masa mendatang';
+      errEl.style.display = 'block';
+      return;
+    }
+  }
+
+  const btn = document.getElementById('btnGenerate');
+  btn.disabled = true;
+  btn.textContent = 'Generating...';
+
+  try {
+    const keyStr = await generateLicenseKey({ clientId, clientName: name, plan, expiresAt, maxUsers, isLifetime });
+    _lastGeneratedKey = keyStr;
+
+    // Format expiry display
+    const expiryDisplay = isLifetime
+      ? '♾️ Lifetime'
+      : expiresAt.toLocaleDateString('id-ID', { day:'2-digit', month:'long', year:'numeric' });
+    const maxDisplay = maxUsers === 255 ? 'Unlimited' : `${maxUsers} pengguna`;
+
+    // Show result
+    document.getElementById('resultKey').textContent = keyStr;
+    document.getElementById('resultMeta').innerHTML = `
+      <span>Client ID: ${clientId}</span>
+      <span>Klien: ${name}</span>
+      <span>Plan: ${plan}</span>
+      <span>Max: ${maxDisplay}</span>
+      <span>Berlaku: ${expiryDisplay}</span>
+    `;
+    document.getElementById('resultBox').style.display = 'block';
+    document.getElementById('copyConfirm').style.display = 'none';
+
+    // Save to history
+    _lastGeneratedRecord = {
+      clientId, clientName: name, plan,
+      maxUsers: maxUsers === 255 ? null : maxUsers,
+      isLifetime,
+      expiresAt: isLifetime ? null : expiresAt.toISOString(),
+      keyStr,
+      generatedAt: new Date().toISOString()
+    };
+    saveToHistory(_lastGeneratedRecord);
+
+    // Increment counter
+    const nextId = clientId + 1;
+    localStorage.setItem(GEN_COUNTER_KEY, String(nextId));
+    document.getElementById('genClientId').value = nextId;
+
+    renderHistory();
+    updateStats();
+
+    // Scroll to result
+    document.getElementById('resultBox').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+  } catch(e) {
+    errEl.textContent = 'Gagal generate: ' + e.message;
+    errEl.style.display = 'block';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '✨ Generate Kunci Lisensi';
+  }
+}
+
+function toggleExpiryDate(val) {
+  const dateRow     = document.getElementById('expiryDateRow');
+  const lifetimeRow = document.getElementById('expiryLifetimeRow');
+  if (!dateRow || !lifetimeRow) return;
+  if (val === 'lifetime') {
+    dateRow.style.display     = 'none';
+    lifetimeRow.style.display = '';
+  } else {
+    dateRow.style.display     = '';
+    lifetimeRow.style.display = 'none';
+  }
+}
+
+function resetForm() {
+  document.getElementById('genName').value       = '';
+  document.getElementById('genPlan').value       = 'Pro';
+  document.getElementById('genMaxUsers').value   = '10';
+  document.getElementById('genExpiryType').value = 'date';
+  toggleExpiryDate('date');
+  const d = new Date();
+  d.setFullYear(d.getFullYear() + 1);
+  document.getElementById('genExpiry').value = d.toISOString().split('T')[0];
+  document.getElementById('resultBox').style.display = 'none';
+  document.getElementById('genError').style.display  = 'none';
+  _lastGeneratedKey = null;
+}
+
+// ===== COPY =====
+function copyKey() {
+  if (!_lastGeneratedKey) return;
+  _copyToClipboard(_lastGeneratedKey).then(() => {
+    const c = document.getElementById('copyConfirm');
+    c.style.display = 'inline';
+    setTimeout(() => c.style.display = 'none', 2000);
+  }).catch(() => {
+    alert('Gagal menyalin. Silakan salin manual:\n\n' + _lastGeneratedKey);
+  });
+}
+
+function copyFromTable(key) {
+  _copyToClipboard(key).then(() => {
+    alert('Kunci disalin: ' + key);
+  }).catch(() => {
+    alert('Gagal menyalin otomatis. Kunci:\n\n' + key);
+  });
+}
+
+function copyEmailTemplate() {
+  if (!_lastGeneratedRecord) return;
+  const rec = _lastGeneratedRecord;
+  const expiryDisplay = (rec.isLifetime || !rec.expiresAt)
+    ? 'Lifetime (Tidak Ada Expired)'
+    : new Date(rec.expiresAt).toLocaleDateString('id-ID', { day:'2-digit', month:'long', year:'numeric' });
+  const maxDisplay    = rec.maxUsers ? `${rec.maxUsers} pengguna` : 'Unlimited';
+  const template = `Kepada Yth.
+Tim IT ${rec.clientName},
+
+Berikut adalah kunci lisensi FinReport untuk perusahaan Anda:
+
+Nama Perusahaan : ${rec.clientName}
+Kunci Lisensi   : ${rec.keyStr}
+Plan            : ${rec.plan}
+Maks. Pengguna  : ${maxDisplay}
+Berlaku Hingga  : ${expiryDisplay}
+
+Cara Aktivasi:
+1. Buka aplikasi FinReport
+2. Masukkan Nama Perusahaan: ${rec.clientName}
+3. Masukkan Kunci Lisensi di atas
+4. Klik "Aktifkan Lisensi"
+
+Jika ada kendala, silakan hubungi tim support kami.
+
+Salam,
+Tim FinReport`;
+  _copyToClipboard(template).then(() => {
+    const c = document.getElementById('copyConfirm');
+    c.textContent = '✓ Template email tersalin!';
+    c.style.display = 'inline';
+    setTimeout(() => { c.textContent = '✓ Tersalin!'; c.style.display = 'none'; }, 3000);
+  }).catch(() => {
+    alert('Gagal menyalin template. Salin manual dari console.');
+    console.log(template);
+  });
+}
+
+// ===== HISTORY =====
+function getHistory() {
+  try { return JSON.parse(localStorage.getItem(GEN_HISTORY_KEY) || '[]'); }
+  catch(e) { return []; }
+}
+
+function saveToHistory(record) {
+  const hist = getHistory();
+  hist.unshift(record); // tambah di depan
+  localStorage.setItem(GEN_HISTORY_KEY, JSON.stringify(hist));
+}
+
+function getKeyStatus(expiresAt, isLifetime) {
+  if (isLifetime) return { label: '♾️ Lifetime', class: 'badge-active' };
+  if (!expiresAt) return { label: '♾️ Lifetime', class: 'badge-active' };
+  const now  = Date.now();
+  const exp  = new Date(expiresAt).getTime();
+  const days = Math.ceil((exp - now) / 86400000);
+  if (days <= 0)  return { label: 'Expired', class: 'badge-expired' };
+  if (days <= 30) return { label: `Exp ${days}h`, class: 'badge-expiring' };
+  return { label: 'Aktif', class: 'badge-active' };
+}
+
+function renderHistory() {
+  const tbody = document.getElementById('historyTableBody');
+  const empty = document.getElementById('historyEmpty');
+  const hist  = getHistory();
+
+  if (hist.length === 0) {
+    tbody.innerHTML = '';
+    empty.style.display = 'block';
+    return;
+  }
+  empty.style.display = 'none';
+
+  tbody.innerHTML = hist.map((r, idx) => {
+    const status     = getKeyStatus(r.expiresAt, r.isLifetime);
+    const expiryDisp = r.isLifetime || !r.expiresAt
+      ? '♾️ Lifetime'
+      : new Date(r.expiresAt).toLocaleDateString('id-ID');
+    const planClass  = 'badge-' + r.plan.toLowerCase();
+    const maxDisp    = r.maxUsers ? r.maxUsers : '∞';
+    const shortKey   = r.keyStr.length > 20 ? r.keyStr.slice(0,20) + '...' : r.keyStr;
+    return `<tr>
+      <td>${r.clientId}</td>
+      <td><strong>${escHtml(r.clientName)}</strong></td>
+      <td><span class="badge ${planClass}">${r.plan}</span></td>
+      <td>${maxDisp}</td>
+      <td>${expiryDisp}</td>
+      <td><span class="badge ${status.class}">${status.label}</span></td>
+      <td class="key-cell" title="${r.keyStr}">${shortKey}</td>
+      <td style="display:flex;gap:4px;flex-wrap:wrap">
+        <button class="btn btn-outline btn-xs" onclick="copyFromTable('${r.keyStr}')">Salin</button>
+        <button class="btn btn-primary btn-xs" onclick="downloadFromHistory(${idx})" title="Download paket ZIP untuk klien ini">📦</button>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function updateStats() {
+  const hist = getHistory();
+  const now  = Date.now();
+  let active = 0, expired = 0;
+  hist.forEach(r => {
+    if (r.isLifetime || !r.expiresAt) { active++; return; }
+    if (new Date(r.expiresAt).getTime() > now) active++;
+    else expired++;
+  });
+  const counter = parseInt(localStorage.getItem(GEN_COUNTER_KEY) || '1');
+  document.getElementById('statTotal').textContent   = hist.length;
+  document.getElementById('statActive').textContent  = active;
+  document.getElementById('statExpired').textContent = expired;
+  document.getElementById('statNextId').textContent  = counter;
+}
+
+function clearHistory() {
+  if (!confirm('Hapus semua riwayat kunci? Data tidak dapat dipulihkan.')) return;
+  localStorage.removeItem(GEN_HISTORY_KEY);
+  renderHistory();
+  updateStats();
+  document.getElementById('resultBox').style.display = 'none';
+}
+
+// ===== EXPORT CSV =====
+function exportCSV() {
+  const hist = getHistory();
+  if (hist.length === 0) { alert('Tidak ada data untuk diekspor.'); return; }
+  const header = 'Client ID,Nama Perusahaan,Plan,Maks Pengguna,Expired,Kunci Lisensi,Dibuat';
+  const rows = hist.map(r =>
+    [r.clientId, `"${r.clientName}"`, r.plan, r.maxUsers || 'Unlimited',
+     (r.isLifetime || !r.expiresAt) ? 'Lifetime' : new Date(r.expiresAt).toLocaleDateString('id-ID'),
+     r.keyStr, new Date(r.generatedAt).toLocaleDateString('id-ID')].join(',')
+  );
+  const csv = [header, ...rows].join('\n');
+  const blobObj = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blobObj);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `finreport-licenses-${new Date().toISOString().split('T')[0]}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ===== UTILS =====
+function escHtml(str) {
+  return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ===== CLIENT PACKAGE DOWNLOAD =====
+const APP_FILES = [
+  'app/index.html',
+  'app/css/style.css',
+  'app/js/app.js',
+  'app/js/auth.js',
+  'app/js/coa.js',
+  'app/js/export.js',
+  'app/js/journal.js',
+  'app/js/license.js',
+  'app/js/parser.js',
+  'app/js/pos.js',
+  'app/js/purchase.js',
+  'app/js/sales.js',
+  'app/js/storage.js',
+  'app/js/reports.js',
+  'app/js/users.js',
+  'app/assets/logo.svg',
+  'app/serve.py',
+  'app/start.sh',
+  'app/start.bat',
+  'app/data/.gitkeep',
+  'app/filestore/.gitkeep'
+];
+
+async function downloadClientPackage() {
+  if (!_lastGeneratedRecord) return;
+
+  // Offline mode: _EMBEDDED_FILES is injected by build.py
+  // Online mode: fetch files from /app/ on local server
+  const isOffline = (typeof _EMBEDDED_FILES !== 'undefined');
+
+  if (!isOffline && location.protocol === 'file:') {
+    document.getElementById('downloadNote').style.display = 'block';
+    return;
+  }
+
+  const btn = document.getElementById('btnDownloadPackage');
+  const origText = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Menyiapkan...'; }
+
+  try {
+    const rec = _lastGeneratedRecord;
+    const expiryDisplay = (rec.isLifetime || !rec.expiresAt)
+      ? 'Lifetime (Tidak Ada Expired)'
+      : new Date(rec.expiresAt).toLocaleDateString('id-ID', { day:'2-digit', month:'long', year:'numeric' });
+    const maxDisplay = rec.maxUsers ? `${rec.maxUsers} pengguna` : 'Unlimited';
+
+    const readme =
+`FinReport GKI — Paket Aplikasi Laporan Keuangan
+================================================
+
+INFORMASI LISENSI
+-----------------
+Nama Perusahaan : ${rec.clientName}
+Kunci Lisensi   : ${rec.keyStr}
+Plan            : ${rec.plan}
+Maks. Pengguna  : ${maxDisplay}
+Berlaku Hingga  : ${expiryDisplay}
+
+CARA MENJALANKAN APLIKASI
+--------------------------
+1. Jalankan start.sh (macOS/Linux) atau start.bat (Windows)
+   -> Aplikasi akan terbuka otomatis di http://localhost:8080
+   ATAU
+   Buka file index.html langsung di browser
+
+CARA AKTIVASI LISENSI
+----------------------
+1. Pada layar pertama, masukkan:
+   - Nama Perusahaan : ${rec.clientName}
+   - Kunci Lisensi   : ${rec.keyStr}
+2. Klik "Aktifkan Lisensi"
+3. Buat akun Super Admin (username & password)
+4. SIMPAN Kode Pemulihan yang muncul di tempat aman!
+5. Login dengan akun yang baru dibuat -> Aplikasi siap digunakan
+
+CATATAN PENTING
+---------------
+- Kode Pemulihan Super Admin hanya ditampilkan SEKALI — simpan baik-baik!
+- Data tersimpan di browser (localStorage) — jangan hapus data browser
+- Untuk backup, gunakan fitur Export di dalam aplikasi
+
+Jika ada kendala, hubungi tim support FinReport.
+`;
+
+    const zipFiles = [{ name: 'README.txt', data: new TextEncoder().encode(readme) }];
+    for (const filePath of APP_FILES) {
+      try {
+        let data;
+        if (isOffline) {
+          const key = filePath.replace(/^app\//, '');
+          const b64 = _EMBEDDED_FILES[key];
+          if (!b64) continue;
+          data = _b64ToU8(b64);
+        } else {
+          const res = await fetch(filePath);
+          if (!res.ok) continue;
+          data = new Uint8Array(await res.arrayBuffer());
+        }
+        zipFiles.push({ name: filePath.replace(/^app\//, ''), data });
+      } catch(e) { console.warn('Skip:', filePath); }
+    }
+
+    // Inject installation token + localStorage namespace ke index.html.
+    // Script ini harus dijalankan PERTAMA KALI sebelum script lain agar
+    // semua operasi localStorage otomatis menggunakan namespace unik per-ZIP.
+    // Ini mengisolasi data setiap ZIP satu sama lain di browser yang sama,
+    // seolah-olah setiap ZIP punya database sendiri (tanpa saling mencemari).
+    const _indexEntry = zipFiles.find(f => f.name === 'index.html');
+    if (_indexEntry) {
+      let _html = new TextDecoder('utf-8').decode(_indexEntry.data);
+      const _ns = rec.keyStr.replace(/[^A-Z0-9]/g, '_').slice(0, 20) + '__';
+      const _buildId = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+      const _installScript =
+        `window._EXPECTED_LICENSE_KEY=${JSON.stringify(rec.keyStr)};` +
+        `window._STORAGE_NS=${JSON.stringify(_ns)};` +
+        `window._DIST_BUILD_ID=${JSON.stringify(_buildId)};` +
+        `(function(){` +
+          `var ns=window._STORAGE_NS,ls=window.localStorage,p=ls.__proto__;` +
+          `ls.setItem=function(k,v){return p.setItem.call(ls,ns+k,v);};` +
+          `ls.getItem=function(k){return p.getItem.call(ls,ns+k);};` +
+          `ls.removeItem=function(k){return p.removeItem.call(ls,ns+k);};` +
+        `})();`;
+      const _token = `<script>${_installScript}<\/script>`;
+      // Inject sebagai script PERTAMA di <head> agar namespace aktif sebelum
+      // semua script lain (license.js, auth.js, app.js, dst.) berjalan.
+      _html = _html.replace('<head>', '<head>\n' + _token);
+      _indexEntry.data = new TextEncoder().encode(_html);
+    }
+
+    const zip  = _buildZip(zipFiles);
+    const blob = new Blob([zip], { type: 'application/zip' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url;
+    const safe = rec.clientName.replace(/[^a-zA-Z0-9]/g, '-').replace(/-+/g, '-').toLowerCase();
+    a.download = `FinReport-${safe}-${new Date().toISOString().split('T')[0]}.zip`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+  } catch(e) {
+    alert('Gagal membuat paket: ' + e.message);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = origText; }
+  }
+}
+
+function _b64ToU8(b64) {
+  const bin = atob(b64);
+  const arr = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+  return arr;
+}
+
+function downloadFromHistory(idx) {
+  const hist = getHistory();
+  if (idx < 0 || idx >= hist.length) return;
+  _lastGeneratedRecord = hist[idx];
+  // Make sure result-box btnDownloadPackage exists; if not, just call directly
+  const btn = document.getElementById('btnDownloadPackage');
+  if (!btn) {
+    // Create a temporary button element for the function to reference
+    const tmp = document.createElement('button');
+    tmp.id = 'btnDownloadPackage';
+    tmp.style.display = 'none';
+    document.body.appendChild(tmp);
+    downloadClientPackage().finally(() => document.body.removeChild(tmp));
+  } else {
+    downloadClientPackage();
+  }
+}
+
+// ===== ZIP BUILDER (STORE — no external dependency) =====
+function _buildZip(files) {
+  const u16 = n => [n & 0xFF, (n >> 8) & 0xFF];
+  const u32 = n => [(n >>> 0) & 0xFF, (n >>> 8) & 0xFF, (n >>> 16) & 0xFF, (n >>> 24) & 0xFF];
+  const enc = new TextEncoder();
+  const cat = (...arrs) => {
+    const tot = arrs.reduce((s, a) => s + a.length, 0);
+    const out = new Uint8Array(tot);
+    let i = 0;
+    for (const a of arrs) { out.set(a, i); i += a.length; }
+    return out;
+  };
+
+  const parts = [], cdirs = [];
+  let offset = 0;
+
+  for (const f of files) {
+    const name = enc.encode(f.name);
+    const data = f.data instanceof Uint8Array ? f.data : enc.encode(f.data);
+    const crc  = _crc32zip(data);
+    const size = data.length;
+
+    const lh = new Uint8Array([
+      0x50,0x4B,0x03,0x04, 0x14,0x00, 0x00,0x00, 0x00,0x00,
+      0x00,0x00, 0x00,0x00,
+      ...u32(crc), ...u32(size), ...u32(size),
+      ...u16(name.length), 0x00,0x00, ...name
+    ]);
+    const cd = new Uint8Array([
+      0x50,0x4B,0x01,0x02, 0x14,0x00, 0x14,0x00, 0x00,0x00, 0x00,0x00,
+      0x00,0x00, 0x00,0x00,
+      ...u32(crc), ...u32(size), ...u32(size),
+      ...u16(name.length), 0x00,0x00, 0x00,0x00, 0x00,0x00, 0x00,0x00, 0x00,0x00,0x00,0x00,
+      ...u32(offset), ...name
+    ]);
+    parts.push(lh, data);
+    cdirs.push(cd);
+    offset += lh.length + size;
+  }
+
+  const cdData = cat(...cdirs);
+  const n = files.length;
+  const eocd = new Uint8Array([
+    0x50,0x4B,0x05,0x06, 0x00,0x00, 0x00,0x00,
+    ...u16(n), ...u16(n),
+    ...u32(cdData.length), ...u32(offset),
+    0x00,0x00
+  ]);
+  return cat(...parts, cdData, eocd);
+}
+
+const _crc32t = (() => {
+  const t = new Uint32Array(256);
+  for (let i = 0; i < 256; i++) {
+    let c = i;
+    for (let j = 0; j < 8; j++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+    t[i] = c;
+  }
+  return t;
+})();
+
+function _crc32zip(data) {
+  let c = 0xFFFFFFFF;
+  for (const b of data) c = _crc32t[(c ^ b) & 0xFF] ^ (c >>> 8);
+  return (c ^ 0xFFFFFFFF) >>> 0;
+}
+
+// ===== CLIPBOARD (dengan fallback untuk file:// protocol) =====
+function _copyToClipboard(text) {
+  // Coba modern Clipboard API dulu (butuh HTTPS atau localhost)
+  if (navigator.clipboard && window.isSecureContext) {
+    return navigator.clipboard.writeText(text);
+  }
+  // Fallback: execCommand (bekerja di file:// dan semua browser lama)
+  return new Promise((resolve, reject) => {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.top = '-9999px';
+    ta.style.left = '-9999px';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.select();
+    try {
+      const ok = document.execCommand('copy');
+      document.body.removeChild(ta);
+      ok ? resolve() : reject(new Error('execCommand copy gagal'));
+    } catch(e) {
+      document.body.removeChild(ta);
+      reject(e);
+    }
+  });
+}
+</script>
+</body>
+</html>

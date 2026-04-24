@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 52 52" width="52" height="52">
+  <!-- Background rounded rectangle -->
+  <rect width="52" height="52" rx="12" ry="12" fill="#2563eb"/>
+
+  <!-- Bar chart icon (top-center, white) -->
+  <!-- Bar 1 (short) -->
+  <rect x="10" y="24" width="6" height="10" rx="1.5" fill="rgba(255,255,255,0.75)"/>
+  <!-- Bar 2 (medium) -->
+  <rect x="19" y="18" width="6" height="16" rx="1.5" fill="rgba(255,255,255,0.9)"/>
+  <!-- Bar 3 (tall) -->
+  <rect x="28" y="13" width="6" height="21" rx="1.5" fill="#ffffff"/>
+  <!-- Upward trend line / arrow -->
+  <polyline points="10,30 22,22 28,18 36,13" fill="none" stroke="rgba(255,255,255,0.5)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- "GKI" text label at bottom -->
+  <text x="26" y="48" text-anchor="middle" font-family="'Segoe UI', Arial, sans-serif" font-size="8" font-weight="700" fill="rgba(255,255,255,0.85)" letter-spacing="1.5">GKI</text>
+</svg>

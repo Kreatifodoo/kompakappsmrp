@@ -1,0 +1,12 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "FinReport App",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["/tmp/finreport_serve.py"],
+      "port": 8083,
+      "autoPort": false
+    }
+  ]
+}

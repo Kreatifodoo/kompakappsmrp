@@ -1,0 +1,1924 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Laporan Keuangan - GKI</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css?v=14" />
+  <!-- PDF.js -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <!-- SheetJS (xlsx) for Google Sheets export -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <!-- jsPDF for PDF export -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+</head>
+<body>
+
+<!-- ===== LOGIN OVERLAY ===== -->
+<div id="loginOverlay" class="login-overlay">
+
+  <!-- PANEL: LICENSE ACTIVATION -->
+  <div id="licensePanel" class="login-card" style="display:none">
+    <div class="login-logo">
+      <img src="assets/logo.svg" alt="GKI Logo" class="login-logo-img" />
+      <div class="login-logo-text">
+        <span class="login-logo-title">FinReport GKI</span>
+        <span class="login-logo-sub">Aktivasi Lisensi</span>
+      </div>
+    </div>
+    <h2 class="login-heading">Aktivasi Lisensi</h2>
+    <p class="login-desc">Masukkan nama perusahaan dan kunci lisensi yang telah Anda terima dari vendor.</p>
+    <div class="login-field">
+      <label>Nama Perusahaan <span style="color:var(--danger-color,#ef4444)">*</span></label>
+      <input type="text" id="licNameInput" placeholder="Contoh: PT Maju Jaya Indonesia" autocomplete="organization" />
+    </div>
+    <div class="login-field">
+      <label>Kunci Lisensi <span style="color:var(--danger-color,#ef4444)">*</span></label>
+      <input type="text" id="licKeyInput"
+        placeholder="FREP-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX"
+        autocomplete="off"
+        style="font-family:monospace;letter-spacing:1px;font-size:13px"
+        oninput="this.value=this.value.toUpperCase()" />
+    </div>
+    <p id="licError" class="login-error" style="display:none"></p>
+    <button type="button" id="btnActivateLicense" class="btn-login" onclick="handleLicenseSubmit()">
+      Aktifkan Lisensi
+    </button>
+    <button type="button" id="btnSkipToLogin" class="btn-login-outline" style="margin-top:10px;display:none" onclick="showLoginPanel('loginPanel')">
+      Sudah Aktivasi? Login
+    </button>
+    <p style="text-align:center;margin-top:14px;font-size:12px;color:#8b8fa8">
+      Belum punya lisensi? Hubungi vendor untuk pembelian.
+    </p>
+  </div>
+
+  <!-- PANEL: FIRST-TIME SETUP -->
+  <div id="setupPanel" class="login-card" style="display:none">
+    <div class="login-logo">
+      <img src="assets/logo.svg" alt="GKI Logo" class="login-logo-img" />
+      <div class="login-logo-text">
+        <span class="login-logo-title">FinReport GKI</span>
+        <span class="login-logo-sub">Selamat Datang!</span>
+      </div>
+    </div>
+    <h2 class="login-heading">Buat Akun Admin</h2>
+    <p class="login-desc">Ini adalah pertama kali aplikasi dijalankan. Buat akun Admin untuk mulai menggunakan aplikasi.</p>
+    <form id="setupForm" autocomplete="off">
+      <div class="login-field">
+        <label>Username Admin</label>
+        <input type="text" id="setupUsername" placeholder="cth: admin" autocomplete="username" required />
+      </div>
+      <div class="login-field">
+        <label>Password</label>
+        <input type="password" id="setupPassword" placeholder="Min. 6 karakter" autocomplete="new-password" required />
+      </div>
+      <div class="login-field">
+        <label>Konfirmasi Password</label>
+        <input type="password" id="setupConfirm" placeholder="Ulangi password" autocomplete="new-password" required />
+      </div>
+      <p id="setupError" class="login-error" style="display:none"></p>
+      <button type="submit" id="btnSetup" class="btn-login">Buat Akun &amp; Mulai</button>
+    </form>
+  </div>
+
+  <!-- PANEL: RECOVERY CODE (setelah setup) -->
+  <div id="recoveryCodePanel" class="login-card" style="display:none">
+    <div class="login-logo">
+      <img src="assets/logo.svg" alt="GKI Logo" class="login-logo-img" />
+      <div class="login-logo-text">
+        <span class="login-logo-title">FinReport GKI</span>
+        <span class="login-logo-sub">Simpan Kode Pemulihan</span>
+      </div>
+    </div>
+    <h2 class="login-heading">Kode Pemulihan Super Admin</h2>
+    <p class="login-desc">Kode ini digunakan untuk mereset password jika lupa. <strong>Simpan di tempat aman — hanya ditampilkan sekali.</strong></p>
+    <div class="recovery-code-box">
+      <span id="recoveryCodeDisplay"></span>
+      <button type="button" class="btn-copy-code" onclick="copyRecoveryCode()">Salin</button>
+    </div>
+    <label class="rc-ack-label">
+      <input type="checkbox" id="rcAckCheck"
+        onchange="document.getElementById('btnContinueRC').disabled = !this.checked">
+      Saya telah menyimpan kode ini dengan aman
+    </label>
+    <button type="button" id="btnContinueRC" class="btn-login" disabled
+      onclick="continueAfterRecoveryCode()">Lanjutkan ke Aplikasi</button>
+  </div>
+
+  <!-- PANEL: LOGIN -->
+  <div id="loginPanel" class="login-card" style="display:none">
+    <div class="login-logo">
+      <img src="assets/logo.svg" alt="GKI Logo" class="login-logo-img" />
+      <div class="login-logo-text">
+        <span class="login-logo-title">FinReport GKI</span>
+        <span class="login-logo-sub">Management System</span>
+      </div>
+    </div>
+    <h2 class="login-heading">Masuk ke Aplikasi</h2>
+    <form id="loginForm" autocomplete="on">
+      <div class="login-field">
+        <label>Username</label>
+        <input type="text" id="loginUsername" placeholder="Masukkan username" autocomplete="username" required />
+      </div>
+      <div class="login-field">
+        <label>Password</label>
+        <input type="password" id="loginPassword" placeholder="Masukkan password" autocomplete="current-password" required />
+      </div>
+      <p id="loginError" class="login-error" style="display:none"></p>
+      <button type="submit" id="btnLogin" class="btn-login">Masuk</button>
+    </form>
+    <button type="button" id="btnRegister" class="btn-login btn-login-outline"
+      style="display:none" onclick="showLoginPanel('registerPanel')">
+      Buat Akun Baru
+    </button>
+    <div style="text-align:center;margin-top:10px">
+      <a href="#" id="linkSARecovery" class="login-small-link"
+        style="display:none"
+        onclick="event.preventDefault();showLoginPanel('saRecoveryPanel')">
+        Lupa password Super Admin?
+      </a>
+    </div>
+  </div>
+
+  <!-- PANEL: REGISTER (Pendaftaran Publik) -->
+  <div id="registerPanel" class="login-card" style="display:none">
+    <div class="login-logo">
+      <img src="assets/logo.svg" alt="GKI Logo" class="login-logo-img" />
+      <div class="login-logo-text">
+        <span class="login-logo-title">FinReport GKI</span>
+        <span class="login-logo-sub">Buat Akun Baru</span>
+      </div>
+    </div>
+    <a href="#" class="login-back-link" onclick="event.preventDefault();showLoginPanel('loginPanel')">
+      &larr; Kembali ke Login
+    </a>
+    <h2 class="login-heading">Daftar Akun</h2>
+    <div class="login-field">
+      <label>Username <span style="color:red">*</span></label>
+      <input type="text" id="regUsername" placeholder="cth: john_doe" autocomplete="off" />
+    </div>
+    <div class="login-field">
+      <label>Password <span style="color:red">*</span></label>
+      <input type="password" id="regPassword" placeholder="Min. 6 karakter" autocomplete="new-password" />
+    </div>
+    <div class="login-field">
+      <label>Konfirmasi Password</label>
+      <input type="password" id="regConfirm" placeholder="Ulangi password" autocomplete="new-password" />
+    </div>
+    <p id="regError" class="login-error" style="display:none"></p>
+    <button type="button" id="btnRegister2" class="btn-login" onclick="handlePublicRegister()">Daftar</button>
+  </div>
+
+  <!-- PANEL: SA PASSWORD RECOVERY -->
+  <div id="saRecoveryPanel" class="login-card" style="display:none">
+    <div class="login-logo">
+      <img src="assets/logo.svg" alt="GKI Logo" class="login-logo-img" />
+      <div class="login-logo-text">
+        <span class="login-logo-title">FinReport GKI</span>
+        <span class="login-logo-sub">Pemulihan Password</span>
+      </div>
+    </div>
+    <a href="#" class="login-back-link" onclick="event.preventDefault();showLoginPanel('loginPanel')">
+      &larr; Kembali ke Login
+    </a>
+    <h2 class="login-heading">Reset Password Super Admin</h2>
+
+    <!-- Step 1: Verifikasi kode -->
+    <div id="saRecStep1">
+      <p class="login-desc">Masukkan kode pemulihan Super Admin yang disimpan saat pertama kali setup.</p>
+      <div class="login-field">
+        <label>Kode Pemulihan</label>
+        <input type="text" id="saRecCode" placeholder="XXXXXX-XXXXXX-XXXXXX-XXXXXX"
+          autocomplete="off" style="letter-spacing:2px;font-family:monospace;text-transform:uppercase" />
+      </div>
+      <p id="saRecError" class="login-error" style="display:none"></p>
+      <button type="button" id="btnVerifyCode" class="btn-login" onclick="handleSARecoveryStep1()">Verifikasi Kode</button>
+    </div>
+
+    <!-- Step 2: Reset password (tersembunyi sampai step 1 berhasil) -->
+    <div id="saRecStep2" style="display:none">
+      <p class="login-desc" style="color:#22c55e;font-weight:500;margin-bottom:12px">
+        Kode valid. Masukkan password baru untuk Super Admin.
+      </p>
+      <div class="login-field">
+        <label>Password Baru <span style="color:red">*</span></label>
+        <input type="password" id="saRecNewPwd" placeholder="Min. 6 karakter" autocomplete="new-password" />
+      </div>
+      <div class="login-field">
+        <label>Konfirmasi Password</label>
+        <input type="password" id="saRecConfirm" placeholder="Ulangi password baru" autocomplete="new-password" />
+      </div>
+      <p id="saRecError2" class="login-error" style="display:none"></p>
+      <button type="button" id="btnResetSAPwd" class="btn-login" onclick="handleSARecoveryStep2()">Reset Password</button>
+    </div>
+  </div>
+
+</div>
+
+<!-- ===== LICENSE EXPIRY BANNER ===== -->
+<div id="licenseExpiryBanner" class="license-banner" style="display:none"></div>
+
+<!-- ===== SIDEBAR ===== -->
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar-logo">
+    <div class="logo-icon">
+      <svg width="34" height="34" viewBox="0 0 34 34" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <rect width="34" height="34" rx="9" fill="#2563eb"/>
+        <rect x="8" y="20" width="4" height="7" rx="1.5" fill="white"/>
+        <rect x="15" y="14" width="4" height="13" rx="1.5" fill="rgba(255,255,255,0.75)"/>
+        <rect x="22" y="8" width="4" height="19" rx="1.5" fill="rgba(255,255,255,0.5)"/>
+      </svg>
+    </div>
+    <div class="logo-text">
+      <span class="logo-title">FinReport</span>
+      <span class="logo-sub">GKI Management</span>
+    </div>
+  </div>
+
+  <nav class="sidebar-nav">
+    <button class="nav-group-btn active-group" data-group="accounting" data-tooltip="Accounting">
+      <span class="nav-icon"><i data-feather="briefcase"></i></span>
+    </button>
+    <button class="nav-group-btn" data-group="sales" data-tooltip="Sales">
+      <span class="nav-icon"><i data-feather="shopping-cart"></i></span>
+    </button>
+  </nav>
+
+  <div class="sidebar-footer">
+    <div class="company-info" id="sidebarCompany">
+      <div class="company-dot"></div>
+      <span>Belum ada data</span>
+    </div>
+    <div id="currentUserInfo"></div>
+  </div>
+</aside>
+
+<!-- ===== SIDEBAR FLYOUT PANEL ===== -->
+<div class="sidebar-flyout" id="sidebarFlyout">
+  <div class="sidebar-flyout-header">
+    <span class="flyout-title" id="flyoutTitle">Accounting</span>
+    <button class="flyout-close-btn" id="flyoutCloseBtn" aria-label="Tutup">
+      <i data-feather="x"></i>
+    </button>
+  </div>
+  <div class="flyout-items" id="flyoutItems"></div>
+</div>
+<div class="flyout-overlay" id="flyoutOverlay"></div>
+
+<!-- ===== MAIN CONTENT ===== -->
+<div class="main-wrapper">
+  <!-- Topbar -->
+  <header class="topbar">
+    <button class="sidebar-toggle" id="sidebarToggle">
+      <i data-feather="menu"></i>
+    </button>
+    <div class="topbar-title" id="pageTitle">Dashboard</div>
+    <div class="topbar-actions">
+      <button class="btn btn-outline" id="btnLock" disabled>
+        <i data-feather="lock"></i><span class="btn-label"> Lock</span>
+      </button>
+      <button class="btn btn-danger" id="btnHardReset" disabled style="opacity:0.85">
+        <i data-feather="trash-2"></i><span class="btn-label"> Reset</span>
+      </button>
+      <button class="btn btn-dark" id="btnExportSheet" disabled>
+        <i data-feather="file-text"></i><span class="btn-label"> Google Sheets</span>
+      </button>
+      <button class="btn btn-dark" id="btnExportXlsx" disabled>
+        <i data-feather="download"></i><span class="btn-label"> Excel</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Page Container -->
+  <main class="page-content">
+
+    <!-- ===== PAGE: DASHBOARD ===== -->
+    <section class="page active" id="page-dashboard">
+      <div class="page-header">
+        <h2>Dashboard Keuangan</h2>
+        <p id="dashPeriod" class="page-subtitle">Upload bank statement untuk melihat ringkasan</p>
+      </div>
+
+      <!-- KPI Cards -->
+      <div class="kpi-grid" id="kpiGrid">
+        <div class="kpi-card">
+          <div class="kpi-label">Saldo Awal</div>
+          <div class="kpi-value" id="kpiSaldoAwal">Rp 0</div>
+          <div class="kpi-badge badge-neutral">Periode ini</div>
+        </div>
+        <div class="kpi-card kpi-green">
+          <div class="kpi-label">Total Pemasukan (CR)</div>
+          <div class="kpi-value" id="kpiTotalCR">Rp 0</div>
+          <div class="kpi-badge badge-green" id="kpiCRCount">0 transaksi</div>
+        </div>
+        <div class="kpi-card kpi-red">
+          <div class="kpi-label">Total Pengeluaran (DB)</div>
+          <div class="kpi-value" id="kpiTotalDB">Rp 0</div>
+          <div class="kpi-badge badge-red" id="kpiDBCount">0 transaksi</div>
+        </div>
+        <div class="kpi-card kpi-blue">
+          <div class="kpi-label">Saldo Akhir</div>
+          <div class="kpi-value" id="kpiSaldoAkhir">Rp 0</div>
+          <div class="kpi-badge badge-blue">Net Flow</div>
+        </div>
+      </div>
+
+      <!-- Charts Row -->
+      <div class="charts-row">
+        <div class="chart-card chart-lg">
+          <div class="chart-header">
+            <h3>Arus Kas Harian</h3>
+          </div>
+          <div class="chart-body">
+            <canvas id="cashflowChart"></canvas>
+          </div>
+        </div>
+        <div class="chart-card chart-sm">
+          <div class="chart-header">
+            <h3>Komposisi Transaksi</h3>
+          </div>
+          <div class="chart-body">
+            <canvas id="compositionChart"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <!-- Category Breakdown -->
+      <div class="charts-row">
+        <div class="chart-card chart-lg">
+          <div class="chart-header">
+            <h3>Pengeluaran per Kategori</h3>
+          </div>
+          <div class="chart-body">
+            <canvas id="categoryChart"></canvas>
+          </div>
+        </div>
+        <div class="chart-card chart-sm">
+          <div class="chart-header">
+            <h3>Top Penerima Dana</h3>
+          </div>
+          <div class="chart-body" id="topRecipients">
+            <div class="empty-state">Belum ada data</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Empty state overlay -->
+      <div class="empty-dashboard" id="emptyDashboard">
+        <div class="empty-icon"><i data-feather="folder"></i></div>
+        <h3>Belum Ada Data</h3>
+        <p>Upload bank statement BCA (PDF) untuk mulai menganalisis laporan keuangan</p>
+        <button class="btn btn-primary" data-page="upload">Upload Sekarang</button>
+      </div>
+    </section>
+
+    <!-- ===== PAGE: UPLOAD ===== -->
+    <section class="page" id="page-upload">
+      <div class="page-header">
+        <h2>Upload Bank Statement</h2>
+        <p class="page-subtitle">Mendukung format PDF e-Statement BCA Rekening Giro</p>
+      </div>
+
+      <div class="upload-container">
+        <div class="upload-zone" id="uploadZone">
+          <div class="upload-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+            </svg>
+          </div>
+          <h3>Drag & Drop PDF di sini</h3>
+          <p>atau klik untuk pilih file</p>
+          <input type="file" id="fileInput" accept=".pdf" multiple hidden />
+          <button class="btn btn-primary" id="btnPickFile">Pilih File PDF</button>
+          <p class="upload-hint">Mendukung e-Statement BCA Rekening Giro · Bisa upload beberapa file</p>
+        </div>
+
+        <!-- Uploaded Files List -->
+        <div class="uploaded-files" id="uploadedFiles" style="display:none">
+          <h3>File Terupload</h3>
+          <div id="filesList"></div>
+          <div class="upload-actions">
+            <button class="btn btn-primary" id="btnProcess"><i data-feather="cpu"></i> Proses Semua File</button>
+            <button class="btn btn-outline" id="btnClearFiles"><i data-feather="x"></i> Hapus Antrian</button>
+          </div>
+        </div>
+
+        <!-- Reset Data Section -->
+        <div class="reset-data-section" id="resetDataSection" style="display:none">
+          <div class="reset-data-info">
+            <span id="resetDataLabel">Data aktif: –</span>
+          </div>
+          <button class="btn btn-danger" id="btnResetData"><i data-feather="trash-2"></i> Reset Semua Data</button>
+        </div>
+
+        <!-- Processing Status -->
+        <div class="processing-status" id="processingStatus" style="display:none">
+          <div class="progress-bar-wrap">
+            <div class="progress-bar" id="progressBar"></div>
+          </div>
+          <p id="processingMsg">Memproses file...</p>
+        </div>
+      </div>
+
+      <!-- How to Use -->
+      <div class="how-to-card">
+        <h3>Cara Penggunaan</h3>
+        <ol>
+          <li>Download e-Statement BCA dari BCA mobile / KlikBCA</li>
+          <li>Upload file PDF (boleh beberapa bulan sekaligus)</li>
+          <li>Klik "Proses" - sistem akan otomatis parsing transaksi</li>
+          <li>Lihat hasil di menu Transaksi, Jurnal Entri, atau Laporan</li>
+          <li>Export ke Google Sheets untuk analisis lebih lanjut</li>
+        </ol>
+      </div>
+    </section>
+
+    <!-- ===== PAGE: TRANSACTIONS ===== -->
+    <section class="page" id="page-transactions">
+      <div class="page-header">
+        <h2>Daftar Transaksi</h2>
+      </div>
+      <div class="tx-filter-bar">
+        <input type="text" id="searchTx" placeholder="Cari transaksi..." class="search-input" />
+        <select id="filterType" class="select-input">
+          <option value="">Semua Tipe</option>
+          <option value="CR">Pemasukan (CR)</option>
+          <option value="DB">Pengeluaran (DB)</option>
+        </select>
+        <div class="multiselect-wrap" id="categoryMultiWrap">
+          <button type="button" class="multiselect-btn" id="categoryMultiBtn">
+            <span id="categoryMultiLabel">Semua Kategori</span>
+            <span class="ms-arrow">&#9660;</span>
+          </button>
+          <div class="multiselect-panel" id="categoryMultiPanel">
+            <div class="multiselect-search">
+              <input type="text" id="categoryMultiSearch" placeholder="Cari akun..." autocomplete="off" />
+            </div>
+            <div class="multiselect-select-all" id="categorySelectAll">
+              <input type="checkbox" id="categorySelectAllChk" />
+              <label for="categorySelectAllChk">Semua Kategori</label>
+            </div>
+            <div class="multiselect-options" id="categoryMultiOptions"></div>
+          </div>
+        </div>
+        <div class="date-range-group">
+          <label>Dari</label>
+          <input type="date" id="filterDateFrom" class="date-input" title="Dari tanggal" />
+          <label>s/d</label>
+          <input type="date" id="filterDateTo" class="date-input" title="Sampai tanggal" />
+        </div>
+        <button class="btn-reset-filter" id="btnResetFilter" title="Reset semua filter">&#x21BA; Reset</button>
+      </div>
+
+      <div class="table-card">
+        <table class="data-table" id="txTable">
+          <thead>
+            <tr>
+              <th>Tanggal</th>
+              <th>Keterangan</th>
+              <th>Referensi</th>
+              <th>Pihak</th>
+              <th>Kategori COA</th>
+              <th>Debit (DB)</th>
+              <th>Kredit (CR)</th>
+              <th>Saldo</th>
+            </tr>
+          </thead>
+          <tbody id="txTableBody">
+            <tr><td colspan="8" class="empty-row">Belum ada transaksi - upload bank statement terlebih dahulu</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="table-footer">
+        <span id="txCount">0 transaksi</span>
+        <div class="pagination" id="txPagination"></div>
+      </div>
+    </section>
+
+    <!-- ===== PAGE: JOURNAL ===== -->
+    <section class="page" id="page-journal">
+      <div class="page-header">
+        <h2>Jurnal Entri</h2>
+        <p class="page-subtitle">Jurnal otomatis dari bank statement, POS &amp; entri manual</p>
+      </div>
+
+      <!-- Journal Summary -->
+      <div class="journal-summary" id="journalSummary" style="display:none">
+        <div class="summary-item">
+          <span class="sum-label">Total Debit</span>
+          <span class="sum-value text-red" id="jTotalDebit">Rp 0</span>
+        </div>
+        <div class="summary-item">
+          <span class="sum-label">Total Kredit</span>
+          <span class="sum-value text-green" id="jTotalKredit">Rp 0</span>
+        </div>
+        <div class="summary-item">
+          <span class="sum-label">Selisih</span>
+          <span class="sum-value" id="jSelisih">Rp 0</span>
+        </div>
+        <div class="summary-item">
+          <span class="sum-label">Status</span>
+          <span class="badge" id="jStatus">-</span>
+        </div>
+      </div>
+
+      <!-- Journal Toolbar: search, filter, view toggle -->
+      <div class="journal-toolbar">
+        <div class="j-search-wrap">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+          <input type="text" id="jSearch" placeholder="Cari keterangan, kode / nama akun…" oninput="renderJournalTable()">
+        </div>
+        <div class="j-date-range">
+          <input type="date" id="jDateFrom" title="Dari tanggal" onchange="renderJournalTable()">
+          <span class="j-date-sep">—</span>
+          <input type="date" id="jDateTo" title="Sampai tanggal" onchange="renderJournalTable()">
+        </div>
+        <select id="jAcctType" class="j-select" onchange="renderJournalTable()">
+          <option value="all">Semua Tipe Akun</option>
+          <option value="Aset">Aset</option>
+          <option value="Liabilitas">Liabilitas</option>
+          <option value="Ekuitas">Ekuitas</option>
+          <option value="Pendapatan">Pendapatan</option>
+          <option value="Beban">Beban</option>
+        </select>
+        <div class="j-view-toggle">
+          <button id="jViewFlat"  class="j-view-btn active" onclick="setJournalView('flat')">Flat</button>
+          <button id="jViewGroup" class="j-view-btn"        onclick="setJournalView('group')">Grup</button>
+        </div>
+        <button class="btn-outline-sm" onclick="clearJournalFilters()">Reset</button>
+        <button class="btn btn-primary" style="padding:6px 14px;font-size:13px" onclick="openCreateJournalModal()">+ Buat Jurnal</button>
+      </div>
+
+      <div class="table-card">
+        <table class="data-table" id="journalTable">
+          <thead>
+            <tr>
+              <th>No.</th>
+              <th>Tanggal</th>
+              <th>No. Jurnal</th>
+              <th>Keterangan</th>
+              <th>Kode Akun</th>
+              <th>Nama Akun</th>
+              <th>Debit</th>
+              <th>Kredit</th>
+              <th style="width:80px">Aksi</th>
+            </tr>
+          </thead>
+          <tbody id="journalTableBody">
+            <tr><td colspan="9" class="empty-row">Belum ada jurnal entri</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ===== PAGE: COA ===== -->
+    <section class="page" id="page-coa">
+      <div class="page-header">
+        <div>
+          <h2>Chart of Accounts</h2>
+          <p class="page-subtitle">Daftar akun standar untuk PT Global Kreatif Inovasi</p>
+        </div>
+        <button class="btn-primary" onclick="openCOAModal()">+ Tambah Akun</button>
+      </div>
+
+      <div class="coa-filter">
+        <button class="btn-tab active" data-coa-filter="all">Semua</button>
+        <button class="btn-tab" data-coa-filter="1">Aset</button>
+        <button class="btn-tab" data-coa-filter="2">Liabilitas</button>
+        <button class="btn-tab" data-coa-filter="3">Ekuitas</button>
+        <button class="btn-tab" data-coa-filter="4">Pendapatan</button>
+        <button class="btn-tab" data-coa-filter="5">Beban</button>
+      </div>
+
+      <div class="table-card">
+        <table class="data-table" id="coaTable">
+          <thead>
+            <tr>
+              <th>Kode Akun</th>
+              <th>Nama Akun</th>
+              <th>Tipe</th>
+              <th>Kategori</th>
+              <th>Normal Balance</th>
+              <th>Keterangan</th>
+              <th style="width:60px"></th>
+            </tr>
+          </thead>
+          <tbody id="coaTableBody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ===== MODAL: COA ADD/EDIT ===== -->
+    <div class="modal-overlay" id="coaModal" style="display:none">
+      <div class="modal-box">
+        <div class="modal-header">
+          <h3 id="coaModalTitle">Tambah Akun</h3>
+          <button class="modal-close" onclick="closeCOAModal()"><i data-feather="x"></i></button>
+        </div>
+        <div class="modal-body">
+          <div class="form-row">
+            <div class="form-group">
+              <label>Kode Akun <span style="color:red">*</span></label>
+              <input type="text" id="coaCode" placeholder="cth: 5-1200" maxlength="10">
+              <small>Format: X-XXXX (misal 1-1100, 5-1200)</small>
+            </div>
+            <div class="form-group">
+              <label>Tipe <span style="color:red">*</span></label>
+              <select id="coaType" onchange="onCOATypeChange()">
+                <option value="Aset">Aset</option>
+                <option value="Liabilitas">Liabilitas</option>
+                <option value="Ekuitas">Ekuitas</option>
+                <option value="Pendapatan">Pendapatan</option>
+                <option value="Beban">Beban</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Nama Akun <span style="color:red">*</span></label>
+            <input type="text" id="coaName" placeholder="cth: Beban Internet">
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Kategori</label>
+              <input type="text" id="coaCategory" placeholder="cth: Beban Operasional">
+            </div>
+            <div class="form-group">
+              <label>Normal Balance</label>
+              <select id="coaNormal">
+                <option value="Debit">Debit</option>
+                <option value="Kredit">Kredit</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Keterangan</label>
+            <input type="text" id="coaDesc" placeholder="Deskripsi singkat akun ini">
+          </div>
+          <p id="coaError" style="color:#dc2626;font-size:12px;margin:4px 0 0;display:none"></p>
+        </div>
+        <div class="modal-footer">
+          <button class="btn-secondary" onclick="closeCOAModal()">Batal</button>
+          <button class="btn-primary" onclick="saveCOAAccount()">Simpan</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== PAGE: INCOME STATEMENT ===== -->
+    <section class="page" id="page-income">
+      <div class="page-header">
+        <h2>Laporan Laba Rugi</h2>
+        <p class="page-subtitle" id="incomeSubtitle">Untuk periode yang berakhir</p>
+      </div>
+      <div class="report-filter-bar">
+        <div class="date-range-group">
+          <label>Dari</label>
+          <input type="date" id="incomeDateFrom" class="date-input" title="Dari tanggal" />
+          <label>s/d</label>
+          <input type="date" id="incomeDateTo" class="date-input" title="Sampai tanggal" />
+        </div>
+        <button class="btn-reset-filter" id="btnResetIncomeFilter" title="Reset filter">&#x21BA; Reset</button>
+        <div class="compare-divider"></div>
+        <label class="compare-toggle-label">
+          <input type="checkbox" id="incomeCompareToggle" class="compare-checkbox" />
+          <span>Komparasi</span>
+        </label>
+        <div class="compare-options" id="incomeCompareOptions" style="display:none">
+          <select id="incomeCompareGranularity" class="select-input select-sm">
+            <option value="day">Hari</option>
+            <option value="week">Minggu</option>
+            <option value="month" selected>Bulan</option>
+            <option value="quarter">Kuartal</option>
+            <option value="year">Tahun</option>
+          </select>
+          <div class="date-range-group">
+            <label>Banding</label>
+            <input type="date" id="incomeCompareDateFrom" class="date-input" title="Periode pembanding dari" />
+            <label>s/d</label>
+            <input type="date" id="incomeCompareDateTo" class="date-input" title="Periode pembanding sampai" />
+          </div>
+          <button class="btn-compare" id="btnIncomeCompare">Tampilkan Komparasi</button>
+        </div>
+        <span class="report-filter-info" id="incomeFilterInfo"></span>
+        <div class="report-export-btns">
+          <button class="btn-report-export gsheet" onclick="exportReportGSheets('income')" title="Export ke Google Sheets">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+            <span class="export-text">GSheets</span>
+          </button>
+          <button class="btn-report-export excel" onclick="exportReportExcel('income')" title="Export ke Excel">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+            <span class="export-text">Excel</span>
+          </button>
+          <button class="btn-report-export pdf" onclick="exportReportPdf('income')" title="Export ke PDF">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
+            <span class="export-text">PDF</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="report-card" id="incomeReport">
+        <div class="empty-state">Upload bank statement untuk melihat laporan</div>
+      </div>
+    </section>
+
+    <!-- ===== PAGE: BALANCE SHEET ===== -->
+    <section class="page" id="page-balance">
+      <div class="page-header">
+        <h2>Neraca (Balance Sheet)</h2>
+        <p class="page-subtitle" id="balanceSubtitle">Per tanggal</p>
+      </div>
+      <div class="report-filter-bar">
+        <div class="date-range-group">
+          <label>Dari</label>
+          <input type="date" id="balanceDateFrom" class="date-input" title="Dari tanggal" />
+          <label>s/d</label>
+          <input type="date" id="balanceDateTo" class="date-input" title="Sampai tanggal" />
+        </div>
+        <button class="btn-reset-filter" id="btnResetBalanceFilter" title="Reset filter">&#x21BA; Reset</button>
+        <div class="compare-divider"></div>
+        <label class="compare-toggle-label">
+          <input type="checkbox" id="balanceCompareToggle" class="compare-checkbox" />
+          <span>Komparasi</span>
+        </label>
+        <div class="compare-options" id="balanceCompareOptions" style="display:none">
+          <select id="balanceCompareGranularity" class="select-input select-sm">
+            <option value="day">Hari</option>
+            <option value="week">Minggu</option>
+            <option value="month" selected>Bulan</option>
+            <option value="quarter">Kuartal</option>
+            <option value="year">Tahun</option>
+          </select>
+          <div class="date-range-group">
+            <label>Banding</label>
+            <input type="date" id="balanceCompareDateFrom" class="date-input" title="Periode pembanding dari" />
+            <label>s/d</label>
+            <input type="date" id="balanceCompareDateTo" class="date-input" title="Periode pembanding sampai" />
+          </div>
+          <button class="btn-compare" id="btnBalanceCompare">Tampilkan Komparasi</button>
+        </div>
+        <span class="report-filter-info" id="balanceFilterInfo"></span>
+        <div class="report-export-btns">
+          <button class="btn-report-export gsheet" onclick="exportReportGSheets('balance')" title="Export ke Google Sheets">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+            <span class="export-text">GSheets</span>
+          </button>
+          <button class="btn-report-export excel" onclick="exportReportExcel('balance')" title="Export ke Excel">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+            <span class="export-text">Excel</span>
+          </button>
+          <button class="btn-report-export pdf" onclick="exportReportPdf('balance')" title="Export ke PDF">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
+            <span class="export-text">PDF</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="report-card" id="balanceReport">
+        <div class="empty-state">Upload bank statement untuk melihat laporan</div>
+      </div>
+    </section>
+
+    <!-- ===== PAGE: CASH FLOW ===== -->
+    <section class="page" id="page-cashflow">
+      <div class="page-header">
+        <h2>Laporan Arus Kas</h2>
+        <p class="page-subtitle" id="cashflowSubtitle">Untuk periode yang berakhir</p>
+      </div>
+      <div class="report-filter-bar">
+        <div class="date-range-group">
+          <label>Dari</label>
+          <input type="date" id="cashflowDateFrom" class="date-input" title="Dari tanggal" />
+          <label>s/d</label>
+          <input type="date" id="cashflowDateTo" class="date-input" title="Sampai tanggal" />
+        </div>
+        <button class="btn-reset-filter" id="btnResetCashflowFilter" title="Reset filter">&#x21BA; Reset</button>
+        <div class="compare-divider"></div>
+        <label class="compare-toggle-label">
+          <input type="checkbox" id="cashflowCompareToggle" class="compare-checkbox" />
+          <span>Komparasi</span>
+        </label>
+        <div class="compare-options" id="cashflowCompareOptions" style="display:none">
+          <select id="cashflowCompareGranularity" class="select-input select-sm">
+            <option value="day">Hari</option>
+            <option value="week">Minggu</option>
+            <option value="month" selected>Bulan</option>
+            <option value="quarter">Kuartal</option>
+            <option value="year">Tahun</option>
+          </select>
+          <div class="date-range-group">
+            <label>Banding</label>
+            <input type="date" id="cashflowCompareDateFrom" class="date-input" title="Periode pembanding dari" />
+            <label>s/d</label>
+            <input type="date" id="cashflowCompareDateTo" class="date-input" title="Periode pembanding sampai" />
+          </div>
+          <button class="btn-compare" id="btnCashflowCompare">Tampilkan Komparasi</button>
+        </div>
+        <span class="report-filter-info" id="cashflowFilterInfo"></span>
+        <div class="report-export-btns">
+          <button class="btn-report-export gsheet" onclick="exportReportGSheets('cashflow')" title="Export ke Google Sheets">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+            <span class="export-text">GSheets</span>
+          </button>
+          <button class="btn-report-export excel" onclick="exportReportExcel('cashflow')" title="Export ke Excel">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+            <span class="export-text">Excel</span>
+          </button>
+          <button class="btn-report-export pdf" onclick="exportReportPdf('cashflow')" title="Export ke PDF">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
+            <span class="export-text">PDF</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="report-card" id="cashflowReport">
+        <div class="empty-state">Upload bank statement untuk melihat laporan</div>
+      </div>
+    </section>
+
+    <!-- ===== PAGE: USER MANAGEMENT ===== -->
+    <section class="page" id="page-users">
+      <div class="page-header">
+        <div>
+          <h2>Manajemen Pengguna</h2>
+          <p class="page-subtitle">Kelola akses pengguna dan hak akses aplikasi</p>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-outline" onclick="openChangePasswordModal()"><i data-feather="key"></i> Ganti Password</button>
+          <button class="btn btn-primary" onclick="openUserModal()">+ Tambah Pengguna</button>
+        </div>
+      </div>
+
+      <!-- App Settings Section (Super Admin only, rendered by JS) -->
+      <div id="appSettingsSection" style="display:none"></div>
+
+      <!-- Roles Management Section -->
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+        <div>
+          <h3 style="font-size:15px;font-weight:600;color:#1a1d2b;margin:0">Daftar Role</h3>
+          <p style="font-size:12px;color:#8b8fa8;margin:4px 0 0">Kelola role dan hak akses pengguna</p>
+        </div>
+        <button class="btn btn-primary" onclick="openRoleModal()"><i data-feather="plus"></i> Tambah Role</button>
+      </div>
+      <div class="table-card" style="margin-bottom:28px">
+        <table class="data-table" id="rolesTable">
+          <thead>
+            <tr>
+              <th>Nama Role</th>
+              <th>Deskripsi</th>
+              <th>Izin Akses</th>
+              <th style="width:80px">Aksi</th>
+            </tr>
+          </thead>
+          <tbody id="rolesTableBody">
+            <tr><td colspan="4" class="empty-row">Memuat data...</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Users Section -->
+      <div style="margin-bottom:12px">
+        <h3 style="font-size:15px;font-weight:600;color:#1a1d2b;margin:0">Daftar Pengguna</h3>
+      </div>
+      <div class="table-card">
+        <table class="data-table" id="usersTable">
+          <thead>
+            <tr>
+              <th>Username</th>
+              <th>Role</th>
+              <th>Dibuat</th>
+              <th>Login Terakhir</th>
+              <th style="width:80px">Aksi</th>
+            </tr>
+          </thead>
+          <tbody id="usersTableBody">
+            <tr><td colspan="5" class="empty-row">Memuat data...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ===== PAGE: POINT OF SALE (inside main) ===== -->
+    <section class="page" id="page-pos">
+      <div class="pos-page-inner">
+        <!-- POS Header bar -->
+        <div class="pos-header">
+          <div class="pos-search-wrap">
+            <i data-feather="search" class="pos-search-icon"></i>
+            <input type="text" id="posSearch" placeholder="Cari produk..." class="pos-search-input" oninput="filterPosProducts()" />
+          </div>
+          <div class="pos-header-actions">
+            <span class="pos-date-badge" id="posCurrentDate"></span>
+            <span class="pos-session-chip inactive" id="posSessionChip">Tidak ada sesi aktif</span>
+            <button class="btn btn-success btn-sm" id="btnOpenSession" onclick="showOpenSessionModal()">
+              <i data-feather="play"></i> Buka Sesi
+            </button>
+            <button class="btn btn-warning btn-sm" id="btnCloseSession" onclick="showCloseSessionModal()" disabled>
+              <i data-feather="stop-circle"></i> Tutup Sesi
+            </button>
+            <button class="btn btn-outline btn-sm" onclick="showFeeMasterModal()">
+              <i data-feather="percent"></i> Biaya
+            </button>
+            <button class="btn btn-outline btn-sm" onclick="showPOSSettingsModal()">
+              <i data-feather="settings"></i>
+            </button>
+            <button class="btn btn-outline btn-sm" onclick="showOrderHistory()">
+              <i data-feather="clock"></i> Riwayat
+            </button>
+            <button class="btn btn-outline btn-sm" onclick="showAddProductModal(null)">
+              <i data-feather="plus"></i> Produk
+            </button>
+            <button class="btn btn-outline btn-sm" id="btnBTConnect" onclick="connectBluetoothPrinter()">
+              <i data-feather="bluetooth"></i> Printer
+            </button>
+          </div>
+        </div>
+
+        <!-- POS Mobile Tab Toggle (visible only on mobile via CSS) -->
+        <div class="pos-mobile-tabs">
+          <button class="pos-mobile-tab active" id="posTabProducts" onclick="switchPosMobileTab('products')">
+            🛒 Produk
+          </button>
+          <button class="pos-mobile-tab" id="posTabCart" onclick="switchPosMobileTab('cart')">
+            🛍 Keranjang<span id="posCartBadge" class="pos-cart-badge"></span>
+          </button>
+        </div>
+
+        <!-- POS 2-column layout -->
+        <div class="pos-layout">
+
+          <!-- LEFT: Category tabs + Product grid -->
+          <div class="pos-left" style="position:relative">
+            <!-- Session Guard Overlay -->
+            <div id="posSessionOverlay" style="display:flex;position:absolute;inset:0;z-index:10;background:rgba(255,255,255,0.92);flex-direction:column;align-items:center;justify-content:center;border-radius:12px;gap:12px;">
+              <i data-feather="lock" style="width:40px;height:40px;color:#94a3b8"></i>
+              <p style="color:#64748b;font-size:14px;text-align:center;margin:0">Buka sesi POS untuk mulai bertransaksi</p>
+              <button class="btn btn-primary" onclick="showOpenSessionModal()"><i data-feather="play"></i> Buka Sesi</button>
+            </div>
+            <div class="pos-category-tabs" id="posCategoryTabs">
+              <button class="pos-cat-btn active" data-cat="all">Semua</button>
+              <button class="pos-cat-btn" data-cat="main">Main Course</button>
+              <button class="pos-cat-btn" data-cat="drink">Drink</button>
+              <button class="pos-cat-btn" data-cat="snack">Snack</button>
+              <button class="pos-cat-btn" data-cat="dessert">Dessert</button>
+            </div>
+            <div class="pos-product-grid" id="posProductGrid">
+              <!-- Rendered by JS -->
+            </div>
+          </div>
+
+          <!-- RIGHT: Order List + Summary -->
+          <div class="pos-right">
+            <div class="pos-cart-header">
+              <span class="pos-cart-title">Order List</span>
+              <button class="pos-clear-cart-btn" id="posClearCartBtn" onclick="clearCart()" style="display:none" title="Kosongkan cart">
+                <i data-feather="trash-2"></i>
+              </button>
+            </div>
+
+            <div class="pos-cart-body" id="posCartBody">
+              <div class="pos-cart-empty" id="posCartEmpty">
+                <i data-feather="shopping-bag"></i>
+                <p>Belum ada item</p>
+              </div>
+              <div id="posCartItems"></div>
+            </div>
+
+            <div class="pos-summary" id="posSummary">
+              <div class="pos-summary-row">
+                <span>Subtotal</span>
+                <span id="posSubtotal">Rp 0</span>
+              </div>
+              <div class="pos-summary-row">
+                <label class="pos-discount-label">
+                  Diskon (Rp)
+                  <input type="number" id="posDiscountInput" value="0" min="0" class="pos-discount-input" oninput="renderCartSummary()" />
+                </label>
+                <span id="posDiscount" class="pos-danger-text">-Rp 0</span>
+              </div>
+              <div id="posFeeLinesContainer">
+                <!-- Fee lines dynamically rendered by renderCartSummary() -->
+              </div>
+              <div class="pos-summary-row pos-total-row">
+                <span>Total</span>
+                <span id="posTotal">Rp 0</span>
+              </div>
+            </div>
+
+            <button class="btn btn-primary pos-pay-btn" id="posPayBtn" onclick="showPaymentModal()" disabled>
+              <i data-feather="credit-card"></i> Process to Payment
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== PAGE: MASTER PRODUK ===== -->
+    <section class="page" id="page-pos-products">
+      <div class="page-header">
+        <h2>Master Produk</h2>
+        <p class="page-subtitle">Kelola semua produk yang tersedia di Point of Sale</p>
+      </div>
+      <div class="mp-toolbar">
+        <div class="mp-search-wrap">
+          <i data-feather="search" class="mp-search-icon"></i>
+          <input type="text" id="mpSearch" placeholder="Cari produk..." class="mp-search-input" oninput="renderMasterProductPage()" />
+        </div>
+        <div class="mp-filter-group">
+          <select id="mpCatFilter" class="mp-select" onchange="renderMasterProductPage()">
+            <option value="">Semua Kategori</option>
+            <option value="main">Main Course</option>
+            <option value="drink">Drink</option>
+            <option value="snack">Snack</option>
+            <option value="dessert">Dessert</option>
+          </select>
+          <select id="mpStatusFilter" class="mp-select" onchange="renderMasterProductPage()">
+            <option value="">Semua Status</option>
+            <option value="available">Available</option>
+            <option value="unavailable">Not Available</option>
+          </select>
+        </div>
+        <button class="btn btn-primary" onclick="showAddProductModal(null)">
+          <i data-feather="plus"></i> Tambah Produk
+        </button>
+      </div>
+      <div class="report-card" style="padding:0;overflow:hidden">
+        <table class="data-table" id="mpTable">
+          <thead>
+            <tr>
+              <th style="width:60px">Gambar</th>
+              <th>Nama Produk</th>
+              <th>Kategori</th>
+              <th>Harga / HPP</th>
+              <th>Akun COA</th>
+              <th>Status</th>
+              <th style="width:100px">Aksi</th>
+            </tr>
+          </thead>
+          <tbody id="mpTableBody">
+            <tr><td colspan="7" class="empty-row">Memuat data...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ===== PAGE: MASTER METODE PEMBAYARAN ===== -->
+    <section class="page" id="page-pos-payment-methods">
+      <div class="page-header">
+        <h2>Master Metode Pembayaran</h2>
+        <p class="page-subtitle">Kelola metode pembayaran yang tersedia di kasir</p>
+      </div>
+      <div class="mp-toolbar">
+        <div style="flex:1"></div>
+        <button class="btn btn-primary" onclick="showAddPaymentMethodModal(null)">
+          <i data-feather="plus"></i> Tambah Metode
+        </button>
+      </div>
+      <div class="report-card" style="padding:0;overflow:hidden">
+        <table class="data-table" id="pmTable">
+          <thead>
+            <tr>
+              <th style="width:50px">Ikon</th>
+              <th>Nama Metode</th>
+              <th>Tipe</th>
+              <th>Akun COA</th>
+              <th>Status</th>
+              <th style="width:100px">Aksi</th>
+            </tr>
+          </thead>
+          <tbody id="pmTableBody">
+            <tr><td colspan="6" class="empty-row">Memuat data...</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="mp-info-box">
+        <i data-feather="info"></i>
+        <span>Metode pembayaran <strong>Cash</strong> memiliki fitur penghitungan kembalian otomatis. Metode lain langsung konfirmasi tanpa input nominal.</span>
+      </div>
+    </section>
+
+    <!-- ===== PAGE: LAPORAN POS ===== -->
+    <section class="page" id="page-pos-report">
+      <div class="page-header">
+        <h2>Laporan POS</h2>
+        <p class="page-subtitle">Analisis transaksi dan pendapatan Point of Sale</p>
+      </div>
+      <!-- Tab Switcher -->
+      <div style="display:flex;gap:8px;margin-bottom:16px">
+        <button class="pos-report-tab-btn active" data-tab="analytics" onclick="switchPosReportTab('analytics')">📊 Analitik</button>
+        <button class="pos-report-tab-btn" data-tab="sessions" onclick="switchPosReportTab('sessions')">🗂️ Per Sesi</button>
+      </div>
+
+      <!-- Tab: Analitik -->
+      <div class="pos-report-tab-panel" data-panel="analytics">
+        <!-- Date Range + Session Filter -->
+        <div class="report-filter-bar">
+          <div class="date-range-group">
+            <label>Dari</label>
+            <input type="date" id="posReportFrom" class="date-input" onchange="renderPOSReportPage()" />
+          </div>
+          <div class="date-range-group">
+            <label>Sampai</label>
+            <input type="date" id="posReportTo" class="date-input" onchange="renderPOSReportPage()" />
+          </div>
+          <button class="btn btn-outline" onclick="setPosReportRange('today')">Hari Ini</button>
+          <button class="btn btn-outline" onclick="setPosReportRange('week')">7 Hari</button>
+          <button class="btn btn-outline" onclick="setPosReportRange('month')">Bulan Ini</button>
+          <button class="btn btn-outline" onclick="setPosReportRange('all')">Semua</button>
+          <select id="posReportSessionFilter" class="j-select" onchange="renderPOSReportPage()" style="margin-left:auto">
+            <option value="all">Semua Sesi</option>
+          </select>
+        </div>
+        <!-- KPI Row 1 -->
+        <div class="kpi-grid" id="posReportKpi">
+          <div class="kpi-card kpi-blue">
+            <div class="kpi-label">Total Pendapatan</div>
+            <div class="kpi-value" id="rKpiRevenue">Rp 0</div>
+            <div class="kpi-badge badge-blue" id="rKpiOrders">0 transaksi</div>
+          </div>
+          <div class="kpi-card kpi-green">
+            <div class="kpi-label">Rata-rata Transaksi</div>
+            <div class="kpi-value" id="rKpiAvg">Rp 0</div>
+            <div class="kpi-badge badge-green">Per order</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-label">Produk Terlaris</div>
+            <div class="kpi-value" id="rKpiTopProduct" style="font-size:16px;line-height:1.3">-</div>
+            <div class="kpi-badge badge-neutral" id="rKpiTopQty">0 terjual</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-label">Metode Pembayaran Utama</div>
+            <div class="kpi-value" id="rKpiTopMethod" style="font-size:16px">-</div>
+            <div class="kpi-badge badge-neutral" id="rKpiTopMethodCount">0 transaksi</div>
+          </div>
+        </div>
+        <!-- KPI Row 2 -->
+        <div class="kpi-grid" id="posReportKpi2" style="margin-top:0">
+          <div class="kpi-card">
+            <div class="kpi-label">Total Sesi</div>
+            <div class="kpi-value" id="rKpiSessions" style="font-size:28px">0</div>
+            <div class="kpi-badge badge-neutral" id="rKpiSessionsSub">sesi ditutup</div>
+          </div>
+          <div class="kpi-card kpi-green">
+            <div class="kpi-label">Gross Margin</div>
+            <div class="kpi-value" id="rKpiMargin">Rp 0</div>
+            <div class="kpi-badge badge-green" id="rKpiMarginPct">0%</div>
+          </div>
+          <div class="kpi-card kpi-orange">
+            <div class="kpi-label">Total Diskon</div>
+            <div class="kpi-value" id="rKpiDiscount">Rp 0</div>
+            <div class="kpi-badge badge-neutral" id="rKpiDiscountSub">dari revenue</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-label">Service Charge</div>
+            <div class="kpi-value" id="rKpiService">Rp 0</div>
+            <div class="kpi-badge badge-neutral" id="rKpiServiceSub">service rate</div>
+          </div>
+        </div>
+        <!-- Charts Row 1 -->
+        <div class="charts-row">
+          <div class="chart-card chart-lg">
+            <div class="chart-header"><h3>Pendapatan Harian</h3></div>
+            <div class="chart-body"><canvas id="posRevenueChart"></canvas></div>
+          </div>
+          <div class="chart-card chart-sm">
+            <div class="chart-header"><h3>Metode Pembayaran</h3></div>
+            <div class="chart-body"><canvas id="posPaymentChart"></canvas></div>
+          </div>
+        </div>
+        <!-- Charts Row 2 -->
+        <div class="charts-row">
+          <div class="chart-card chart-lg">
+            <div class="chart-header"><h3>Top 10 Produk Terlaris</h3></div>
+            <div class="chart-body" style="max-height:300px"><canvas id="posTopProductChart"></canvas></div>
+          </div>
+          <div class="chart-card chart-sm">
+            <div class="chart-header"><h3>Penjualan per Kategori</h3></div>
+            <div class="chart-body"><canvas id="posCategoryChart"></canvas></div>
+          </div>
+        </div>
+        <!-- Charts Row 3: Diskon & Service Harian -->
+        <div class="charts-row">
+          <div class="chart-card" style="flex:1">
+            <div class="chart-header"><h3>Diskon &amp; Service Harian</h3></div>
+            <div class="chart-body"><canvas id="posDiscServiceChart"></canvas></div>
+          </div>
+        </div>
+        <!-- Transaction Table -->
+        <div class="report-card" style="padding:0;overflow:hidden;margin-top:0">
+          <div style="padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
+            <h3 style="margin:0;font-size:15px">Detail Transaksi</h3>
+            <span id="posReportCount" style="font-size:12px;color:var(--neutral)">0 transaksi</span>
+          </div>
+          <table class="data-table" id="posReportTable">
+            <thead>
+              <tr>
+                <th>No. Order</th>
+                <th>Tanggal &amp; Waktu</th>
+                <th>Items</th>
+                <th>Metode</th>
+                <th>Total</th>
+                <th style="width:80px">Aksi</th>
+              </tr>
+            </thead>
+            <tbody id="posReportTableBody">
+              <tr><td colspan="6" class="empty-row">Pilih rentang tanggal untuk melihat data</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div><!-- end tab analytics -->
+
+      <!-- Tab: Per Sesi -->
+      <div class="pos-report-tab-panel" data-panel="sessions" style="display:none">
+        <!-- Date Filter -->
+        <div class="report-filter-bar" style="margin-bottom:12px">
+          <div class="date-range-group">
+            <label>Dari</label>
+            <input type="date" id="posSessionFrom" class="date-input" onchange="renderPOSSessionReport()" />
+          </div>
+          <div class="date-range-group">
+            <label>Sampai</label>
+            <input type="date" id="posSessionTo" class="date-input" onchange="renderPOSSessionReport()" />
+          </div>
+          <button class="btn btn-outline" onclick="setPosSessionRange('today')">Hari Ini</button>
+          <button class="btn btn-outline" onclick="setPosSessionRange('month')">Bulan Ini</button>
+          <button class="btn btn-outline" onclick="setPosSessionRange('all')">Semua</button>
+        </div>
+        <div class="report-card" style="padding:0;overflow:hidden">
+          <div style="padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
+            <h3 style="margin:0;font-size:15px">Riwayat Sesi POS</h3>
+            <span style="font-size:12px;color:var(--neutral)">Klik baris untuk lihat detail order</span>
+          </div>
+          <table class="data-table" id="posSessionTable">
+            <thead>
+              <tr>
+                <th>ID Sesi</th>
+                <th>Dibuka</th>
+                <th>Ditutup</th>
+                <th>Order</th>
+                <th>Subtotal</th>
+                <th>Diskon</th>
+                <th>Service</th>
+                <th>Pajak</th>
+                <th>Total</th>
+                <th>HPP</th>
+                <th>Status</th>
+                <th>Jurnal</th>
+              </tr>
+            </thead>
+            <tbody id="posSessionTableBody">
+              <tr><td colspan="12" class="empty-row">Belum ada sesi POS</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div><!-- end tab sessions -->
+    </section>
+
+  </main>
+</div>
+
+<!-- ===== MODAL: ADD/EDIT USER ===== -->
+<div class="modal-overlay" id="userModal" style="display:none">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3 id="userModalTitle">Tambah Pengguna</h3>
+      <button class="modal-close" onclick="closeUserModal()"><i data-feather="x"></i></button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="userModalId" />
+      <div class="form-row">
+        <div class="form-group">
+          <label>Username <span style="color:red">*</span></label>
+          <input type="text" id="userModalUsername" placeholder="cth: budi_akuntan" autocomplete="off" />
+        </div>
+        <div class="form-group">
+          <label>Role <span style="color:red">*</span></label>
+          <select id="userModalRole">
+            <option value="Admin">Admin</option>
+            <option value="Akuntan" selected>Akuntan</option>
+            <option value="Viewer">Viewer</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Password <span style="color:red">*</span></label>
+          <input type="password" id="userModalPassword" placeholder="Min. 6 karakter" autocomplete="new-password" />
+          <small id="userModalPasswordHint" style="color:#64748b;font-size:11px"></small>
+        </div>
+        <div class="form-group">
+          <label>Konfirmasi Password</label>
+          <input type="password" id="userModalConfirm" placeholder="Ulangi password" autocomplete="new-password" />
+        </div>
+      </div>
+      <p id="userModalError" style="color:#dc2626;font-size:12px;margin:4px 0 0;display:none"></p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeUserModal()">Batal</button>
+      <button class="btn btn-primary" id="btnSaveUser" onclick="saveUserModal()">Simpan</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== MODAL: ADD/EDIT ROLE ===== -->
+<div class="modal-overlay" id="roleModal" style="display:none">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3 id="roleModalTitle">Tambah Role</h3>
+      <button class="modal-close" onclick="closeRoleModal()"><i data-feather="x"></i></button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="roleModalId" />
+      <div class="form-group" style="margin-bottom:12px">
+        <label>Nama Role <span style="color:red">*</span></label>
+        <input type="text" id="roleModalName" placeholder="cth: Supervisor" autocomplete="off" />
+      </div>
+      <div class="form-group" style="margin-bottom:16px">
+        <label>Deskripsi</label>
+        <input type="text" id="roleModalDesc" placeholder="Deskripsi singkat role ini" autocomplete="off" />
+      </div>
+      <div class="form-group">
+        <label style="margin-bottom:8px;display:block">Izin Akses <span style="color:red">*</span></label>
+        <div id="roleModalPermissions" class="permissions-grid"></div>
+      </div>
+      <p id="roleModalError" style="color:#dc2626;font-size:12px;margin:8px 0 0;display:none"></p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeRoleModal()">Batal</button>
+      <button class="btn btn-primary" id="btnSaveRole" onclick="saveRoleModal()">Simpan</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== MODAL: CHANGE PASSWORD ===== -->
+<div class="modal-overlay" id="changePasswordModal" style="display:none">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3>Ganti Password</h3>
+      <button class="modal-close" onclick="closeChangePasswordModal()"><i data-feather="x"></i></button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label>Password Lama <span style="color:red">*</span></label>
+        <input type="password" id="cpOldPassword" placeholder="Masukkan password lama" autocomplete="current-password" />
+      </div>
+      <div class="form-group">
+        <label>Password Baru <span style="color:red">*</span></label>
+        <input type="password" id="cpNewPassword" placeholder="Min. 6 karakter" autocomplete="new-password" />
+      </div>
+      <div class="form-group">
+        <label>Konfirmasi Password Baru <span style="color:red">*</span></label>
+        <input type="password" id="cpConfirmPassword" placeholder="Ulangi password baru" autocomplete="new-password" />
+      </div>
+      <p id="cpError" style="color:#dc2626;font-size:12px;margin:4px 0 0;display:none"></p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeChangePasswordModal()">Batal</button>
+      <button class="btn btn-primary" id="btnSaveChangePassword" onclick="saveChangePassword()">Simpan Password</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== MODAL: CATEGORY EDIT ===== -->
+<div class="modal-overlay" id="modalOverlay" style="display:none">
+  <div class="modal">
+    <div class="modal-header">
+      <h3 id="modalTitle">Edit Kategori</h3>
+      <button class="modal-close" id="modalClose"><i data-feather="x"></i></button>
+    </div>
+    <div class="modal-body" id="modalBody"></div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" id="modalCancel">Batal</button>
+      <button class="btn btn-primary" id="modalSave">Simpan</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== MODAL: SPLIT JOURNAL ENTRY ===== -->
+<div class="modal-overlay" id="splitModal" style="display:none">
+  <div class="modal modal-wide">
+    <div class="modal-header">
+      <h3>Pecah Akun Jurnal</h3>
+      <button class="modal-close" onclick="closeSplitModal()"><i data-feather="x"></i></button>
+    </div>
+    <div class="modal-body" style="max-height:80vh;overflow-y:auto;">
+      <div id="splitModalInfo" class="split-tx-info"></div>
+
+      <div class="split-columns-wrap">
+
+        <!-- DEBET COLUMN -->
+        <div class="split-col" id="splitDebitCol">
+          <div class="split-col-header debit-header">
+            <span>Debet</span>
+          </div>
+          <div class="split-col-body">
+            <div id="splitDebitLines"></div>
+            <button class="btn-add-split-col" onclick="addSplitDebitLine()">+ Tambah Baris</button>
+          </div>
+          <div class="split-col-total">
+            <span>Total Debet:</span>
+            <span class="col-total-val" id="splitDebitTotal">Rp 0</span>
+            <span class="split-col-match" id="splitDebitMatch"></span>
+          </div>
+        </div>
+
+        <!-- KREDIT COLUMN -->
+        <div class="split-col" id="splitKreditCol">
+          <div class="split-col-header kredit-header">
+            <span>Kredit</span>
+          </div>
+          <div class="split-col-body">
+            <div id="splitKreditLines"></div>
+            <button class="btn-add-split-col" onclick="addSplitKreditLine()">+ Tambah Baris</button>
+          </div>
+          <div class="split-col-total">
+            <span>Total Kredit:</span>
+            <span class="col-total-val" id="splitKreditTotal">Rp 0</span>
+            <span class="split-col-match" id="splitKreditMatch"></span>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Balance status row -->
+      <div class="split-balance-row">
+        <span class="side-total debit-color" id="splitBalDebit">Rp 0</span>
+        <span id="splitStatus" class="split-status"></span>
+        <span class="side-total kredit-color" id="splitBalKredit">Rp 0</span>
+      </div>
+      <!-- Tx-amount mismatch warning -->
+      <div id="splitTxWarning" class="split-tx-warning" style="display:none"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeSplitModal()">Batal</button>
+      <button class="btn btn-danger" onclick="clearSplitEntries()">Hapus Pecahan</button>
+      <button class="btn btn-primary" id="btnSaveSplit" onclick="saveSplitEntries()">Simpan</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== MANUAL JOURNAL: Create / Edit Modal ===== -->
+<div class="modal-overlay" id="createJournalModal" style="display:none">
+  <div class="modal modal-wide">
+    <div class="modal-header">
+      <h3 id="createJournalModalTitle">Buat Jurnal Manual</h3>
+      <button class="modal-close" onclick="closeCreateJournalModal()"><i data-feather="x"></i></button>
+    </div>
+    <div class="modal-body" style="max-height:80vh;overflow-y:auto">
+
+      <!-- Date + Description -->
+      <div class="split-tx-info" style="display:grid;grid-template-columns:180px 1fr;gap:12px;margin-bottom:16px;padding:12px;background:#f8fafc;border-radius:8px">
+        <div>
+          <label style="font-size:12px;color:#6b7280;display:block;margin-bottom:4px;font-weight:600">Tanggal <span style="color:#dc2626">*</span></label>
+          <input type="date" id="cjDate" class="select-input" style="width:100%" />
+        </div>
+        <div>
+          <label style="font-size:12px;color:#6b7280;display:block;margin-bottom:4px;font-weight:600">Keterangan / Memo <span style="color:#dc2626">*</span></label>
+          <input type="text" id="cjDescription" class="select-input" style="width:100%"
+                 placeholder="Contoh: Jurnal penyesuaian beban gaji Maret 2026" />
+        </div>
+      </div>
+
+      <!-- Two-column: Debet | Kredit -->
+      <div class="split-columns-wrap">
+        <div class="split-col" id="cjDebitCol">
+          <div class="split-col-header debit-header"><span>Debet</span></div>
+          <div class="split-col-body">
+            <div id="cjDebitLines"></div>
+            <button class="btn-add-split-col" onclick="addCjLine('debit')">+ Tambah Baris</button>
+          </div>
+          <div class="split-col-total">
+            <span>Total Debet:</span>
+            <span class="col-total-val" id="cjDebitTotal">Rp 0</span>
+          </div>
+        </div>
+        <div class="split-col" id="cjKreditCol">
+          <div class="split-col-header kredit-header"><span>Kredit</span></div>
+          <div class="split-col-body">
+            <div id="cjKreditLines"></div>
+            <button class="btn-add-split-col" onclick="addCjLine('kredit')">+ Tambah Baris</button>
+          </div>
+          <div class="split-col-total">
+            <span>Total Kredit:</span>
+            <span class="col-total-val" id="cjKreditTotal">Rp 0</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Balance status -->
+      <div class="split-balance-row">
+        <span class="side-total debit-color" id="cjBalDebit">Rp 0</span>
+        <span id="cjStatus" class="split-status"></span>
+        <span class="side-total kredit-color" id="cjBalKredit">Rp 0</span>
+      </div>
+
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeCreateJournalModal()">Batal</button>
+      <button class="btn btn-primary" id="btnSaveCj" onclick="saveManualJournal()" disabled>Simpan</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== POS: Payment Modal ===== -->
+<div class="pos-modal-overlay" id="posPaymentModal">
+  <div class="pos-modal-card">
+    <div class="pos-modal-header">
+      <h3>Proses Pembayaran</h3>
+      <button class="pos-modal-close" onclick="closePaymentModal()"><i data-feather="x"></i></button>
+    </div>
+    <div class="pos-modal-body">
+      <div class="pos-payment-total-box">
+        <div class="pos-payment-total-label">Total Tagihan</div>
+        <div class="pos-payment-total-amount" id="paymentTotalDisplay">Rp 0</div>
+      </div>
+      <div class="pos-payment-methods">
+        <button class="pos-method-btn active" data-method="cash" onclick="selectPaymentMethod('cash')">
+          <i data-feather="dollar-sign"></i><span>Cash</span>
+        </button>
+        <button class="pos-method-btn" data-method="card" onclick="selectPaymentMethod('card')">
+          <i data-feather="credit-card"></i><span>Card</span>
+        </button>
+        <button class="pos-method-btn" data-method="transfer" onclick="selectPaymentMethod('transfer')">
+          <i data-feather="smartphone"></i><span>Transfer</span>
+        </button>
+      </div>
+      <div id="cashSection" class="pos-cash-section">
+        <div class="pos-form-group">
+          <label>Uang Diberikan</label>
+          <input type="number" id="cashGivenInput" placeholder="0" class="pos-form-input pos-cash-input" oninput="calculateChange()" />
+        </div>
+        <div class="pos-change-row">
+          <span>Kembalian</span>
+          <span id="cashChangeDisplay" class="pos-change-amount">Rp 0</span>
+        </div>
+      </div>
+    </div>
+    <div class="pos-modal-footer">
+      <button class="btn btn-outline" onclick="closePaymentModal()">Batal</button>
+      <button class="btn btn-primary" id="btnConfirmPayment" onclick="confirmPayment()">
+        <i data-feather="check"></i> Konfirmasi
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== POS: Open Session Modal ===== -->
+<div class="pos-modal-overlay" id="posOpenSessionModal">
+  <div class="pos-modal-card">
+    <div class="pos-modal-header">
+      <h3>Buka Sesi POS</h3>
+      <button class="pos-modal-close" onclick="closeOpenSessionModal()"><i data-feather="x"></i></button>
+    </div>
+    <div class="pos-modal-body">
+      <p style="font-size:13px;color:#64748b;margin:0 0 12px">Masukkan saldo awal untuk setiap metode pembayaran:</p>
+      <div id="openSessionBalances">
+        <!-- Rendered by JS -->
+      </div>
+    </div>
+    <div class="pos-modal-footer">
+      <button class="btn btn-outline" onclick="closeOpenSessionModal()">Batal</button>
+      <button class="btn btn-primary" onclick="confirmOpenSession()"><i data-feather="play"></i> Buka Sesi</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== POS: Close Session Modal ===== -->
+<div class="pos-modal-overlay" id="posCloseSessionModal">
+  <div class="pos-modal-card pos-modal-wide">
+    <div class="pos-modal-header">
+      <h3>Tutup Sesi POS</h3>
+      <button class="pos-modal-close" onclick="closeCloseSessionModal()"><i data-feather="x"></i></button>
+    </div>
+    <div class="pos-modal-body" style="display:flex;gap:20px;align-items:flex-start">
+      <div style="flex:1">
+        <p style="font-size:13px;font-weight:600;margin:0 0 10px;color:#374151">Ringkasan Sesi</p>
+        <div id="closeSessionSummary" style="background:#f8fafc;border-radius:8px;padding:12px;">
+          <!-- Rendered by JS -->
+        </div>
+      </div>
+      <div style="flex:1">
+        <p style="font-size:13px;font-weight:600;margin:0 0 10px;color:#374151">Saldo Penutupan</p>
+        <div id="closeSessionBalances">
+          <!-- Rendered by JS -->
+        </div>
+        <p style="font-size:11px;color:#94a3b8;margin:8px 0 0">*Jurnal akuntansi akan dibuat otomatis saat sesi ditutup</p>
+      </div>
+    </div>
+    <div class="pos-modal-footer">
+      <button class="btn btn-outline" onclick="closeCloseSessionModal()">Batal</button>
+      <button class="btn btn-danger" onclick="confirmCloseSession()"><i data-feather="stop-circle"></i> Tutup Sesi &amp; Buat Jurnal</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== POS: Settings Modal ===== -->
+<div class="pos-modal-overlay" id="posPOSSettingsModal">
+  <div class="pos-modal-card pos-modal-wide">
+    <div class="pos-modal-header">
+      <h3>Pengaturan POS</h3>
+      <button class="pos-modal-close" onclick="closePOSSettingsModal()"><i data-feather="x"></i></button>
+    </div>
+    <div class="pos-modal-body">
+      <div class="pos-settings-fee-link" style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;margin-bottom:14px">
+        <i data-feather="percent" style="color:#16a34a;flex-shrink:0"></i>
+        <div style="flex:1">
+          <div style="font-weight:600;font-size:13px;color:#166534">Pajak, Diskon &amp; Service</div>
+          <div style="font-size:12px;color:#4ade80">Kelola di menu <b>Biaya</b> — setiap item punya nama, jumlah, dan COA sendiri</div>
+        </div>
+        <button class="btn btn-outline btn-sm" style="white-space:nowrap" onclick="closePOSSettingsModal();showFeeMasterModal()">Buka Biaya →</button>
+      </div>
+      <div class="pos-form-row">
+        <div class="pos-form-group">
+          <label>COA Harga Pokok Penjualan (COGS)</label>
+          <select id="posSetCogsCoa" class="pos-form-input"></select>
+        </div>
+        <div class="pos-form-group">
+          <label>COA Persediaan (Inventory)</label>
+          <select id="posSetInventoryCoa" class="pos-form-input"></select>
+        </div>
+      </div>
+    </div>
+    <div class="pos-modal-footer">
+      <button class="btn btn-outline" onclick="closePOSSettingsModal()">Batal</button>
+      <button class="btn btn-primary" onclick="savePOSSettings()">Simpan</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== POS: Fee Master Modal ===== -->
+<div class="pos-modal-overlay" id="posFeeMasterModal">
+  <div class="pos-modal-card pos-modal-wide">
+    <div class="pos-modal-header">
+      <h3>Master Pajak, Diskon &amp; Service</h3>
+      <button class="pos-modal-close" onclick="closeFeeMasterModal()"><i data-feather="x"></i></button>
+    </div>
+    <div class="pos-modal-body">
+      <div style="display:flex;justify-content:flex-end;margin-bottom:12px">
+        <button class="btn btn-primary btn-sm" onclick="openFeeFormModal(null)">
+          <i data-feather="plus"></i> Tambah Biaya
+        </button>
+      </div>
+      <div style="overflow-x:auto">
+        <table class="fee-master-table">
+          <thead>
+            <tr style="font-size:12px;color:#6b7280;text-align:left;border-bottom:2px solid #e5e7eb">
+              <th style="padding:8px 10px">Nama</th>
+              <th style="padding:8px 10px">Kategori</th>
+              <th style="padding:8px 10px">Jumlah</th>
+              <th style="padding:8px 10px">COA</th>
+              <th style="padding:8px 10px">Aktif</th>
+              <th style="padding:8px 10px">Aksi</th>
+            </tr>
+          </thead>
+          <tbody id="feeMasterListBody"></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="pos-modal-footer">
+      <button class="btn btn-outline" onclick="closeFeeMasterModal()">Tutup</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== POS: Fee Form Modal ===== -->
+<div class="pos-modal-overlay" id="posFeeFormModal">
+  <div class="pos-modal-card" style="max-width:440px">
+    <div class="pos-modal-header">
+      <h3 id="feeFormTitle">Tambah Biaya</h3>
+      <button class="pos-modal-close" onclick="closeFeeFormModal()"><i data-feather="x"></i></button>
+    </div>
+    <div class="pos-modal-body">
+      <div class="pos-form-group">
+        <label>Nama Biaya <span class="req">*</span></label>
+        <input type="text" id="feeFormName" class="pos-form-input" placeholder="Contoh: PPN, Service Charge..." />
+      </div>
+      <div class="pos-form-row">
+        <div class="pos-form-group">
+          <label>Kategori</label>
+          <select id="feeFormCategory" class="pos-form-input" onchange="onFeeFormCategoryChange()">
+            <option value="tax">Pajak</option>
+            <option value="service">Service</option>
+            <option value="discount">Diskon</option>
+          </select>
+        </div>
+        <div class="pos-form-group">
+          <label>Tipe Jumlah</label>
+          <select id="feeFormAmountType" class="pos-form-input">
+            <option value="percentage">Persentase (%)</option>
+            <option value="fixed">Nominal (IDR)</option>
+          </select>
+        </div>
+      </div>
+      <div class="pos-form-group">
+        <label>Jumlah <span class="req">*</span></label>
+        <input type="number" id="feeFormAmount" class="pos-form-input" min="0" step="any" placeholder="10 atau 5000" />
+      </div>
+      <div class="pos-form-group">
+        <label>COA <span class="req">*</span></label>
+        <select id="feeFormCoa" class="pos-form-input"></select>
+        <small style="color:#9ca3af;font-size:11px">Pajak → Liabilitas · Service/Diskon → Pendapatan</small>
+      </div>
+      <div class="pos-form-group" style="display:flex;align-items:center;gap:10px">
+        <input type="checkbox" id="feeFormActive" checked style="width:16px;height:16px" />
+        <label for="feeFormActive" style="margin:0;cursor:pointer">Aktif (diterapkan ke semua transaksi)</label>
+      </div>
+    </div>
+    <div class="pos-modal-footer">
+      <button class="btn btn-outline" onclick="closeFeeFormModal()">Batal</button>
+      <button class="btn btn-primary" onclick="saveFeeItem()">Simpan</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== POS: Add/Edit Product Modal ===== -->
+<div class="pos-modal-overlay" id="posProductModal">
+  <div class="pos-modal-card">
+    <div class="pos-modal-header">
+      <h3 id="posProductModalTitle">Tambah Produk</h3>
+      <button class="pos-modal-close" onclick="closeProductModal()"><i data-feather="x"></i></button>
+    </div>
+    <div class="pos-modal-body">
+      <input type="hidden" id="posProductId" />
+      <div class="pos-form-group">
+        <label>Nama Produk <span class="req">*</span></label>
+        <input type="text" id="posProductName" placeholder="Nama produk" class="pos-form-input" />
+      </div>
+      <div class="pos-form-group">
+        <label>Deskripsi</label>
+        <input type="text" id="posProductDesc" placeholder="Deskripsi singkat" class="pos-form-input" />
+      </div>
+      <div class="pos-form-row">
+        <div class="pos-form-group">
+          <label>Harga Jual (Rp) <span class="req">*</span></label>
+          <input type="number" id="posProductPrice" placeholder="0" class="pos-form-input" min="0" />
+        </div>
+        <div class="pos-form-group">
+          <label>Harga Pokok / Cost (Rp)</label>
+          <input type="number" id="posProductCostPrice" placeholder="0" class="pos-form-input" min="0" />
+        </div>
+      </div>
+      <div class="pos-form-row">
+        <div class="pos-form-group">
+          <label>Akun Pendapatan (Income)</label>
+          <select id="posProductIncomeAccount" class="pos-form-input"></select>
+        </div>
+        <div class="pos-form-group">
+          <label>Akun HPP (COGS)</label>
+          <select id="posProductCogsAccount" class="pos-form-input"></select>
+        </div>
+      </div>
+      <div class="pos-form-group">
+        <label>Kategori</label>
+        <select id="posProductCategory" class="pos-form-input">
+          <option value="main">Main Course</option>
+          <option value="drink">Drink</option>
+          <option value="snack">Snack</option>
+          <option value="dessert">Dessert</option>
+        </select>
+      </div>
+      <div class="pos-form-group">
+        <label>URL Gambar</label>
+        <input type="url" id="posProductImage" placeholder="https://contoh.com/gambar.jpg" class="pos-form-input" oninput="previewProductImage()" />
+        <div id="posProductImagePreview" class="pos-image-preview-wrap"></div>
+      </div>
+      <div class="pos-form-group">
+        <label class="pos-toggle-label">
+          <input type="checkbox" id="posProductAvailable" checked />
+          <span class="pos-toggle-track"><span class="pos-toggle-thumb"></span></span>
+          <span>Tersedia</span>
+        </label>
+      </div>
+    </div>
+    <div class="pos-modal-footer">
+      <button class="btn btn-outline" onclick="closeProductModal()">Batal</button>
+      <button class="btn btn-danger" id="btnDeleteProduct" onclick="confirmDeleteProduct()" style="display:none">
+        <i data-feather="trash-2"></i> Hapus
+      </button>
+      <button class="btn btn-primary" onclick="saveProductFromModal()">Simpan</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== POS: Add/Edit Payment Method Modal ===== -->
+<div class="pos-modal-overlay" id="posPaymentMethodModal">
+  <div class="pos-modal-card">
+    <div class="pos-modal-header">
+      <h3 id="pmModalTitle">Tambah Metode Pembayaran</h3>
+      <button class="pos-modal-close" onclick="closePaymentMethodModal()"><i data-feather="x"></i></button>
+    </div>
+    <div class="pos-modal-body">
+      <input type="hidden" id="pmModalId" />
+      <div class="pos-form-group">
+        <label>Nama Metode <span class="req">*</span></label>
+        <input type="text" id="pmModalName" placeholder="cth: GoPay, OVO, QRIS..." class="pos-form-input" />
+      </div>
+      <div class="pos-form-row">
+        <div class="pos-form-group">
+          <label>Ikon Feather</label>
+          <select id="pmModalIcon" class="pos-form-input">
+            <option value="dollar-sign">💵 dollar-sign (Cash)</option>
+            <option value="credit-card">💳 credit-card (Kartu)</option>
+            <option value="smartphone">📱 smartphone (Transfer/QRIS)</option>
+            <option value="zap">⚡ zap (E-Wallet)</option>
+            <option value="wifi">📶 wifi (Contactless)</option>
+            <option value="globe">🌐 globe (Online)</option>
+          </select>
+        </div>
+        <div class="pos-form-group">
+          <label>Tipe Pembayaran</label>
+          <select id="pmModalType" class="pos-form-input" onchange="togglePmCashOption()">
+            <option value="non-cash">Non-Cash (Langsung konfirmasi)</option>
+            <option value="cash">Cash (Ada kembalian)</option>
+          </select>
+        </div>
+      </div>
+      <div class="pos-form-group">
+        <label>Akun COA (untuk Jurnal)</label>
+        <select id="pmModalCoaCode" class="pos-form-input">
+          <!-- Populated by JS from getAccountOptions() -->
+        </select>
+      </div>
+      <div class="pos-form-group">
+        <label class="pos-toggle-label">
+          <input type="checkbox" id="pmModalActive" checked />
+          <span class="pos-toggle-track"><span class="pos-toggle-thumb"></span></span>
+          <span>Aktif (tampil di kasir)</span>
+        </label>
+      </div>
+    </div>
+    <div class="pos-modal-footer">
+      <button class="btn btn-outline" onclick="closePaymentMethodModal()">Batal</button>
+      <button class="btn btn-danger" id="btnDeletePM" onclick="confirmDeletePaymentMethod()" style="display:none">
+        <i data-feather="trash-2"></i> Hapus
+      </button>
+      <button class="btn btn-primary" onclick="savePaymentMethodFromModal()">Simpan</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== POS: Order History Modal ===== -->
+<div class="pos-modal-overlay" id="posHistoryModal">
+  <div class="pos-modal-card pos-modal-wide">
+    <div class="pos-modal-header">
+      <h3>Riwayat Transaksi POS</h3>
+      <button class="pos-modal-close" onclick="closeHistoryModal()"><i data-feather="x"></i></button>
+    </div>
+    <div class="pos-modal-body" id="posHistoryBody">
+      <!-- Rendered by JS -->
+    </div>
+  </div>
+</div>
+
+<!-- ===== POS: Receipt Print Template (hidden) ===== -->
+<div id="posReceiptTemplate" style="display:none">
+  <div id="posReceiptContent" class="pos-receipt"></div>
+</div>
+
+<!-- ===== TOAST ===== -->
+<div class="toast-container" id="toastContainer"></div>
+
+<!-- Sidebar Tooltip (dirender di body agar tidak ter-clip oleh sidebar overflow:hidden) -->
+<div id="sidebar-tooltip"></div>
+
+<!-- Scripts -->
+<script src="js/license.js?v=1"></script>
+<script src="js/auth.js?v=1"></script>
+<script src="js/users.js?v=1"></script>
+<script src="js/coa.js?v=7"></script>
+<script src="js/parser.js?v=7"></script>
+<script src="js/journal.js?v=6"></script>
+<script src="js/reports.js?v=7"></script>
+<script src="js/export.js?v=6"></script>
+<script src="js/pos.js?v=6"></script>
+<script src="js/app.js?v=15"></script>
+<!-- Feather Icons -->
+<script src="https://cdn.jsdelivr.net/npm/feather-icons/dist/feather.min.js"></script>
+<script>
+  if (typeof feather !== 'undefined') feather.replace();
+
+  // ===== Sidebar Tooltip (JS-based, tidak ter-clip oleh sidebar overflow:hidden) =====
+  (function() {
+    const tip = document.getElementById('sidebar-tooltip');
+    if (!tip) return;
+    document.querySelectorAll('[data-tooltip]').forEach(function(item) {
+      item.addEventListener('mouseenter', function() {
+        const rect = item.getBoundingClientRect();
+        tip.textContent = item.dataset.tooltip;
+        tip.style.display = 'block';
+        const tipH = tip.offsetHeight;
+        tip.style.left = (rect.right + 10) + 'px';
+        tip.style.top  = (rect.top + (rect.height - tipH) / 2) + 'px';
+      });
+      item.addEventListener('mouseleave', function() {
+        tip.style.display = 'none';
+      });
+    });
+  })();
+</script>
+</body>
+</html>

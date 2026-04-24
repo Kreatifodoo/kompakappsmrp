@@ -1,0 +1,6 @@
+app/data/*.json
+app/filestore/*
+!app/filestore/.gitkeep
+__pycache__/
+*.pyc
+.DS_Store
