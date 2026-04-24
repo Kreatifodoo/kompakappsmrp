@@ -1,0 +1,26 @@
+name: Deploy to Linode
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to Server
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.LINODE_HOST }}
+          username: ${{ secrets.LINODE_USER }}
+          key: ${{ secrets.LINODE_SSH_KEY }}
+          script: |
+            cd /var/www/html/accounting || cd ~/accounting || cd /home/*/accounting || exit 1
+            git pull origin main
+            python3 build.py
+            # Restart aplikasi jika ada process manager
+            pkill -f "python.*serve.py" || true
+            sleep 2
+            nohup python3 app/serve.py > /tmp/accounting.log 2>&1 &
+            echo "✅ Deployment selesai!"
