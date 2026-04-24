@@ -2,10 +2,10 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "FinReport App",
+      "name": "Kompak Accounting",
       "runtimeExecutable": "python3",
-      "runtimeArgs": ["/tmp/finreport_serve.py"],
-      "port": 8083,
+      "runtimeArgs": ["/Users/admin/Desktop/Apps - SuperAdmin - Laporankeuangan v2/app/serve.py"],
+      "port": 8080,
       "autoPort": false
     }
   ]

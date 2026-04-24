@@ -2,11 +2,11 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
-  --primary: #2563eb;
-  --primary-dark: #1d4ed8;
-  --primary-light: #eff6ff;
-  --success: #22c55e;
-  --success-light: #f0fdf4;
+  --primary: #1B8FA3;
+  --primary-dark: #156A80;
+  --primary-light: #E8F5F8;
+  --success: #1B8FA3;
+  --success-light: #E8F5F8;
   --danger: #ef4444;
   --danger-light: #fef2f2;
   --warning: #f59e0b;

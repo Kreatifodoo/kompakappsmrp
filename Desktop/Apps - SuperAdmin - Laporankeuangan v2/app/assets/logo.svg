@@ -1,17 +1,14 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 52 52" width="52" height="52">
-  <!-- Background rounded rectangle -->
-  <rect width="52" height="52" rx="12" ry="12" fill="#2563eb"/>
+  <!-- Background rounded rectangle - Kompak Teal -->
+  <rect width="52" height="52" rx="12" ry="12" fill="#1B8FA3"/>
 
-  <!-- Bar chart icon (top-center, white) -->
-  <!-- Bar 1 (short) -->
-  <rect x="10" y="24" width="6" height="10" rx="1.5" fill="rgba(255,255,255,0.75)"/>
-  <!-- Bar 2 (medium) -->
-  <rect x="19" y="18" width="6" height="16" rx="1.5" fill="rgba(255,255,255,0.9)"/>
-  <!-- Bar 3 (tall) -->
-  <rect x="28" y="13" width="6" height="21" rx="1.5" fill="#ffffff"/>
-  <!-- Upward trend line / arrow -->
-  <polyline points="10,30 22,22 28,18 36,13" fill="none" stroke="rgba(255,255,255,0.5)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Stylized "K" design in white -->
+  <!-- Vertical stem -->
+  <path d="M 14 12 L 14 40 Q 14 42 16 42 L 18 42 Q 20 42 20 40 L 20 12 Q 20 10 18 10 L 16 10 Q 14 10 14 12" fill="#ffffff"/>
 
-  <!-- "GKI" text label at bottom -->
-  <text x="26" y="48" text-anchor="middle" font-family="'Segoe UI', Arial, sans-serif" font-size="8" font-weight="700" fill="rgba(255,255,255,0.85)" letter-spacing="1.5">GKI</text>
+  <!-- Top diagonal -->
+  <path d="M 20 18 L 38 8 Q 39 7.5 40 8 Q 41 8.5 40 9.5 L 22 21 L 20 20.5 Z" fill="#ffffff" opacity="0.95"/>
+
+  <!-- Bottom diagonal -->
+  <path d="M 20 26 L 40 42 Q 41 43 40 44 Q 39 44.5 38 44 L 22 30 L 20 31 Z" fill="#ffffff"/>
 </svg>
