@@ -16,11 +16,12 @@ jobs:
           username: ${{ secrets.LINODE_USER }}
           key: ${{ secrets.LINODE_SSH_KEY }}
           script: |
-            cd /var/www/html/accounting || cd ~/accounting || cd /home/*/accounting || exit 1
-            git pull origin main
+            cd /opt/kompakapp/Desktop/Apps\ -\ SuperAdmin\ -\ Laporankeuangan\ v2
+            git -C /opt/kompakapp pull origin main
             python3 build.py
-            # Restart aplikasi jika ada process manager
+            # Restart aplikasi
             pkill -f "python.*serve.py" || true
             sleep 2
-            nohup python3 app/serve.py > /tmp/accounting.log 2>&1 &
-            echo "✅ Deployment selesai!"
+            nohup python3 app/serve.py > /tmp/kompakapp.log 2>&1 &
+            sleep 1
+            echo "✅ Deployment selesai! Aplikasi running di https://accounting.kompakapps.com"
