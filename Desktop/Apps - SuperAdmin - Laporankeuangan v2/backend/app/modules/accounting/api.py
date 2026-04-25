@@ -19,6 +19,7 @@ from app.modules.accounting.schemas import (
     JournalEntryCreate,
     JournalEntryOut,
     JournalVoidRequest,
+    StarterCOASeedResult,
 )
 from app.modules.accounting.service import AccountingService
 
@@ -47,6 +48,21 @@ async def create_account(
     svc = AccountingService(session, current.tenant_id, current.user_id)
     account = await svc.create_account(payload)
     return AccountOut.model_validate(account)
+
+
+@router.post(
+    "/accounts/seed-starter-coa",
+    response_model=StarterCOASeedResult,
+    summary="Provision standard Indonesian COA + auto-bind account mappings",
+)
+async def seed_starter_coa(
+    overwrite_mappings: bool = False,
+    current: CurrentUser = Depends(require_permission("coa.write")),
+    session: AsyncSession = Depends(get_write_session),
+) -> StarterCOASeedResult:
+    svc = AccountingService(session, current.tenant_id, current.user_id)
+    result = await svc.seed_starter_coa(overwrite_mappings=overwrite_mappings)
+    return StarterCOASeedResult(**result)
 
 
 @router.patch("/accounts/{account_id}", response_model=AccountOut)

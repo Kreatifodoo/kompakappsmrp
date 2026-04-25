@@ -86,6 +86,7 @@ uvicorn app.main:app --reload
 |--------|-------------------------------|----------------|
 | GET    | `/accounts`                   | `coa.read`     |
 | POST   | `/accounts`                   | `coa.write`    |
+| POST   | `/accounts/seed-starter-coa`  | `coa.write`    |
 | PATCH  | `/accounts/{id}`              | `coa.write`    |
 | GET    | `/account-mappings`           | `coa.read`     |
 | PUT    | `/account-mappings`           | `coa.write`    |
@@ -141,10 +142,41 @@ Dr  Tax Receivable          (tax, if > 0)
 The `JournalEntry.source` / `source_id` fields link the journal back to its
 source document. Voiding an invoice voids the linked journal automatically.
 
-**Required setup before posting** — call `PUT /api/v1/account-mappings`
-once per tenant for each well-known key:
-`ar`, `ap`, `sales_revenue`, `purchase_expense`, `tax_payable`,
-`tax_receivable`, `cash_default`.
+**Required setup before posting** — every tenant needs accounts assigned
+to all 7 well-known mapping keys: `ar`, `ap`, `sales_revenue`,
+`purchase_expense`, `tax_payable`, `tax_receivable`, `cash_default`.
+Easiest way: call `POST /api/v1/accounts/seed-starter-coa` (see below).
+Otherwise create accounts manually then call `PUT /api/v1/account-mappings`
+for each key.
+
+### Tenant onboarding flow
+
+```bash
+# 1. Bootstrap a new tenant + owner user
+POST /api/v1/auth/register-tenant
+  { "tenant_name": "Toko Maju", "tenant_slug": "toko-maju",
+    "owner_email": "owner@toko.com", "owner_password": "••••••••",
+    "owner_full_name": "Pak Budi" }
+
+# 2. Login → obtain access + refresh tokens
+POST /api/v1/auth/login
+
+# 3. One-shot: provision ~32 standard SAK accounts AND auto-bind all
+#    7 account mappings (idempotent; safe to re-run)
+POST /api/v1/accounts/seed-starter-coa
+  → { "accounts_created": 32, "accounts_skipped": 0, "mappings_set": 7 }
+
+# 4. Customize: rename / hide accounts your business doesn't use
+PATCH /api/v1/accounts/{id}
+
+# 5. Done — invoices can now post and create journals atomically
+POST /api/v1/sales-invoices?post_now=true
+```
+
+The seeder is idempotent — running it again on a tenant that already has
+accounts skips existing codes (`accounts_skipped` count) and only sets
+mappings that aren't yet bound. Pass `?overwrite_mappings=true` to force
+re-binding.
 
 ## System roles seeded
 

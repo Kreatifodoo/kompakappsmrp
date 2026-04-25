@@ -13,6 +13,7 @@ from app.modules.accounting.schemas import (
     AccountUpdate,
     JournalEntryCreate,
 )
+from app.modules.accounting.starter_coa import STARTER_COA
 
 
 class AccountingService:
@@ -58,6 +59,84 @@ class AccountingService:
             setattr(account, field, value)
         await self.session.flush()
         return account
+
+    async def seed_starter_coa(
+        self, *, overwrite_mappings: bool = False
+    ) -> dict:
+        """Provision a standard COA + account mappings for this tenant.
+
+        Idempotent: skips accounts whose code already exists. Mappings are
+        created where missing; pass overwrite_mappings=True to re-bind
+        existing mappings to the starter accounts.
+
+        Returns a summary {accounts_created, accounts_skipped, mappings_set}.
+        """
+        # Pass 1 — create all top-level (no parent) accounts first
+        # Then iterate until all are created (handles arbitrary nesting via
+        # repeated passes — STARTER_COA is small)
+        existing_by_code: dict[str, Account] = {}
+        for a in await self.repo.list_accounts(active_only=False):
+            existing_by_code[a.code] = a
+
+        created = 0
+        skipped = 0
+        # Loop — each pass creates accounts whose parent is now known.
+        remaining = list(STARTER_COA)
+        max_passes = 10
+        while remaining and max_passes > 0:
+            max_passes -= 1
+            still: list = []
+            for sa in remaining:
+                if sa.code in existing_by_code:
+                    skipped += 1
+                    continue
+                parent_id = None
+                if sa.parent_code:
+                    parent = existing_by_code.get(sa.parent_code)
+                    if not parent:
+                        # Parent not yet created — defer
+                        still.append(sa)
+                        continue
+                    parent_id = parent.id
+
+                acct = Account(
+                    tenant_id=self.tenant_id,
+                    code=sa.code,
+                    name=sa.name,
+                    type=sa.type,
+                    normal_side=sa.normal_side,
+                    parent_id=parent_id,
+                    is_system=True,
+                )
+                self.session.add(acct)
+                await self.session.flush()
+                existing_by_code[sa.code] = acct
+                created += 1
+            remaining = still
+
+        if remaining:
+            raise ValidationError(
+                f"Starter COA could not resolve parents for: "
+                f"{[a.code for a in remaining]}"
+            )
+
+        # Pass 2 — bind well-known mappings
+        mappings_set = 0
+        for sa in STARTER_COA:
+            if not sa.mapping_key:
+                continue
+            account = existing_by_code[sa.code]
+            existing_map = await self.repo.get_mapping(sa.mapping_key)
+            if existing_map and not overwrite_mappings:
+                continue
+            await self.repo.set_mapping(sa.mapping_key, account.id)
+            mappings_set += 1
+
+        return {
+            "accounts_created": created,
+            "accounts_skipped": skipped,
+            "mappings_set": mappings_set,
+        }
 
     # ─── Journal Entries ────────────────────────────────
     async def create_journal(

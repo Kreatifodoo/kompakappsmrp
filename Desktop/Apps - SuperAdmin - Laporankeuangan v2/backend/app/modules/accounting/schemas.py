@@ -123,3 +123,10 @@ class AccountMappingOut(BaseModel):
 
     key: str
     account_id: UUID
+
+
+# ─── Starter COA seeder ───────────────────────────────────
+class StarterCOASeedResult(BaseModel):
+    accounts_created: int
+    accounts_skipped: int
+    mappings_set: int
