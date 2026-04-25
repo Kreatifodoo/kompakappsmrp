@@ -200,10 +200,58 @@ alembic upgrade head
 alembic downgrade -1
 ```
 
-## Testing (TBD)
+## Testing
 
-`pytest` + `pytest-asyncio` + `httpx.AsyncClient` against a transactional
-fixture. Coming next.
+Stack: **pytest + pytest-asyncio + httpx (ASGITransport)** against a
+dedicated Postgres test database.
+
+### Setup
+
+```bash
+# 1. Create the test database (one-time)
+docker compose exec postgres createdb -U kompak kompak_test
+
+# 2. Install dev deps
+pip install -e ".[dev]"  # or:
+pip install pytest pytest-asyncio pytest-cov httpx
+```
+
+### Run
+
+```bash
+# Default test DB:  postgresql+asyncpg://kompak:kompak_dev@localhost:5432/kompak_test
+pytest                                    # run everything
+pytest -v tests/test_sales_purchase.py    # one file
+pytest -k "balanced"                      # by keyword
+pytest --cov=app --cov-report=term-missing # with coverage
+
+# Override the test DB
+TEST_DB_URL=postgresql+asyncpg://user:pass@host:5432/mydb pytest
+```
+
+### How isolation works
+
+- **Once per session**: drop+recreate full schema via `Base.metadata`,
+  install `citext`.
+- **Once per test (autouse)**: `TRUNCATE` every table, then re-seed
+  the 19 system permissions and 4 system roles. No bcrypt happens
+  during reset, so it's fast (~5 ms per test).
+- **Per request**: a `dependency_overrides` swap routes
+  `get_write_session` to the test session factory.
+- **HTTP**: `AsyncClient` with `ASGITransport(app)` — no socket, no
+  uvicorn — direct in-process calls.
+
+### What's covered
+
+- `tests/test_identity.py` — register tenant, login, `/me`, refresh
+  token rotation + revocation
+- `tests/test_accounting.py` — starter-COA seed (idempotency check),
+  account creation, duplicate code conflict, balanced/unbalanced
+  journal validation
+- `tests/test_sales_purchase.py` — full E2E: posting a sales /
+  purchase invoice creates a balanced journal in the same DB
+  transaction; voiding the invoice voids the journal; posting
+  without account mappings fails cleanly
 
 ## Roadmap (next milestones)
 
