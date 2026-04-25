@@ -24,10 +24,12 @@ PERMISSIONS: list[tuple[str, str]] = [
     ("journal.write", "Create/update journal entries"),
     ("journal.post", "Post journal entries"),
     # Sales / Purchase
-    ("sales.read", "View sales"),
-    ("sales.write", "Create/update sales"),
-    ("purchase.read", "View purchases"),
-    ("purchase.write", "Create/update purchases"),
+    ("sales.read", "View sales (incl. customers + invoices)"),
+    ("sales.write", "Create/update customers + sales invoices"),
+    ("sales.post", "Post / void sales invoices (creates journals)"),
+    ("purchase.read", "View purchases (incl. suppliers + invoices)"),
+    ("purchase.write", "Create/update suppliers + purchase invoices"),
+    ("purchase.post", "Post / void purchase invoices (creates journals)"),
     # Reports
     ("report.read", "View reports"),
     ("report.export", "Export reports"),
@@ -42,7 +44,8 @@ ROLES: dict[str, list[str]] = {
     "accountant": [
         "coa.read", "coa.write",
         "journal.read", "journal.write", "journal.post",
-        "sales.read", "purchase.read",
+        "sales.read", "sales.write", "sales.post",
+        "purchase.read", "purchase.write", "purchase.post",
         "report.read", "report.export",
     ],
     "staff": [

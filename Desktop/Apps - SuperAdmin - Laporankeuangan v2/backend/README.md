@@ -87,11 +87,64 @@ uvicorn app.main:app --reload
 | GET    | `/accounts`                   | `coa.read`     |
 | POST   | `/accounts`                   | `coa.write`    |
 | PATCH  | `/accounts/{id}`              | `coa.write`    |
+| GET    | `/account-mappings`           | `coa.read`     |
+| PUT    | `/account-mappings`           | `coa.write`    |
 | GET    | `/journals`                   | `journal.read` |
 | GET    | `/journals/{id}`              | `journal.read` |
 | POST   | `/journals` (`?post_now=...`) | `journal.write` (+ `journal.post` if posting) |
 | POST   | `/journals/{id}/post`         | `journal.post` |
 | POST   | `/journals/{id}/void`         | `journal.post` |
+
+### Sales — `/api/v1`
+| Method | Path                                  | Permission       |
+|--------|---------------------------------------|------------------|
+| GET    | `/customers`                          | `sales.read`     |
+| POST   | `/customers`                          | `sales.write`    |
+| PATCH  | `/customers/{id}`                     | `sales.write`    |
+| GET    | `/sales-invoices`                     | `sales.read`     |
+| GET    | `/sales-invoices/{id}`                | `sales.read`     |
+| POST   | `/sales-invoices` (`?post_now=...`)   | `sales.write` (+ `sales.post` if posting) |
+| POST   | `/sales-invoices/{id}/post`           | `sales.post`     |
+| POST   | `/sales-invoices/{id}/void`           | `sales.post`     |
+
+### Purchase — `/api/v1`
+| Method | Path                                     | Permission         |
+|--------|------------------------------------------|--------------------|
+| GET    | `/suppliers`                             | `purchase.read`    |
+| POST   | `/suppliers`                             | `purchase.write`   |
+| PATCH  | `/suppliers/{id}`                        | `purchase.write`   |
+| GET    | `/purchase-invoices`                     | `purchase.read`    |
+| GET    | `/purchase-invoices/{id}`                | `purchase.read`    |
+| POST   | `/purchase-invoices` (`?post_now=...`)   | `purchase.write` (+ `purchase.post` if posting) |
+| POST   | `/purchase-invoices/{id}/post`           | `purchase.post`    |
+| POST   | `/purchase-invoices/{id}/void`           | `purchase.post`    |
+
+### Auto-journal posting
+
+Posting a sales/purchase invoice creates a balanced journal entry **in the
+same DB transaction** (atomicity guaranteed by shared `AsyncSession`):
+
+**Sales invoice post:**
+```
+Dr  Accounts Receivable     (subtotal + tax)
+    Cr  Sales Revenue       (subtotal)
+    Cr  Tax Payable         (tax, if > 0)
+```
+
+**Purchase invoice post:**
+```
+Dr  Purchase Expense        (per-line, optionally per-line override)
+Dr  Tax Receivable          (tax, if > 0)
+    Cr  Accounts Payable    (gross total)
+```
+
+The `JournalEntry.source` / `source_id` fields link the journal back to its
+source document. Voiding an invoice voids the linked journal automatically.
+
+**Required setup before posting** — call `PUT /api/v1/account-mappings`
+once per tenant for each well-known key:
+`ar`, `ap`, `sales_revenue`, `purchase_expense`, `tax_payable`,
+`tax_receivable`, `cash_default`.
 
 ## System roles seeded
 

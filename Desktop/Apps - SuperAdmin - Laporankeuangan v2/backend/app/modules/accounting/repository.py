@@ -6,7 +6,12 @@ from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.modules.accounting.models import Account, JournalEntry, JournalLine
+from app.modules.accounting.models import (
+    Account,
+    AccountMapping,
+    JournalEntry,
+    JournalLine,
+)
 
 
 class AccountingRepository:
@@ -96,6 +101,29 @@ class AccountingRepository:
         self.session.add(entry)
         await self.session.flush()
         return entry
+
+    # ── Account mappings ─────────────────────────────────
+    async def get_mapping(self, key: str) -> AccountMapping | None:
+        stmt = select(AccountMapping).where(
+            AccountMapping.tenant_id == self.tenant_id,
+            AccountMapping.key == key,
+        )
+        return (await self.session.execute(stmt)).scalar_one_or_none()
+
+    async def set_mapping(self, key: str, account_id: UUID) -> AccountMapping:
+        existing = await self.get_mapping(key)
+        if existing:
+            existing.account_id = account_id
+            await self.session.flush()
+            return existing
+        m = AccountMapping(tenant_id=self.tenant_id, key=key, account_id=account_id)
+        self.session.add(m)
+        await self.session.flush()
+        return m
+
+    async def list_mappings(self) -> list[AccountMapping]:
+        stmt = select(AccountMapping).where(AccountMapping.tenant_id == self.tenant_id)
+        return list((await self.session.execute(stmt)).scalars().all())
 
     async def next_entry_no(self, year: int) -> str:
         """Generate next sequential journal number per tenant per year (JV-YYYY-#####)."""

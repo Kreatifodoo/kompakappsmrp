@@ -30,5 +30,7 @@ celery_app.autodiscover_tasks(
     [
         "app.modules.identity",
         "app.modules.accounting",
+        "app.modules.sales",
+        "app.modules.purchase",
     ]
 )

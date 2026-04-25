@@ -124,6 +124,82 @@ class AccountingService:
         await self.session.flush()
         return entry
 
+    # ─── System-generated journals (called by Sales/Purchase) ────
+    async def post_system_journal(
+        self,
+        *,
+        entry_date,
+        description: str,
+        lines: list[tuple[UUID, Decimal, Decimal]],  # (account_id, debit, credit)
+        source: str,
+        source_id: UUID,
+        reference: str | None = None,
+    ) -> JournalEntry:
+        """Create + post a journal entry from another module (sales/purchase/etc).
+
+        Validates balance and that all accounts belong to the tenant.
+        Runs in the same DB transaction as the caller.
+        """
+        if not lines or len(lines) < 2:
+            raise ValidationError("System journal requires at least 2 lines")
+
+        total_debit = sum((d for _, d, _ in lines), Decimal("0"))
+        total_credit = sum((c for _, _, c in lines), Decimal("0"))
+        if total_debit != total_credit:
+            raise ValidationError(
+                f"System journal not balanced: debit={total_debit} credit={total_credit}"
+            )
+
+        account_ids = list({aid for aid, _, _ in lines})
+        accounts = await self.repo.get_accounts_by_ids(account_ids)
+        if len(accounts) != len(account_ids):
+            raise ValidationError("System journal references unknown accounts")
+
+        entry_no = await self.repo.next_entry_no(entry_date.year)
+        entry = JournalEntry(
+            tenant_id=self.tenant_id,
+            entry_no=entry_no,
+            entry_date=entry_date,
+            description=description,
+            reference=reference,
+            status="posted",
+            source=source,
+            source_id=source_id,
+            created_by=self.user_id,
+            posted_by=self.user_id,
+            posted_at=datetime.now(timezone.utc),
+        )
+        for idx, (account_id, debit, credit) in enumerate(lines, start=1):
+            entry.lines.append(
+                JournalLine(
+                    tenant_id=self.tenant_id,
+                    line_no=idx,
+                    account_id=account_id,
+                    debit=debit,
+                    credit=credit,
+                )
+            )
+        return await self.repo.add_entry(entry)
+
+    async def void_system_journal(self, source: str, source_id: UUID, reason: str) -> JournalEntry | None:
+        """Void the journal linked to a sales/purchase document. Returns None if not found."""
+        from sqlalchemy import select
+        stmt = select(JournalEntry).where(
+            JournalEntry.tenant_id == self.tenant_id,
+            JournalEntry.source == source,
+            JournalEntry.source_id == source_id,
+            JournalEntry.status == "posted",
+        )
+        entry = (await self.session.execute(stmt)).scalar_one_or_none()
+        if entry is None:
+            return None
+        entry.status = "void"
+        entry.voided_by = self.user_id
+        entry.voided_at = datetime.now(timezone.utc)
+        entry.void_reason = reason
+        await self.session.flush()
+        return entry
+
     async def void_journal(self, entry_id: UUID, reason: str) -> JournalEntry:
         entry = await self.repo.get_entry(entry_id)
         if not entry:

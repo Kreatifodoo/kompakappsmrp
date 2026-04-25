@@ -10,7 +10,10 @@ from app.core.exceptions import NotFoundError
 from app.deps import CurrentUser, get_current_user, require_permission
 from app.modules.accounting.repository import AccountingRepository
 from app.modules.accounting.schemas import (
+    WELL_KNOWN_MAPPING_KEYS,
     AccountCreate,
+    AccountMappingOut,
+    AccountMappingSet,
     AccountOut,
     AccountUpdate,
     JournalEntryCreate,
@@ -115,6 +118,37 @@ async def post_journal(
     svc = AccountingService(session, current.tenant_id, current.user_id)
     entry = await svc.post_journal(entry_id)
     return JournalEntryOut.model_validate(entry)
+
+
+# ─── Account Mappings ───────────────────────────────────
+@router.get("/account-mappings", response_model=list[AccountMappingOut])
+async def list_mappings(
+    current: CurrentUser = Depends(require_permission("coa.read")),
+    session: AsyncSession = Depends(get_write_session),
+) -> list[AccountMappingOut]:
+    repo = AccountingRepository(session, current.tenant_id)
+    return [AccountMappingOut.model_validate(m) for m in await repo.list_mappings()]
+
+
+@router.put("/account-mappings", response_model=AccountMappingOut)
+async def set_mapping(
+    payload: AccountMappingSet,
+    current: CurrentUser = Depends(require_permission("coa.write")),
+    session: AsyncSession = Depends(get_write_session),
+) -> AccountMappingOut:
+    if payload.key not in WELL_KNOWN_MAPPING_KEYS:
+        from app.core.exceptions import ValidationError as VE
+        raise VE(
+            f"Unknown mapping key '{payload.key}'. Allowed: "
+            f"{sorted(WELL_KNOWN_MAPPING_KEYS)}"
+        )
+    repo = AccountingRepository(session, current.tenant_id)
+    # Verify account belongs to tenant
+    account = await repo.get_account(payload.account_id)
+    if not account:
+        raise NotFoundError("Account not found")
+    mapping = await repo.set_mapping(payload.key, payload.account_id)
+    return AccountMappingOut.model_validate(mapping)
 
 
 @router.post("/journals/{entry_id}/void", response_model=JournalEntryOut)

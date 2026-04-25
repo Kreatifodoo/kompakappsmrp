@@ -104,3 +104,22 @@ class JournalEntryOut(BaseModel):
 
 class JournalVoidRequest(BaseModel):
     reason: str = Field(min_length=1, max_length=500)
+
+
+# ─── Account Mappings ─────────────────────────────────────
+WELL_KNOWN_MAPPING_KEYS = {
+    "ar", "ap", "sales_revenue", "purchase_expense",
+    "tax_payable", "tax_receivable", "cash_default",
+}
+
+
+class AccountMappingSet(BaseModel):
+    key: str = Field(min_length=1, max_length=50)
+    account_id: UUID
+
+
+class AccountMappingOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    key: str
+    account_id: UUID

@@ -167,3 +167,38 @@ class JournalLine(Base):
     credit: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=Decimal("0"), nullable=False)
 
     entry: Mapped[JournalEntry] = relationship(back_populates="lines")
+
+
+class AccountMapping(Base):
+    """Per-tenant mapping of semantic keys to ledger accounts.
+
+    Keys (well-known):
+      ar               → Accounts Receivable
+      ap               → Accounts Payable
+      sales_revenue    → Sales income account
+      purchase_expense → Default purchase/COGS expense account
+      tax_payable      → Output tax (collected on sales)
+      tax_receivable   → Input tax (paid on purchases)
+      cash_default     → Default cash/bank account
+    """
+
+    __tablename__ = "account_mappings"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "key", name="uq_account_mappings_tenant_key"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("tenants.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    key: Mapped[str] = mapped_column(String(50), nullable=False)
+    account_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("accounts.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
