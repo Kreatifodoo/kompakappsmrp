@@ -1,5 +1,7 @@
 # Kompak Accounting — Backend
 
+[![Backend CI](https://github.com/Kreatifodoo/kompakappsmrp/actions/workflows/backend-ci.yml/badge.svg)](https://github.com/Kreatifodoo/kompakappsmrp/actions/workflows/backend-ci.yml)
+
 FastAPI + SQLAlchemy 2.0 (async) + PostgreSQL 16 + Redis + Celery.
 Multi-tenant SaaS backend for the Kompak Accounting platform.
 
@@ -240,6 +242,15 @@ TEST_DB_URL=postgresql+asyncpg://user:pass@host:5432/mydb pytest
   `get_write_session` to the test session factory.
 - **HTTP**: `AsyncClient` with `ASGITransport(app)` — no socket, no
   uvicorn — direct in-process calls.
+
+### Lint & format
+
+```bash
+ruff check app tests          # static analysis (E/F/I/N/UP/B/SIM/ASYNC)
+ruff check --fix app tests    # auto-fix what's safe
+ruff format app tests         # apply formatter
+ruff format --check app tests # CI mode (no writes)
+```
 
 ### What's covered
 
