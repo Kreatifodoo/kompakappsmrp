@@ -2583,14 +2583,17 @@ document.addEventListener('DOMContentLoaded', async () => {
   const _sidebar = document.getElementById('sidebar');
   const _sidebarOverlay = document.getElementById('sidebarOverlay');
   function closeSidebarMobile() {
-    _sidebar.classList.remove('open');
-    _sidebarOverlay.classList.remove('active');
+    if (_sidebar) _sidebar.classList.remove('open');
+    if (_sidebarOverlay) _sidebarOverlay.classList.remove('active');
   }
-  document.getElementById('sidebarToggle').addEventListener('click', () => {
-    const isOpen = _sidebar.classList.toggle('open');
-    _sidebarOverlay.classList.toggle('active', isOpen);
-  });
-  _sidebarOverlay.addEventListener('click', closeSidebarMobile);
+  const _sidebarToggleBtn = document.getElementById('sidebarToggle');
+  if (_sidebarToggleBtn) {
+    _sidebarToggleBtn.addEventListener('click', () => {
+      const isOpen = _sidebar.classList.toggle('open');
+      if (_sidebarOverlay) _sidebarOverlay.classList.toggle('active', isOpen);
+    });
+  }
+  if (_sidebarOverlay) _sidebarOverlay.addEventListener('click', closeSidebarMobile);
   // Close sidebar when navigating on mobile
   document.querySelectorAll('.nav-item[data-page]').forEach(el => {
     el.addEventListener('click', () => { if (window.innerWidth <= 768) closeSidebarMobile(); });
