@@ -372,6 +372,7 @@ async def _import_journals(
                 entry.lines.append(
                     JournalLine(
                         tenant_id=tenant_id,
+                        entry_date=entry_date,  # partition key
                         line_no=idx,
                         account_id=code_to_id[acct_code],
                         description=ln.get("description"),

@@ -332,6 +332,57 @@ for slug in $(ls /opt/legacy/tenants/); do
 done
 ```
 
+## Journal table partitioning
+
+`journal_entries` and `journal_lines` are **RANGE-partitioned by
+`entry_date` (monthly)** as of migration `0004`. This is the highest-
+churn data in the system — at scale, partitioning gives:
+- Partition pruning on date-range reports (trial balance, P&L, balance
+  sheet) — Postgres scans only the months in scope, not the whole table
+- Cheap maintenance: vacuum, reindex, and (eventually) archival happen
+  per-partition rather than over a multi-billion-row monolith
+- Per-partition statistics that produce more accurate query plans
+
+### Schema details
+
+- Composite primary key `(id, entry_date)` (Postgres requires the
+  partition column to be part of every unique constraint)
+- `journal_lines.entry_date` is **denormalized** from
+  `journal_entries.entry_date`, with composite FK
+  `(entry_id, entry_date) → journal_entries(id, entry_date)`. This lets
+  partition pruning work on `journal_lines` too when reports filter
+  by date — without it, every line query would scan all partitions.
+- `sales_invoices.journal_entry_id` and
+  `purchase_invoices.journal_entry_id` no longer have FK constraints
+  (a single-column FK can't reference a composite PK). Application-
+  level integrity (Sales/PurchaseService) is the source of truth.
+
+### Keeping partitions ahead of real time
+
+Migration `0004` creates partitions covering
+`[min_year - 1, max_year + 1]` from the data at upgrade time (or
+`[2024, 2027]` if no data). As real time advances, top up the future
+window:
+
+```bash
+python -m app.scripts.manage_partitions --months-ahead 12
+```
+
+Idempotent — existing partitions are skipped. Run on a cron / Celery
+beat schedule (e.g. monthly, on the 1st):
+
+```cron
+# /etc/cron.d/kompak-partitions
+0 2 1 * * kompak python -m app.scripts.manage_partitions --months-ahead 12
+```
+
+If you forget to run it and a tenant tries to post into an unpartitioned
+month, Postgres raises:
+```
+ERROR: no partition of relation "journal_entries" found for row
+DETAIL: Partition key of the failing row contains (entry_date) = (2030-05-15).
+```
+
 ## Migrations
 
 ```bash

@@ -61,6 +61,26 @@ ALL_TABLES = [
 ]
 
 
+async def _create_journal_partitions(conn, year_from: int = 2024, year_to: int = 2030) -> None:
+    """Create monthly partitions for journal_entries and journal_lines.
+
+    Mirrors what migration 0004 does in production. Tests use Base.metadata
+    (not Alembic), so we have to create partitions manually after create_all.
+    """
+    for table in ("journal_entries", "journal_lines"):
+        for year in range(year_from, year_to + 1):
+            for month in range(1, 13):
+                next_year, next_month = (year, month + 1) if month < 12 else (year + 1, 1)
+                name = f"{table}_y{year}_m{month:02d}"
+                await conn.execute(
+                    text(
+                        f"CREATE TABLE IF NOT EXISTS {name} PARTITION OF {table} "
+                        f"FOR VALUES FROM ('{year}-{month:02d}-01') "
+                        f"TO ('{next_year}-{next_month:02d}-01')"
+                    )
+                )
+
+
 # ── Engine + schema (session-scoped) ──────────────────────
 @pytest_asyncio.fixture(scope="session")
 async def engine():
@@ -69,6 +89,7 @@ async def engine():
         await conn.execute(text("CREATE EXTENSION IF NOT EXISTS citext"))
         await conn.run_sync(Base.metadata.drop_all)
         await conn.run_sync(Base.metadata.create_all)
+        await _create_journal_partitions(conn)
     yield eng
     async with eng.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)

@@ -82,9 +82,10 @@ class PurchaseInvoice(Base):
     status: Mapped[str] = mapped_column(String(20), default="draft", nullable=False)
     notes: Mapped[str | None] = mapped_column(String(1000))
 
-    journal_entry_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("journal_entries.id", ondelete="SET NULL")
-    )
+    # Note: no FK constraint to journal_entries — that table is partitioned
+    # with composite PK (id, entry_date), so a single-column FK isn't valid.
+    # Application-level integrity (PurchaseService) is the source of truth.
+    journal_entry_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
 
     created_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
     posted_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))

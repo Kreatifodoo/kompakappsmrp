@@ -2,9 +2,14 @@
 
 Design notes:
 - All tables include `tenant_id` for row-level multi-tenancy + RLS.
-- `journal_entries` and `journal_lines` are designed for monthly RANGE
-  partitioning on `entry_date` — partitions are created via migration/DDL,
-  not declared on the SQLAlchemy model itself.
+- `journal_entries` and `journal_lines` are RANGE-partitioned by
+  `entry_date` (monthly). The partition key must be part of the primary
+  key, so both tables use a composite PK `(id, entry_date)`. The
+  partition tables themselves are declared via Alembic migration; this
+  ORM file declares the parent table shape with `postgresql_partition_by`.
+- `journal_lines.entry_date` is denormalized from `journal_entries.entry_date`
+  so the FK can be composite (entry_id, entry_date) and partition-pruning
+  works for both tables in date-range queries (e.g. reports).
 - Money is stored as NUMERIC(18, 2). Use Decimal in Python.
 """
 
@@ -19,9 +24,11 @@ from sqlalchemy import (
     Date,
     DateTime,
     ForeignKey,
+    ForeignKeyConstraint,
     Index,
     Integer,
     Numeric,
+    PrimaryKeyConstraint,
     String,
     UniqueConstraint,
     func,
@@ -76,20 +83,26 @@ class Account(Base):
 
 
 class JournalEntry(Base):
-    """Header of a double-entry journal transaction."""
+    """Header of a double-entry journal transaction.
+
+    RANGE-partitioned by `entry_date` (monthly). The partition key must
+    be part of the primary key, hence the composite `(id, entry_date)` PK.
+    """
 
     __tablename__ = "journal_entries"
     __table_args__ = (
-        UniqueConstraint("tenant_id", "entry_no", name="uq_journal_entries_tenant_no"),
+        PrimaryKeyConstraint("id", "entry_date", name="pk_journal_entries"),
+        UniqueConstraint("tenant_id", "entry_no", "entry_date", name="uq_journal_entries_tenant_no"),
         Index("ix_journal_entries_tenant_date", "tenant_id", "entry_date"),
         Index("ix_journal_entries_tenant_status", "tenant_id", "status"),
         CheckConstraint(
             "status IN ('draft','posted','void')",
             name="ck_journal_entries_status",
         ),
+        {"postgresql_partition_by": "RANGE (entry_date)"},
     )
 
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), default=uuid.uuid4, nullable=False)
     tenant_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("tenants.id", ondelete="CASCADE"),
@@ -127,30 +140,42 @@ class JournalEntry(Base):
 
 
 class JournalLine(Base):
-    """Individual debit/credit line of a journal entry."""
+    """Individual debit/credit line of a journal entry.
+
+    RANGE-partitioned by `entry_date` (denormalized from JournalEntry).
+    Composite FK `(entry_id, entry_date)` references the parent entry's
+    composite PK, enabling partition-wise pruning when reports filter
+    by date.
+    """
 
     __tablename__ = "journal_lines"
     __table_args__ = (
+        PrimaryKeyConstraint("id", "entry_date", name="pk_journal_lines"),
+        ForeignKeyConstraint(
+            ["entry_id", "entry_date"],
+            ["journal_entries.id", "journal_entries.entry_date"],
+            ondelete="CASCADE",
+            name="fk_journal_lines_entry",
+        ),
         Index("ix_journal_lines_tenant_account", "tenant_id", "account_id"),
-        Index("ix_journal_lines_entry", "entry_id"),
+        Index("ix_journal_lines_tenant_date", "tenant_id", "entry_date"),
+        Index("ix_journal_lines_entry", "entry_id", "entry_date"),
         CheckConstraint(
             "(debit >= 0 AND credit >= 0) AND (debit = 0 OR credit = 0)",
             name="ck_journal_lines_debit_xor_credit",
         ),
+        {"postgresql_partition_by": "RANGE (entry_date)"},
     )
 
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), default=uuid.uuid4, nullable=False)
     tenant_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("tenants.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
-    entry_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
-        ForeignKey("journal_entries.id", ondelete="CASCADE"),
-        nullable=False,
-    )
+    entry_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    entry_date: Mapped[date] = mapped_column(Date, nullable=False)
     line_no: Mapped[int] = mapped_column(Integer, nullable=False)
     account_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),

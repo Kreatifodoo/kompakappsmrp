@@ -161,6 +161,7 @@ class AccountingService:
             entry.lines.append(
                 JournalLine(
                     tenant_id=self.tenant_id,
+                    entry_date=payload.entry_date,  # required for partition routing
                     line_no=idx,
                     account_id=line.account_id,
                     description=line.description,
@@ -238,6 +239,7 @@ class AccountingService:
             entry.lines.append(
                 JournalLine(
                     tenant_id=self.tenant_id,
+                    entry_date=entry_date,  # required for partition routing
                     line_no=idx,
                     account_id=account_id,
                     debit=debit,
