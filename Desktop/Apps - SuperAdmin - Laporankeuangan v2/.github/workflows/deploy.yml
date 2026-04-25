@@ -16,10 +16,10 @@ jobs:
           username: ${{ secrets.LINODE_USER }}
           key: ${{ secrets.LINODE_SSH_KEY }}
           script: |
-            cd /opt/kompakapp/Desktop/Apps\ -\ SuperAdmin\ -\ Laporankeuangan\ v2
-            git -C /opt/kompakapp pull origin main
+            APPDIR="/opt/kompakapp/Desktop/Apps - SuperAdmin - Laporankeuangan v2"
+            git -C "$APPDIR" pull origin main
+            cd "$APPDIR"
             python3 build.py
-            # Restart aplikasi
             pkill -f "python.*serve.py" || true
             sleep 2
             nohup python3 app/serve.py > /tmp/kompakapp.log 2>&1 &
