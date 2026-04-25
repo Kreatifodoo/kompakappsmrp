@@ -98,6 +98,33 @@ uvicorn app.main:app --reload
 | POST   | `/journals/{id}/post`         | `journal.post` |
 | POST   | `/journals/{id}/void`         | `journal.post` |
 
+### Reports — `/api/v1/reports`
+| Method | Path                                              | Permission    |
+|--------|---------------------------------------------------|---------------|
+| GET    | `/reports/trial-balance?as_of=YYYY-MM-DD`         | `report.read` |
+| GET    | `/reports/profit-loss?date_from=&date_to=`        | `report.read` |
+| GET    | `/reports/balance-sheet?as_of=YYYY-MM-DD`         | `report.read` |
+
+All reports:
+- Run against the **read replica** via `get_read_session()` so they
+  don't compete with OLTP writes
+- Aggregate over `journal_lines` joined to posted `journal_entries`
+  only — drafts and voided entries are excluded
+- Are tenant-scoped at every join
+
+**Trial balance** — list of every account with cumulative `total_debit`
+/ `total_credit` and a signed `balance` (positive = on the account's
+natural side). Includes a `balanced` flag (always true for valid books).
+
+**Profit & Loss** — income & expense lines for a date range, plus
+`total_income`, `total_expense`, `net_profit`.
+
+**Balance sheet** — snapshot at `as_of` with assets / liabilities /
+explicit equity broken out, **plus a computed `retained_earnings`**
+(cumulative net P/L through `as_of`). The `balanced` flag verifies the
+fundamental equation `Assets = Liabilities + Equity` (within 0.01 IDR
+rounding tolerance).
+
 ### Sales — `/api/v1`
 | Method | Path                                  | Permission       |
 |--------|---------------------------------------|------------------|

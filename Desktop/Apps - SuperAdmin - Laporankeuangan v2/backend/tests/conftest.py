@@ -32,7 +32,7 @@ from sqlalchemy.ext.asyncio import (  # noqa: E402
 )
 
 # Import all models so Base.metadata is fully populated
-from app.core.database import Base, get_write_session  # noqa: E402
+from app.core.database import Base, get_read_session, get_write_session  # noqa: E402
 from app.modules.accounting import models as _accounting  # noqa: F401, E402
 from app.modules.identity import models as _identity  # noqa: F401, E402
 from app.modules.purchase import models as _purchase  # noqa: F401, E402
@@ -118,7 +118,7 @@ async def _reset_db(session_factory):
 async def client(session_factory) -> AsyncGenerator[AsyncClient, None]:
     from app.main import app
 
-    async def _override():
+    async def _override_write():
         async with session_factory() as s:
             try:
                 yield s
@@ -127,7 +127,12 @@ async def client(session_factory) -> AsyncGenerator[AsyncClient, None]:
                 await s.rollback()
                 raise
 
-    app.dependency_overrides[get_write_session] = _override
+    async def _override_read():
+        async with session_factory() as s:
+            yield s
+
+    app.dependency_overrides[get_write_session] = _override_write
+    app.dependency_overrides[get_read_session] = _override_read
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
         yield c
     app.dependency_overrides.clear()
