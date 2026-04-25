@@ -216,6 +216,122 @@ re-binding.
 | staff       | COA read, journal read/write, sales+purchase read/write, report read   |
 | viewer      | All `*.read` only                                           |
 
+## Importing legacy JSON data
+
+A CLI importer migrates a tenant from the file-based predecessor service
+into PostgreSQL. It's idempotent — safe to re-run.
+
+```bash
+python -m app.scripts.import_legacy \
+    --data-dir /path/to/legacy/data \
+    --tenant-slug acme \
+    --tenant-name "Acme Corp" \
+    --owner-email owner@acme.com \
+    --owner-password 'StrongP@ss1' \
+    --owner-full-name "Owner Name" \
+    [--seed-coa] [--dry-run]
+```
+
+Flags:
+- `--seed-coa` — provision the standard 32-account starter COA + auto-bind
+  account mappings before importing (skip if your `accounts.json` already
+  has everything)
+- `--overwrite-mappings` — with `--seed-coa`, force re-bind of mappings
+- `--dry-run` — parse + validate everything; rollback at the end
+
+The importer scans the `--data-dir` for these files (each is optional —
+missing files are silently skipped). All amounts accept int / float /
+string; dates accept `YYYY-MM-DD` or ISO-with-time.
+
+### `accounts.json`
+```json
+[
+  {"code": "1100", "name": "Kas",       "type": "asset",     "normal_side": "debit",  "parent_code": null},
+  {"code": "3100", "name": "Modal",     "type": "equity",    "normal_side": "credit"},
+  {"code": "4100", "name": "Penjualan", "type": "income"},
+  {"code": "5100", "name": "HPP",       "type": "expense",   "description": "Cost of goods"}
+]
+```
+- `normal_side` is optional — defaults to `debit` for asset/expense, `credit` for the rest
+- `parent_code` is optional — wired up in a second pass after all accounts are inserted
+
+### `customers.json` / `suppliers.json`
+```json
+[{"code": "C001", "name": "Toko A", "email": "a@x.id", "phone": "0812", "address": "...", "tax_id": "..."}]
+```
+
+### `journals.json`
+```json
+[
+  {
+    "no": "JV-2026-00001",                    // optional; auto-generated if missing
+    "date": "2026-02-01",
+    "description": "Setoran modal",
+    "reference": "BUKTI-001",
+    "posted": true,                           // default true
+    "lines": [
+      {"account_code": "1100", "debit": 5000000, "description": "Kas masuk"},
+      {"account_code": "3100", "credit": 5000000}
+    ]
+  }
+]
+```
+- Each entry must be balanced (sum debits == sum credits) — unbalanced entries are rejected with errors logged but don't abort the rest
+- Tagged `source = "legacy_import"` for forensics
+
+### `sales_invoices.json` / `purchase_invoices.json`
+```json
+[
+  {
+    "no": "INV-2026-00001",
+    "date": "2026-02-10",
+    "due_date": "2026-03-10",
+    "customer_code": "C001",                  // or supplier_code
+    "status": "draft",                        // draft|posted|paid|void
+    "paid_amount": 0,
+    "lines": [
+      {"description": "Jasa", "qty": 1, "unit_price": 1000, "tax_rate": 11}
+    ]
+  }
+]
+```
+- Imported invoices are NOT auto-posted (no journal created). Invoices
+  legitimately posted in the legacy system should also include matching
+  entries in `journals.json` so the books reconcile
+
+### Idempotency rules
+
+| Section            | Skip condition                              |
+|--------------------|---------------------------------------------|
+| Tenant             | `slug` already exists                       |
+| Owner user         | `email` already exists (membership added)   |
+| Accounts           | `code` already exists in this tenant        |
+| Customers          | `code` already exists                       |
+| Suppliers          | `code` already exists                       |
+| Journals           | `no` (entry_no) already exists              |
+| Sales invoices     | `no` (invoice_no) already exists            |
+| Purchase invoices  | `no` (invoice_no) already exists            |
+
+So you can re-run with new data files added to the same directory and
+only the new rows will be inserted. Errors per row are logged but don't
+abort the rest of the import — exit code is 1 if any errors occurred,
+0 otherwise.
+
+### Bulk migration script for many tenants
+
+```bash
+for slug in $(ls /opt/legacy/tenants/); do
+    python -m app.scripts.import_legacy \
+        --data-dir /opt/legacy/tenants/$slug \
+        --tenant-slug $slug \
+        --tenant-name "$(cat /opt/legacy/tenants/$slug/name.txt)" \
+        --owner-email "owner@$slug.kompakapps.com" \
+        --owner-password "$(openssl rand -hex 16)" \
+        --owner-full-name "Owner of $slug" \
+        --seed-coa
+done
+```
+
 ## Migrations
 
 ```bash
