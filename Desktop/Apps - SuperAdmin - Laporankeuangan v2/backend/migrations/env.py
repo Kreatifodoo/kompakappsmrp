@@ -12,6 +12,7 @@ from app.core.database import Base
 
 # Import all models so Alembic sees them for autogenerate
 from app.modules.identity import models as _identity_models  # noqa: F401
+from app.modules.accounting import models as _accounting_models  # noqa: F401
 
 config = context.config
 config.set_main_option("sqlalchemy.url", settings.DB_PRIMARY_URL)
