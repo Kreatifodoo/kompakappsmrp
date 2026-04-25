@@ -37,13 +37,21 @@ async def trial_balance(
 async def profit_loss(
     date_from: date = Query(...),
     date_to: date = Query(...),
+    cash_basis: bool = Query(
+        default=False,
+        description=(
+            "When true, restricts to journals that touch a cash account "
+            "(accounts.is_cash=true). Captures direct cash sales/purchases "
+            "but NOT credit sales paid later — see README for details."
+        ),
+    ),
     current: CurrentUser = Depends(require_permission("report.read")),
     session: AsyncSession = Depends(get_read_session),
 ) -> ProfitLoss:
     if date_from > date_to:
         raise ValidationError("date_from must be <= date_to")
     svc = ReportsService(session, current.tenant_id)
-    return await svc.profit_loss(date_from=date_from, date_to=date_to)
+    return await svc.profit_loss(date_from=date_from, date_to=date_to, cash_basis=cash_basis)
 
 
 @router.get(

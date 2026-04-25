@@ -70,9 +70,18 @@ class ReportsService:
         )
 
     # ─── Profit & Loss ────────────────────────────────────
-    async def profit_loss(self, *, date_from: date, date_to: date) -> ProfitLoss:
+    async def profit_loss(
+        self,
+        *,
+        date_from: date,
+        date_to: date,
+        cash_basis: bool = False,
+    ) -> ProfitLoss:
         rows = await self.repo.aggregate_by_account(
-            date_from=date_from, date_to=date_to, types=["income", "expense"]
+            date_from=date_from,
+            date_to=date_to,
+            types=["income", "expense"],
+            cash_basis=cash_basis,
         )
 
         income: list[PLLine] = []

@@ -26,6 +26,7 @@ class AccountUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=200)
     parent_id: UUID | None = None
     is_active: bool | None = None
+    is_cash: bool | None = None
     description: str | None = Field(default=None, max_length=500)
 
 
@@ -40,6 +41,7 @@ class AccountOut(BaseModel):
     parent_id: UUID | None
     is_active: bool
     is_system: bool
+    is_cash: bool
     description: str | None
 
 

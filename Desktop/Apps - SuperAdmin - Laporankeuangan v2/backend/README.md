@@ -102,7 +102,7 @@ uvicorn app.main:app --reload
 | Method | Path                                              | Permission    |
 |--------|---------------------------------------------------|---------------|
 | GET    | `/reports/trial-balance?as_of=YYYY-MM-DD`         | `report.read` |
-| GET    | `/reports/profit-loss?date_from=&date_to=`        | `report.read` |
+| GET    | `/reports/profit-loss?date_from=&date_to=&cash_basis=` | `report.read` |
 | GET    | `/reports/balance-sheet?as_of=YYYY-MM-DD`         | `report.read` |
 | GET    | `/reports/aged-receivables?as_of=YYYY-MM-DD`      | `report.read` |
 | GET    | `/reports/aged-payables?as_of=YYYY-MM-DD`         | `report.read` |
@@ -119,7 +119,24 @@ All reports:
 natural side). Includes a `balanced` flag (always true for valid books).
 
 **Profit & Loss** — income & expense lines for a date range, plus
-`total_income`, `total_expense`, `net_profit`.
+`total_income`, `total_expense`, `net_profit`. Default is **accrual**
+(income recognized when invoice posts).
+
+Pass `?cash_basis=true` to switch to **cash-basis recognition**:
+journals are included only if at least one of their lines touches a
+cash account (`accounts.is_cash = true`). The starter COA marks Kas
+(1110) and Bank (1120) as cash; admins can flag additional accounts
+via `PATCH /accounts/{id}` (`is_cash` is one of two fields permitted
+on system accounts, alongside `is_active`).
+
+**Cash-basis caveat** — for a credit sale where the AR-creating
+journal (`Dr AR / Cr Sales`) and the later payment journal
+(`Dr Cash / Cr AR`) are separate entries, **neither** journal touches
+both cash AND an income account, so the sale will not appear in
+cash-basis P&L. To get accurate cash-basis on credit sales today,
+record the receipt as a direct journal `Dr Cash / Cr Sales`. A proper
+Payments module that recognizes income at receipt time is on the
+roadmap.
 
 **Balance sheet** — snapshot at `as_of` with assets / liabilities /
 explicit equity broken out, **plus a computed `retained_earnings`**

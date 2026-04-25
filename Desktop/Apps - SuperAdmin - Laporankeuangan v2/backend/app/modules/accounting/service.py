@@ -47,14 +47,27 @@ class AccountingService:
         )
         return await self.repo.add_account(account)
 
+    # System accounts (from the starter COA) are protected against
+    # structural edits. Operational toggles (active flag, cash flag) are
+    # always permitted so admins can deactivate unused starter accounts
+    # or flag additional cash/bank accounts for cash-basis reports.
+    _SYSTEM_EDITABLE_FIELDS = frozenset({"is_active", "is_cash"})
+
     async def update_account(self, account_id: UUID, payload: AccountUpdate) -> Account:
         account = await self.repo.get_account(account_id)
         if not account:
             raise NotFoundError("Account not found")
-        if account.is_system:
-            raise ValidationError("System accounts cannot be modified")
 
-        for field, value in payload.model_dump(exclude_unset=True).items():
+        updates = payload.model_dump(exclude_unset=True)
+        if account.is_system:
+            disallowed = set(updates) - self._SYSTEM_EDITABLE_FIELDS
+            if disallowed:
+                raise ValidationError(
+                    f"System accounts only allow {sorted(self._SYSTEM_EDITABLE_FIELDS)}; "
+                    f"cannot modify {sorted(disallowed)}"
+                )
+
+        for field, value in updates.items():
             setattr(account, field, value)
         await self.session.flush()
         return account
@@ -104,6 +117,7 @@ class AccountingService:
                     normal_side=sa.normal_side,
                     parent_id=parent_id,
                     is_system=True,
+                    is_cash=sa.is_cash,
                 )
                 self.session.add(acct)
                 await self.session.flush()

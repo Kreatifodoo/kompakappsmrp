@@ -20,14 +20,15 @@ class StarterAccount(NamedTuple):
     normal_side: str  # debit / credit
     parent_code: str | None
     mapping_key: str | None  # binds AccountMapping on creation
+    is_cash: bool = False  # flagged for cash-basis P&L
 
 
 STARTER_COA: list[StarterAccount] = [
     # ── 1xxx Assets ─────────────────────────────────────────
     StarterAccount("1000", "Aset", "asset", "debit", None, None),
     StarterAccount("1100", "Kas & Bank", "asset", "debit", "1000", None),
-    StarterAccount("1110", "Kas", "asset", "debit", "1100", "cash_default"),
-    StarterAccount("1120", "Bank", "asset", "debit", "1100", None),
+    StarterAccount("1110", "Kas", "asset", "debit", "1100", "cash_default", is_cash=True),
+    StarterAccount("1120", "Bank", "asset", "debit", "1100", None, is_cash=True),
     StarterAccount("1200", "Piutang Usaha", "asset", "debit", "1000", "ar"),
     StarterAccount("1300", "Persediaan", "asset", "debit", "1000", None),
     StarterAccount("1400", "PPN Masukan (Tax Receivable)", "asset", "debit", "1000", "tax_receivable"),

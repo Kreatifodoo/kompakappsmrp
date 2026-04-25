@@ -122,6 +122,71 @@ async def test_profit_loss_rejects_inverted_date_range(client: AsyncClient, seed
     assert r.status_code == 422
 
 
+async def test_profit_loss_cash_basis_excludes_credit_sale(client: AsyncClient, seeded_tenant: dict):
+    """A sales invoice posts as Dr AR / Cr Sales — no cash touched.
+    Accrual P&L sees the income; cash-basis P&L doesn't."""
+    headers = seeded_tenant["headers"]
+    rc = await client.post("/api/v1/customers", headers=headers, json={"code": "C1", "name": "X"})
+    rs = await client.post(
+        "/api/v1/sales-invoices?post_now=true",
+        headers=headers,
+        json={
+            "invoice_date": "2026-04-01",
+            "customer_id": rc.json()["id"],
+            "lines": [{"description": "x", "qty": "1", "unit_price": "1000"}],
+        },
+    )
+    assert rs.status_code == 201
+
+    # Accrual: income recognized
+    r_accrual = await client.get(
+        "/api/v1/reports/profit-loss?date_from=2026-01-01&date_to=2026-12-31",
+        headers=headers,
+    )
+    assert Decimal(r_accrual.json()["total_income"]) == Decimal("1000.00")
+
+    # Cash basis: zero income (no cash account in the AR-creating journal)
+    r_cash = await client.get(
+        "/api/v1/reports/profit-loss?cash_basis=true&date_from=2026-01-01&date_to=2026-12-31",
+        headers=headers,
+    )
+    assert Decimal(r_cash.json()["total_income"]) == Decimal("0")
+
+
+async def test_profit_loss_cash_basis_includes_direct_cash_sale(client: AsyncClient, seeded_tenant: dict):
+    """A manual journal Dr Cash / Cr Sales is recognized in both bases."""
+    headers = seeded_tenant["headers"]
+    # Find Cash (1110) and Sales Revenue (4100) ids
+    racc = await client.get("/api/v1/accounts?include_zero=true", headers=headers)
+    by_code = {a["code"]: a["id"] for a in racc.json()}
+
+    r = await client.post(
+        "/api/v1/journals?post_now=true",
+        headers=headers,
+        json={
+            "entry_date": "2026-04-15",
+            "description": "Penjualan tunai",
+            "lines": [
+                {"account_id": by_code["1110"], "debit": "750", "credit": "0"},
+                {"account_id": by_code["4100"], "debit": "0", "credit": "750"},
+            ],
+        },
+    )
+    assert r.status_code == 201, r.text
+
+    # Both bases recognize this 750 of income (cash account participated)
+    for cash_basis in (False, True):
+        rr = await client.get(
+            f"/api/v1/reports/profit-loss?cash_basis={str(cash_basis).lower()}"
+            "&date_from=2026-01-01&date_to=2026-12-31",
+            headers=headers,
+        )
+        body = rr.json()
+        assert Decimal(body["total_income"]) == Decimal("750.00"), (
+            f"cash_basis={cash_basis} mismatched: {body}"
+        )
+
+
 async def test_profit_loss_excludes_voided_entries(client: AsyncClient, seeded_tenant: dict):
     headers = seeded_tenant["headers"]
     # Create + post a sales invoice

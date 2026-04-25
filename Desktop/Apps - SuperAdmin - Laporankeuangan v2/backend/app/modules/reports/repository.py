@@ -30,12 +30,17 @@ class ReportsRepository:
         date_from: date | None = None,
         date_to: date | None = None,
         types: list[str] | None = None,
+        cash_basis: bool = False,
     ) -> list[tuple[Account, Decimal, Decimal]]:
         """Return [(account, total_debit, total_credit)] aggregated over
         posted journal entries within the optional date window.
 
         Includes accounts with zero activity (LEFT JOIN), so callers can
         choose whether to filter them out.
+
+        When `cash_basis=True`, the aggregation is restricted to journals
+        whose entry has at least one line on a cash account
+        (`accounts.is_cash`). Used by the cash-basis P&L variant.
         """
         # Subquery: per-account sums of debit/credit from posted journals
         je_conds = [
@@ -47,6 +52,19 @@ class ReportsRepository:
         if date_to:
             je_conds.append(JournalEntry.entry_date <= date_to)
 
+        line_conds = [JournalLine.tenant_id == self.tenant_id, *je_conds]
+        if cash_basis:
+            # Limit to journals where at least one line touches a cash account
+            cash_je_ids = (
+                select(JournalLine.entry_id.distinct())
+                .join(Account, Account.id == JournalLine.account_id)
+                .where(
+                    JournalLine.tenant_id == self.tenant_id,
+                    Account.is_cash.is_(True),
+                )
+            ).scalar_subquery()
+            line_conds.append(JournalLine.entry_id.in_(cash_je_ids))
+
         sub = (
             select(
                 JournalLine.account_id.label("account_id"),
@@ -54,7 +72,7 @@ class ReportsRepository:
                 func.coalesce(func.sum(JournalLine.credit), 0).label("total_credit"),
             )
             .join(JournalEntry, JournalEntry.id == JournalLine.entry_id)
-            .where(JournalLine.tenant_id == self.tenant_id, *je_conds)
+            .where(*line_conds)
             .group_by(JournalLine.account_id)
             .subquery()
         )
