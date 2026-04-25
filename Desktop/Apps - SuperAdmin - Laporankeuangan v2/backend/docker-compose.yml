@@ -1,0 +1,63 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: kompak
+      POSTGRES_PASSWORD: kompak_dev
+      POSTGRES_DB: kompak
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kompak -d kompak"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    env_file: .env
+    environment:
+      DB_PRIMARY_URL: postgresql+asyncpg://kompak:kompak_dev@postgres:5432/kompak
+      REDIS_URL: redis://redis:6379/0
+      REDIS_CELERY_BROKER: redis://redis:6379/1
+      REDIS_CELERY_BACKEND: redis://redis:6379/2
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    env_file: .env
+    environment:
+      DB_PRIMARY_URL: postgresql+asyncpg://kompak:kompak_dev@postgres:5432/kompak
+      REDIS_URL: redis://redis:6379/0
+      REDIS_CELERY_BROKER: redis://redis:6379/1
+      REDIS_CELERY_BACKEND: redis://redis:6379/2
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+
+volumes:
+  pg_data:
