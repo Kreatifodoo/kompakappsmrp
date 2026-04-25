@@ -159,6 +159,15 @@ body {
   z-index: 50;
   box-shadow: none;
 }
+.sidebar-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.45);
+  z-index: 99;
+}
+.sidebar-overlay.active { display: block; }
+
 .sidebar-toggle {
   background: none;
   border: none;
@@ -3199,8 +3208,9 @@ body.has-license-banner .page-content {
   /* POS page inner: allow scrolling on mobile */
   #page-pos .pos-page-inner { height: auto; overflow: visible; }
 
-  /* Sidebar hidden */
+  /* Sidebar hidden / open on mobile */
   .sidebar { transform: translateX(-100%) !important; }
+  .sidebar.open { transform: translateX(0) !important; }
   .main-wrapper { margin-left: 0 !important; }
 
   /* Mobile tab toggle visible */
