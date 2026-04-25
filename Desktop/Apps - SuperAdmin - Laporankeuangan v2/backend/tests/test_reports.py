@@ -154,6 +154,133 @@ async def test_profit_loss_excludes_voided_entries(client: AsyncClient, seeded_t
 
 
 # ─── Balance Sheet ─────────────────────────────────────────
+# ─── Aged AR / AP ──────────────────────────────────────────
+async def _create_customer(client: AsyncClient, headers: dict, code: str) -> str:
+    r = await client.post("/api/v1/customers", headers=headers, json={"code": code, "name": f"Cust {code}"})
+    assert r.status_code == 201
+    return r.json()["id"]
+
+
+async def _create_supplier(client: AsyncClient, headers: dict, code: str) -> str:
+    r = await client.post("/api/v1/suppliers", headers=headers, json={"code": code, "name": f"Vend {code}"})
+    assert r.status_code == 201
+    return r.json()["id"]
+
+
+async def _post_sales_invoice(
+    client: AsyncClient,
+    headers: dict,
+    customer_id: str,
+    invoice_date: str,
+    due_date: str | None,
+    amount: str,
+) -> str:
+    payload: dict = {
+        "invoice_date": invoice_date,
+        "customer_id": customer_id,
+        "lines": [{"description": "x", "qty": "1", "unit_price": amount}],
+    }
+    if due_date:
+        payload["due_date"] = due_date
+    r = await client.post("/api/v1/sales-invoices?post_now=true", headers=headers, json=payload)
+    assert r.status_code == 201, r.text
+    return r.json()["id"]
+
+
+async def test_aged_receivables_buckets_correctly(client: AsyncClient, seeded_tenant: dict):
+    """Post 4 invoices with due dates in different bucket ranges, verify
+    the aged AR report distributes them into the right buckets."""
+    headers = seeded_tenant["headers"]
+    as_of = "2026-06-30"
+
+    cust = await _create_customer(client, headers, "C001")
+
+    # 1. Current — due 2026-07-15 (after as_of) — 100
+    await _post_sales_invoice(client, headers, cust, "2026-06-01", "2026-07-15", "100")
+    # 2. 1-30 days — due 2026-06-15 (15 days overdue) — 200
+    await _post_sales_invoice(client, headers, cust, "2026-05-01", "2026-06-15", "200")
+    # 3. 31-60 days — due 2026-04-30 (61 days overdue → bucket 61-90) — 400
+    # Adjust: due 2026-05-15 (46 days overdue) — bucket 31_60 — 300
+    await _post_sales_invoice(client, headers, cust, "2026-04-01", "2026-05-15", "300")
+    # 4. >90 days — due 2026-01-01 (180 days overdue) — 500
+    await _post_sales_invoice(client, headers, cust, "2025-12-01", "2026-01-01", "500")
+
+    r = await client.get(f"/api/v1/reports/aged-receivables?as_of={as_of}", headers=headers)
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert len(body["lines"]) == 1
+    line = body["lines"][0]
+    assert line["code"] == "C001"
+    assert line["invoice_count"] == 4
+
+    b = line["buckets"]
+    assert Decimal(b["current"]) == Decimal("100.00")
+    assert Decimal(b["days_1_30"]) == Decimal("200.00")
+    assert Decimal(b["days_31_60"]) == Decimal("300.00")
+    assert Decimal(b["days_61_90"]) == Decimal("0")
+    assert Decimal(b["days_over_90"]) == Decimal("500.00")
+    assert Decimal(b["total"]) == Decimal("1000.00")
+
+    # Grand totals match the per-party totals (only one party here)
+    t = body["totals"]
+    assert Decimal(t["total"]) == Decimal("1000.00")
+    assert Decimal(t["days_over_90"]) == Decimal("500.00")
+
+
+async def test_aged_receivables_excludes_paid_and_voided(client: AsyncClient, seeded_tenant: dict):
+    headers = seeded_tenant["headers"]
+    cust = await _create_customer(client, headers, "C002")
+
+    # Post invoice and immediately void it
+    inv_id = await _post_sales_invoice(client, headers, cust, "2026-05-01", "2026-06-01", "999")
+    rv = await client.post(
+        f"/api/v1/sales-invoices/{inv_id}/void",
+        headers=headers,
+        json={"reason": "test"},
+    )
+    assert rv.status_code == 200
+
+    r = await client.get("/api/v1/reports/aged-receivables?as_of=2026-12-31", headers=headers)
+    assert r.status_code == 200
+    # Voided invoice must not appear
+    assert r.json()["lines"] == []
+    assert Decimal(r.json()["totals"]["total"]) == Decimal("0")
+
+
+async def test_aged_payables_buckets_correctly(client: AsyncClient, seeded_tenant: dict):
+    headers = seeded_tenant["headers"]
+    as_of = "2026-06-30"
+
+    sup = await _create_supplier(client, headers, "S001")
+
+    # Build 2 purchase invoices: one current (due_date in future), one 50 days overdue
+    async def _post_pi(date_: str, due: str, amount: str) -> str:
+        r = await client.post(
+            "/api/v1/purchase-invoices?post_now=true",
+            headers=headers,
+            json={
+                "invoice_date": date_,
+                "due_date": due,
+                "supplier_id": sup,
+                "lines": [{"description": "x", "qty": "1", "unit_price": amount}],
+            },
+        )
+        assert r.status_code == 201, r.text
+        return r.json()["id"]
+
+    await _post_pi("2026-06-15", "2026-07-15", "1000")  # current
+    await _post_pi("2026-04-01", "2026-05-11", "2000")  # 50 days overdue → 31_60
+
+    r = await client.get(f"/api/v1/reports/aged-payables?as_of={as_of}", headers=headers)
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert len(body["lines"]) == 1
+    b = body["lines"][0]["buckets"]
+    assert Decimal(b["current"]) == Decimal("1000.00")
+    assert Decimal(b["days_31_60"]) == Decimal("2000.00")
+    assert Decimal(b["total"]) == Decimal("3000.00")
+
+
 async def test_balance_sheet_balances(client: AsyncClient, seeded_tenant: dict):
     headers = seeded_tenant["headers"]
     await _seed_one_sale_and_one_purchase(client, headers)

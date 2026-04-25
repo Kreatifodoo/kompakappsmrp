@@ -69,3 +69,45 @@ class BalanceSheet(BaseModel):
     total_equity: Decimal  # explicit equity + retained_earnings
     balanced: bool  # |assets - (liab + equity)| < 0.01
     imbalance: Decimal  # assets - (liab + equity); should round to 0
+
+
+# ─── Aged AR / AP ─────────────────────────────────────────
+class AgedBuckets(BaseModel):
+    """Outstanding amount split by age bucket (in days overdue)."""
+
+    current: Decimal  # not yet due
+    days_1_30: Decimal
+    days_31_60: Decimal
+    days_61_90: Decimal
+    days_over_90: Decimal
+    total: Decimal
+
+
+class AgedInvoiceLine(BaseModel):
+    """A single unpaid invoice contributing to its party's buckets."""
+
+    invoice_id: UUID
+    invoice_no: str
+    invoice_date: date
+    due_date: date | None
+    total: Decimal
+    paid_amount: Decimal
+    outstanding: Decimal
+    days_overdue: int  # 0 if not yet due
+
+
+class AgedPartyLine(BaseModel):
+    """One row per customer (AR) or supplier (AP) with outstanding > 0."""
+
+    party_id: UUID
+    code: str
+    name: str
+    invoice_count: int
+    buckets: AgedBuckets
+    invoices: list[AgedInvoiceLine]
+
+
+class AgedReport(BaseModel):
+    as_of: date
+    lines: list[AgedPartyLine]
+    totals: AgedBuckets

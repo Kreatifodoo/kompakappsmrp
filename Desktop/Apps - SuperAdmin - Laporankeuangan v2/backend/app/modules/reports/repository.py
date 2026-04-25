@@ -15,6 +15,8 @@ from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.accounting.models import Account, JournalEntry, JournalLine
+from app.modules.purchase.models import PurchaseInvoice, Supplier
+from app.modules.sales.models import Customer, SalesInvoice
 
 
 class ReportsRepository:
@@ -74,3 +76,36 @@ class ReportsRepository:
 
         rows = (await self.session.execute(stmt)).all()
         return [(row.Account, Decimal(row.total_debit), Decimal(row.total_credit)) for row in rows]
+
+    # ─── Aged AR ──────────────────────────────────────────
+    async def open_sales_invoices(self, *, as_of: date) -> list[tuple[Customer, SalesInvoice]]:
+        """Posted sales invoices with outstanding > 0 as of the given date.
+        Returned ordered by customer code, then invoice date."""
+        stmt = (
+            select(Customer, SalesInvoice)
+            .join(SalesInvoice, SalesInvoice.customer_id == Customer.id)
+            .where(
+                SalesInvoice.tenant_id == self.tenant_id,
+                SalesInvoice.status == "posted",
+                SalesInvoice.invoice_date <= as_of,
+                SalesInvoice.total > SalesInvoice.paid_amount,
+            )
+            .order_by(Customer.code, SalesInvoice.invoice_date)
+        )
+        return list((await self.session.execute(stmt)).all())
+
+    # ─── Aged AP ──────────────────────────────────────────
+    async def open_purchase_invoices(self, *, as_of: date) -> list[tuple[Supplier, PurchaseInvoice]]:
+        """Posted purchase invoices with outstanding > 0 as of the given date."""
+        stmt = (
+            select(Supplier, PurchaseInvoice)
+            .join(PurchaseInvoice, PurchaseInvoice.supplier_id == Supplier.id)
+            .where(
+                PurchaseInvoice.tenant_id == self.tenant_id,
+                PurchaseInvoice.status == "posted",
+                PurchaseInvoice.invoice_date <= as_of,
+                PurchaseInvoice.total > PurchaseInvoice.paid_amount,
+            )
+            .order_by(Supplier.code, PurchaseInvoice.invoice_date)
+        )
+        return list((await self.session.execute(stmt)).all())

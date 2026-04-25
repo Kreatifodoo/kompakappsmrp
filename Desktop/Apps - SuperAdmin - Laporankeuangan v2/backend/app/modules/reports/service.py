@@ -8,6 +8,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.reports.repository import ReportsRepository
 from app.modules.reports.schemas import (
+    AgedBuckets,
+    AgedInvoiceLine,
+    AgedPartyLine,
+    AgedReport,
     BalanceSheet,
     BSLine,
     PLLine,
@@ -171,3 +175,137 @@ class ReportsService:
             balanced=abs(imbalance) < CENT,
             imbalance=imbalance,
         )
+
+    # ─── Aged AR / AP ─────────────────────────────────────
+    async def aged_receivables(self, *, as_of: date) -> AgedReport:
+        rows = await self.repo.open_sales_invoices(as_of=as_of)
+        return self._build_aged_report(
+            as_of=as_of,
+            rows=[
+                (
+                    party.id,
+                    party.code,
+                    party.name,
+                    invoice.id,
+                    invoice.invoice_no,
+                    invoice.invoice_date,
+                    invoice.due_date,
+                    invoice.total,
+                    invoice.paid_amount,
+                )
+                for party, invoice in rows
+            ],
+        )
+
+    async def aged_payables(self, *, as_of: date) -> AgedReport:
+        rows = await self.repo.open_purchase_invoices(as_of=as_of)
+        return self._build_aged_report(
+            as_of=as_of,
+            rows=[
+                (
+                    party.id,
+                    party.code,
+                    party.name,
+                    invoice.id,
+                    invoice.invoice_no,
+                    invoice.invoice_date,
+                    invoice.due_date,
+                    invoice.total,
+                    invoice.paid_amount,
+                )
+                for party, invoice in rows
+            ],
+        )
+
+    @staticmethod
+    def _bucket_for(days_overdue: int) -> str:
+        """Return the AgedBuckets field name for a given overdue-day count."""
+        if days_overdue <= 0:
+            return "current"
+        if days_overdue <= 30:
+            return "days_1_30"
+        if days_overdue <= 60:
+            return "days_31_60"
+        if days_overdue <= 90:
+            return "days_61_90"
+        return "days_over_90"
+
+    def _build_aged_report(
+        self,
+        *,
+        as_of: date,
+        rows: list[tuple],  # (party_id, code, name, inv_id, inv_no, inv_date, due_date, total, paid)
+    ) -> AgedReport:
+        # Aggregate per party
+        party_buckets: dict = {}  # party_id → {'meta': (code, name), 'invoices': [], 'b': dict[str,Decimal]}
+        grand_total = {
+            k: Decimal("0") for k in ("current", "days_1_30", "days_31_60", "days_61_90", "days_over_90")
+        }
+
+        for party_id, code, name, inv_id, inv_no, inv_date, due_date, total, paid in rows:
+            outstanding = (total - paid).quantize(CENT)
+            if outstanding <= 0:
+                continue
+
+            # Days overdue: based on due_date if present, else invoice_date
+            ref_date = due_date or inv_date
+            days_overdue = max(0, (as_of - ref_date).days)
+            bucket_name = self._bucket_for(days_overdue)
+
+            entry = party_buckets.setdefault(
+                party_id,
+                {
+                    "code": code,
+                    "name": name,
+                    "invoices": [],
+                    "b": {k: Decimal("0") for k in grand_total},
+                },
+            )
+            entry["b"][bucket_name] += outstanding
+            grand_total[bucket_name] += outstanding
+            entry["invoices"].append(
+                AgedInvoiceLine(
+                    invoice_id=inv_id,
+                    invoice_no=inv_no,
+                    invoice_date=inv_date,
+                    due_date=due_date,
+                    total=total,
+                    paid_amount=paid,
+                    outstanding=outstanding,
+                    days_overdue=days_overdue,
+                )
+            )
+
+        lines: list[AgedPartyLine] = []
+        for party_id, entry in party_buckets.items():
+            buckets = AgedBuckets(
+                current=entry["b"]["current"],
+                days_1_30=entry["b"]["days_1_30"],
+                days_31_60=entry["b"]["days_31_60"],
+                days_61_90=entry["b"]["days_61_90"],
+                days_over_90=entry["b"]["days_over_90"],
+                total=sum(entry["b"].values(), Decimal("0")),
+            )
+            lines.append(
+                AgedPartyLine(
+                    party_id=party_id,
+                    code=entry["code"],
+                    name=entry["name"],
+                    invoice_count=len(entry["invoices"]),
+                    buckets=buckets,
+                    invoices=entry["invoices"],
+                )
+            )
+
+        # Sort by code for stable output
+        lines.sort(key=lambda li: li.code)
+
+        totals = AgedBuckets(
+            current=grand_total["current"],
+            days_1_30=grand_total["days_1_30"],
+            days_31_60=grand_total["days_31_60"],
+            days_61_90=grand_total["days_61_90"],
+            days_over_90=grand_total["days_over_90"],
+            total=sum(grand_total.values(), Decimal("0")),
+        )
+        return AgedReport(as_of=as_of, lines=lines, totals=totals)

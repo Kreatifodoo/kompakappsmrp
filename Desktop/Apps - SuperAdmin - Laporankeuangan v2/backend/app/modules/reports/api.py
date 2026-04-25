@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_read_session
 from app.core.exceptions import ValidationError
 from app.deps import CurrentUser, require_permission
-from app.modules.reports.schemas import BalanceSheet, ProfitLoss, TrialBalance
+from app.modules.reports.schemas import AgedReport, BalanceSheet, ProfitLoss, TrialBalance
 from app.modules.reports.service import ReportsService
 
 router = APIRouter(prefix="/reports", tags=["reports"])
@@ -58,3 +58,31 @@ async def balance_sheet(
 ) -> BalanceSheet:
     svc = ReportsService(session, current.tenant_id)
     return await svc.balance_sheet(as_of=as_of)
+
+
+@router.get(
+    "/aged-receivables",
+    response_model=AgedReport,
+    summary="Aged AR — outstanding sales invoices bucketed by days overdue",
+)
+async def aged_receivables(
+    as_of: date = Query(default_factory=date.today),
+    current: CurrentUser = Depends(require_permission("report.read")),
+    session: AsyncSession = Depends(get_read_session),
+) -> AgedReport:
+    svc = ReportsService(session, current.tenant_id)
+    return await svc.aged_receivables(as_of=as_of)
+
+
+@router.get(
+    "/aged-payables",
+    response_model=AgedReport,
+    summary="Aged AP — outstanding purchase invoices bucketed by days overdue",
+)
+async def aged_payables(
+    as_of: date = Query(default_factory=date.today),
+    current: CurrentUser = Depends(require_permission("report.read")),
+    session: AsyncSession = Depends(get_read_session),
+) -> AgedReport:
+    svc = ReportsService(session, current.tenant_id)
+    return await svc.aged_payables(as_of=as_of)

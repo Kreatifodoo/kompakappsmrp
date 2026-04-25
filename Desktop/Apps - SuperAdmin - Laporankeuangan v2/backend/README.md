@@ -104,6 +104,8 @@ uvicorn app.main:app --reload
 | GET    | `/reports/trial-balance?as_of=YYYY-MM-DD`         | `report.read` |
 | GET    | `/reports/profit-loss?date_from=&date_to=`        | `report.read` |
 | GET    | `/reports/balance-sheet?as_of=YYYY-MM-DD`         | `report.read` |
+| GET    | `/reports/aged-receivables?as_of=YYYY-MM-DD`      | `report.read` |
+| GET    | `/reports/aged-payables?as_of=YYYY-MM-DD`         | `report.read` |
 
 All reports:
 - Run against the **read replica** via `get_read_session()` so they
@@ -124,6 +126,22 @@ explicit equity broken out, **plus a computed `retained_earnings`**
 (cumulative net P/L through `as_of`). The `balanced` flag verifies the
 fundamental equation `Assets = Liabilities + Equity` (within 0.01 IDR
 rounding tolerance).
+
+**Aged AR / AP** — outstanding posted invoices grouped per customer
+(or supplier), with each invoice's outstanding amount bucketed by
+days overdue:
+
+| Bucket          | Range                              |
+|-----------------|------------------------------------|
+| `current`       | not yet due (`due_date >= as_of`)  |
+| `days_1_30`     | 1–30 days overdue                  |
+| `days_31_60`    | 31–60 days overdue                 |
+| `days_61_90`    | 61–90 days overdue                 |
+| `days_over_90`  | 91+ days overdue                   |
+
+Days overdue is computed against `due_date` if set, otherwise against
+`invoice_date`. Voided and fully-paid invoices are excluded. Each
+party row includes its individual invoice list for drill-down.
 
 ### Sales — `/api/v1`
 | Method | Path                                  | Permission       |
