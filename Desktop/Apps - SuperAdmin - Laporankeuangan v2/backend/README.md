@@ -332,6 +332,66 @@ for slug in $(ls /opt/legacy/tenants/); do
 done
 ```
 
+## Tenant isolation: Postgres RLS
+
+As of migration `0005`, every business-data table has **Row-Level
+Security** enabled with `FORCE ROW LEVEL SECURITY` (so even the
+table owner is subject to the policy). RLS is the safety net if the
+application ever forgets a `WHERE tenant_id = …` clause.
+
+### Tables protected
+
+```
+accounts, account_mappings,
+journal_entries, journal_lines (incl. all monthly partitions),
+customers, sales_invoices, sales_invoice_lines,
+suppliers, purchase_invoices, purchase_invoice_lines
+```
+
+Identity tables (`tenants`, `users`, `roles`, `permissions`,
+`role_permissions`, `tenant_users`, `refresh_tokens`) are NOT RLS-
+protected — login, register-tenant, and refresh flows must be able to
+read across tenants before any tenant context exists. Application-level
+auth is authoritative for those tables.
+
+### How the GUC is set
+
+`get_write_session` and `get_read_session` decode the request's bearer
+token inline and run, in the same transaction:
+
+```sql
+SELECT set_config('app.current_tenant', '<tenant-uuid>', true);  -- LOCAL
+SELECT set_config('app.is_super_admin', 'true', true);           -- only if `sa` claim
+```
+
+The policy on each table is then:
+
+```sql
+USING (
+    tenant_id::text = current_setting('app.current_tenant', true)
+    OR current_setting('app.is_super_admin', true) = 'true'
+)
+WITH CHECK (...)  -- same condition for INSERT/UPDATE
+```
+
+### Bypassing RLS in admin scripts
+
+CLI scripts that operate across tenants (e.g. `seed`, `import_legacy`,
+`manage_partitions`) use the standalone `transaction()` context manager
+in `app.core.database`, which sets `app.is_super_admin = 'true'` at
+session start. **Never use `transaction()` from inside a request
+handler** — always go through `get_write_session`.
+
+### What this protects against
+
+- Bug: a new query forgets `WHERE tenant_id = ?` → RLS returns 0 rows
+  instead of leaking another tenant's data
+- Bug: a service erroneously builds `Account(tenant_id=other_tenant_id)`
+  and tries to commit → Postgres rejects the INSERT with
+  `new row violates row-level security policy`
+- Compromised JWT for tenant A can never read tenant B's data via
+  the API regardless of any code path it traverses
+
 ## Journal table partitioning
 
 `journal_entries` and `journal_lines` are **RANGE-partitioned by

@@ -137,10 +137,15 @@ async def _reset_db(session_factory):
 # ── HTTP client with overridden DB dep ────────────────────
 @pytest_asyncio.fixture
 async def client(session_factory) -> AsyncGenerator[AsyncClient, None]:
+    from fastapi import Request
+
+    from app.core.database import _apply_tenant_context
     from app.main import app
 
-    async def _override_write():
+    async def _override_write(request: Request = None):
         async with session_factory() as s:
+            if request is not None:
+                await _apply_tenant_context(s, request)
             try:
                 yield s
                 await s.commit()
@@ -148,8 +153,10 @@ async def client(session_factory) -> AsyncGenerator[AsyncClient, None]:
                 await s.rollback()
                 raise
 
-    async def _override_read():
+    async def _override_read(request: Request = None):
         async with session_factory() as s:
+            if request is not None:
+                await _apply_tenant_context(s, request)
             yield s
 
     app.dependency_overrides[get_write_session] = _override_write

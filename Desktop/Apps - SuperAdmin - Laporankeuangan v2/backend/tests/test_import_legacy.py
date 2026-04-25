@@ -6,12 +6,17 @@ from decimal import Decimal
 from pathlib import Path
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import select, text
 
 from app.modules.accounting.models import Account, JournalEntry
 from app.modules.identity.models import Tenant
 from app.modules.sales.models import Customer, SalesInvoice
 from app.scripts.import_legacy import _run
+
+
+async def _admin(session):
+    """Bypass RLS for direct DB verification queries in tests."""
+    await session.execute(text("SELECT set_config('app.is_super_admin', 'true', true)"))
 
 
 def _make_args(data_dir: Path, **overrides) -> argparse.Namespace:
@@ -80,6 +85,7 @@ async def test_importer_creates_tenant_and_data(legacy_data_dir: Path, session_f
     assert rc == 0
 
     async with session_factory() as s:
+        await _admin(s)
         # Tenant created
         tenant = (await s.execute(select(Tenant).where(Tenant.slug == "legacy"))).scalar_one()
         assert tenant.name == "Legacy Co"
@@ -113,6 +119,7 @@ async def test_importer_is_idempotent(legacy_data_dir: Path, session_factory):
     assert await _run(_make_args(legacy_data_dir)) == 0  # second run, all skips
 
     async with session_factory() as s:
+        await _admin(s)
         tenants = (await s.execute(select(Tenant).where(Tenant.slug == "legacy"))).scalars().all()
         assert len(tenants) == 1
         accts = (await s.execute(select(Account))).scalars().all()
@@ -125,6 +132,7 @@ async def test_importer_dry_run_rolls_back(legacy_data_dir: Path, session_factor
     rc = await _run(_make_args(legacy_data_dir, dry_run=True))
     assert rc == 0
     async with session_factory() as s:
+        await _admin(s)
         # No data committed
         assert (await s.execute(select(Tenant).where(Tenant.slug == "legacy"))).scalar_one_or_none() is None
 
@@ -156,6 +164,7 @@ async def test_importer_rejects_unbalanced_journal(tmp_path: Path, session_facto
     # Returns 1 because there were import errors, but other imports still committed
     assert rc == 1
     async with session_factory() as s:
+        await _admin(s)
         # Accounts imported, but bad journal rejected
         je_count = len((await s.execute(select(JournalEntry))).scalars().all())
         assert je_count == 0
