@@ -1,4 +1,5 @@
 """Request middleware: request ID, timing, structured logging."""
+
 import time
 import uuid
 

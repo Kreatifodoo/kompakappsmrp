@@ -1,4 +1,5 @@
 """Identity flow: register → login → me → refresh."""
+
 from httpx import AsyncClient
 
 
@@ -53,9 +54,7 @@ async def test_login_wrong_password_returns_401(client: AsyncClient, tenant_toke
     assert r.status_code == 401
 
 
-async def test_me_returns_user_tenant_role_perms(
-    client: AsyncClient, tenant_token: dict
-):
+async def test_me_returns_user_tenant_role_perms(client: AsyncClient, tenant_token: dict):
     r = await client.get("/api/v1/auth/me", headers=tenant_token["headers"])
     assert r.status_code == 200
     body = r.json()

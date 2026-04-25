@@ -8,17 +8,14 @@ Strategy:
   perfect isolation regardless of test order.
 - HTTP via httpx ASGITransport — direct against the FastAPI app.
 """
+
 from __future__ import annotations
 
 import os
 
 # Set required env vars BEFORE any app imports (Settings reads eagerly)
-os.environ.setdefault(
-    "JWT_SECRET", "test-jwt-secret-at-least-32-characters-long-OK"
-)
-DEFAULT_TEST_DB_URL = (
-    "postgresql+asyncpg://kompak:kompak_dev@localhost:5432/kompak_test"
-)
+os.environ.setdefault("JWT_SECRET", "test-jwt-secret-at-least-32-characters-long-OK")
+DEFAULT_TEST_DB_URL = "postgresql+asyncpg://kompak:kompak_dev@localhost:5432/kompak_test"
 TEST_DB_URL = os.getenv("TEST_DB_URL", DEFAULT_TEST_DB_URL)
 os.environ["DB_PRIMARY_URL"] = TEST_DB_URL
 os.environ.setdefault("APP_ENV", "test")
@@ -36,11 +33,10 @@ from sqlalchemy.ext.asyncio import (  # noqa: E402
 
 # Import all models so Base.metadata is fully populated
 from app.core.database import Base, get_write_session  # noqa: E402
-from app.modules.identity import models as _identity  # noqa: F401, E402
 from app.modules.accounting import models as _accounting  # noqa: F401, E402
-from app.modules.sales import models as _sales  # noqa: F401, E402
+from app.modules.identity import models as _identity  # noqa: F401, E402
 from app.modules.purchase import models as _purchase  # noqa: F401, E402
-
+from app.modules.sales import models as _sales  # noqa: F401, E402
 
 # Tables to wipe between tests (in order ignoring FKs — we use TRUNCATE
 # with the full set, so order is irrelevant).
@@ -92,20 +88,18 @@ async def _seed_system_roles(session_factory) -> None:
         for code, desc in PERMISSIONS:
             s.add(Permission(code=code, description=desc))
         await s.flush()
-        perms_by_code = {
-            p.code: p for p in (await s.execute(select(Permission))).scalars().all()
-        }
+        perms_by_code = {p.code: p for p in (await s.execute(select(Permission))).scalars().all()}
         for role_name, codes in ROLES.items():
             role = Role(
-                tenant_id=None, name=role_name,
-                description=f"System role: {role_name}", is_system=True,
+                tenant_id=None,
+                name=role_name,
+                description=f"System role: {role_name}",
+                is_system=True,
             )
             s.add(role)
             await s.flush()
             for code in codes:
-                s.add(
-                    RolePermission(role_id=role.id, permission_id=perms_by_code[code].id)
-                )
+                s.add(RolePermission(role_id=role.id, permission_id=perms_by_code[code].id))
         await s.commit()
 
 
@@ -113,9 +107,7 @@ async def _seed_system_roles(session_factory) -> None:
 @pytest_asyncio.fixture(autouse=True)
 async def _reset_db(session_factory):
     async with session_factory() as s:
-        await s.execute(
-            text(f"TRUNCATE TABLE {', '.join(ALL_TABLES)} RESTART IDENTITY CASCADE")
-        )
+        await s.execute(text(f"TRUNCATE TABLE {', '.join(ALL_TABLES)} RESTART IDENTITY CASCADE"))
         await s.commit()
     await _seed_system_roles(session_factory)
     yield
@@ -136,9 +128,7 @@ async def client(session_factory) -> AsyncGenerator[AsyncClient, None]:
                 raise
 
     app.dependency_overrides[get_write_session] = _override
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
-    ) as c:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
         yield c
     app.dependency_overrides.clear()
 
@@ -178,8 +168,6 @@ async def tenant_token(client: AsyncClient) -> dict:
 @pytest_asyncio.fixture
 async def seeded_tenant(client: AsyncClient, tenant_token: dict) -> dict:
     """Tenant with starter COA + account mappings already provisioned."""
-    r = await client.post(
-        "/api/v1/accounts/seed-starter-coa", headers=tenant_token["headers"]
-    )
+    r = await client.post("/api/v1/accounts/seed-starter-coa", headers=tenant_token["headers"])
     assert r.status_code == 200, r.text
     return tenant_token

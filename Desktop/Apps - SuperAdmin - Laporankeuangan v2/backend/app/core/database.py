@@ -6,6 +6,7 @@ Two engines:
 
 After a write, route subsequent reads to primary for ~5s (read-your-writes).
 """
+
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
@@ -82,4 +83,5 @@ async def dispose_engines() -> None:
 async def set_tenant_context(session: AsyncSession, tenant_id: str) -> None:
     """Set Postgres session variable for RLS policies."""
     from sqlalchemy import text
+
     await session.execute(text("SET LOCAL app.current_tenant = :tid"), {"tid": tenant_id})

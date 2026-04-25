@@ -1,4 +1,5 @@
 """HTTP routes for Identity: /auth/login, /auth/refresh, /auth/me, /tenants."""
+
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -36,9 +37,7 @@ async def refresh(
     session: AsyncSession = Depends(get_write_session),
 ) -> TokenPair:
     svc = IdentityService(session)
-    return await svc.refresh(
-        payload.refresh_token, ip=request.client.host if request.client else None
-    )
+    return await svc.refresh(payload.refresh_token, ip=request.client.host if request.client else None)
 
 
 @router.post("/register-tenant", response_model=TenantOut, status_code=201)
@@ -58,9 +57,7 @@ async def me(
 ) -> MeResponse:
     repo = IdentityRepository(session)
     user = await repo.get_user(current.user_id)
-    tenant = (
-        await repo.get_tenant(current.tenant_id) if current.tenant_id else None
-    )
+    tenant = await repo.get_tenant(current.tenant_id) if current.tenant_id else None
     return MeResponse(
         user=UserOut.model_validate(user),
         tenant=TenantOut.model_validate(tenant) if tenant else None,

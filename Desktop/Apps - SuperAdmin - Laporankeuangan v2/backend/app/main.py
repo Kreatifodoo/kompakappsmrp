@@ -1,5 +1,6 @@
 """FastAPI application entrypoint."""
-from contextlib import asynccontextmanager
+
+from contextlib import asynccontextmanager, suppress
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -21,15 +22,11 @@ from app.core.middleware import RequestIdMiddleware
 async def lifespan(_: FastAPI):
     configure_logging()
     # Warm Redis connection (best-effort; ignore failures so API can start without it)
-    try:
+    with suppress(Exception):
         await get_redis()
-    except Exception:
-        pass
     yield
-    try:
+    with suppress(Exception):
         await close_redis()
-    except Exception:
-        pass
     await dispose_engines()
 
 

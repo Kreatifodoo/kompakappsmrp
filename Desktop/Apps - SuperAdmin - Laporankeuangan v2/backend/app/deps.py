@@ -1,4 +1,5 @@
 """Shared FastAPI dependencies: current user, tenant, permission checks."""
+
 from dataclasses import dataclass
 from uuid import UUID
 

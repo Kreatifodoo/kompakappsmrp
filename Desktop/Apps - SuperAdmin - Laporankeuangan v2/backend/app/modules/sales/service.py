@@ -8,9 +8,10 @@ Journal pattern:
         Cr  Sales Revenue       (subtotal)
         Cr  Tax Payable         (tax_amount, only if > 0)
 """
+
+from datetime import UTC, datetime
 from decimal import ROUND_HALF_UP, Decimal
 from uuid import UUID
-from datetime import datetime, timezone
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -58,18 +59,14 @@ class SalesService:
         return cust
 
     # ─── Invoices ───────────────────────────────────────
-    async def create_invoice(
-        self, payload: SalesInvoiceCreate, *, post_now: bool = False
-    ) -> SalesInvoice:
+    async def create_invoice(self, payload: SalesInvoiceCreate, *, post_now: bool = False) -> SalesInvoice:
         customer = await self.repo.get_customer(payload.customer_id)
         if not customer:
             raise ValidationError("Customer not found in this tenant")
         if not customer.is_active:
             raise ValidationError("Cannot invoice an inactive customer")
 
-        invoice_no = payload.invoice_no or await self.repo.next_invoice_no(
-            payload.invoice_date.year
-        )
+        invoice_no = payload.invoice_no or await self.repo.next_invoice_no(payload.invoice_date.year)
 
         subtotal = Decimal("0")
         tax_total = Decimal("0")
@@ -128,9 +125,7 @@ class SalesService:
         ar = await self.acct_repo.get_mapping("ar")
         rev = await self.acct_repo.get_mapping("sales_revenue")
         if not ar or not rev:
-            raise ValidationError(
-                "Account mappings missing: configure 'ar' and 'sales_revenue'"
-            )
+            raise ValidationError("Account mappings missing: configure 'ar' and 'sales_revenue'")
 
         lines: list[tuple[UUID, Decimal, Decimal]] = []
         # Dr AR (gross)
@@ -141,9 +136,7 @@ class SalesService:
         if invoice.tax_amount > 0:
             tax = await self.acct_repo.get_mapping("tax_payable")
             if not tax:
-                raise ValidationError(
-                    "Account mapping missing: configure 'tax_payable' for taxed sales"
-                )
+                raise ValidationError("Account mapping missing: configure 'tax_payable' for taxed sales")
             lines.append((tax.account_id, Decimal("0"), invoice.tax_amount))
 
         entry = await self.acct_svc.post_system_journal(
@@ -158,7 +151,7 @@ class SalesService:
         invoice.journal_entry_id = entry.id
         invoice.status = "posted"
         invoice.posted_by = self.user_id
-        invoice.posted_at = datetime.now(timezone.utc)
+        invoice.posted_at = datetime.now(UTC)
         await self.session.flush()
 
     async def void_invoice(self, invoice_id: UUID, reason: str) -> SalesInvoice:
@@ -171,13 +164,11 @@ class SalesService:
             raise ValidationError("Cannot void invoice with payments applied")
 
         if invoice.status == "posted":
-            await self.acct_svc.void_system_journal(
-                "sales_invoice", invoice.id, f"Voided: {reason}"
-            )
+            await self.acct_svc.void_system_journal("sales_invoice", invoice.id, f"Voided: {reason}")
 
         invoice.status = "void"
         invoice.voided_by = self.user_id
-        invoice.voided_at = datetime.now(timezone.utc)
+        invoice.voided_at = datetime.now(UTC)
         invoice.void_reason = reason
         await self.session.flush()
         return invoice

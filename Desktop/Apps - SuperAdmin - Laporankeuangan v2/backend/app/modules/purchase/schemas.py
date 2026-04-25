@@ -1,4 +1,5 @@
 """Pydantic schemas for Purchase module."""
+
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Literal

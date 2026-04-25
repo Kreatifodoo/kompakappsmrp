@@ -1,4 +1,5 @@
 """Purchase domain: Supplier, PurchaseInvoice, PurchaseInvoiceLine."""
+
 import uuid
 from datetime import date, datetime
 from decimal import Decimal
@@ -42,7 +43,9 @@ class Supplier(Base):
     tax_id: Mapped[str | None] = mapped_column(String(50))
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     notes: Mapped[str | None] = mapped_column(String(1000))
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
     )
@@ -91,7 +94,9 @@ class PurchaseInvoice(Base):
     void_reason: Mapped[str | None] = mapped_column(String(500))
 
     metadata_: Mapped[dict | None] = mapped_column("metadata", JSON)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
     )

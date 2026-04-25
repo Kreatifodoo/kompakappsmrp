@@ -1,5 +1,6 @@
 """Business logic for Identity: login, registration, token refresh."""
-from datetime import datetime, timezone
+
+from datetime import UTC, datetime
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -32,14 +33,12 @@ class IdentityService:
         self.repo = IdentityRepository(session)
 
     # ─── Login ──────────────────────────────────────────
-    async def login(
-        self, payload: LoginRequest, *, ip: str | None = None
-    ) -> TokenPair:
+    async def login(self, payload: LoginRequest, *, ip: str | None = None) -> TokenPair:
         user = await self.repo.get_user_by_email(payload.email)
         if not user or not user.is_active:
             raise AuthenticationError("Invalid credentials")
 
-        if user.locked_until and user.locked_until > datetime.now(timezone.utc):
+        if user.locked_until and user.locked_until > datetime.now(UTC):
             raise AuthenticationError("Account locked. Try again later.")
 
         if not verify_password(payload.password, user.password_hash):
@@ -47,9 +46,7 @@ class IdentityService:
             raise AuthenticationError("Invalid credentials")
 
         # Resolve tenant: super_admin can login without tenant; others must have membership
-        tenant_id, role_name, perms = await self._resolve_tenant_context(
-            user, payload.tenant_slug
-        )
+        tenant_id, role_name, perms = await self._resolve_tenant_context(user, payload.tenant_slug)
 
         await self.repo.reset_failed_login(user.id)
 
@@ -72,9 +69,7 @@ class IdentityService:
             raise AuthorizationError("User has no tenant access")
 
         if tenant_slug:
-            membership = next(
-                (m for m in memberships if m.tenant.slug == tenant_slug), None
-            )
+            membership = next((m for m in memberships if m.tenant.slug == tenant_slug), None)
             if not membership:
                 raise AuthorizationError(f"No access to tenant '{tenant_slug}'")
         elif len(memberships) == 1:
@@ -119,7 +114,7 @@ class IdentityService:
                 user_id=user.id,
                 role_id=owner_role.id,
                 is_owner=True,
-                accepted_at=datetime.now(timezone.utc),
+                accepted_at=datetime.now(UTC),
             )
         )
         return tenant
@@ -128,7 +123,7 @@ class IdentityService:
     async def refresh(self, raw_token: str, *, ip: str | None = None) -> TokenPair:
         token_hash = hash_refresh_token(raw_token)
         rt = await self.repo.get_refresh_token_by_hash(token_hash)
-        if not rt or rt.expires_at < datetime.now(timezone.utc):
+        if not rt or rt.expires_at < datetime.now(UTC):
             raise AuthenticationError("Invalid or expired refresh token")
 
         user = await self.repo.get_user(rt.user_id)
@@ -141,9 +136,7 @@ class IdentityService:
         # Reload tenant context (single membership inferred)
         tenant_id, role_name, perms = await self._resolve_tenant_context(user, None)
 
-        return await self._issue_tokens(
-            user=user, tenant_id=tenant_id, role=role_name, perms=perms, ip=ip
-        )
+        return await self._issue_tokens(user=user, tenant_id=tenant_id, role=role_name, perms=perms, ip=ip)
 
     # ─── Helpers ────────────────────────────────────────
     async def _issue_tokens(

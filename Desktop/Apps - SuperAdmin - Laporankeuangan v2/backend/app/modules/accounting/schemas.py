@@ -1,4 +1,5 @@
 """Pydantic schemas for Accounting module."""
+
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Literal
@@ -78,12 +79,10 @@ class JournalEntryCreate(BaseModel):
 
     @model_validator(mode="after")
     def _balanced(self) -> "JournalEntryCreate":
-        total_debit = sum((l.debit for l in self.lines), Decimal("0"))
-        total_credit = sum((l.credit for l in self.lines), Decimal("0"))
+        total_debit = sum((ln.debit for ln in self.lines), Decimal("0"))
+        total_credit = sum((ln.credit for ln in self.lines), Decimal("0"))
         if total_debit != total_credit:
-            raise ValueError(
-                f"Journal not balanced: debit={total_debit} credit={total_credit}"
-            )
+            raise ValueError(f"Journal not balanced: debit={total_debit} credit={total_credit}")
         return self
 
 
@@ -108,8 +107,13 @@ class JournalVoidRequest(BaseModel):
 
 # ─── Account Mappings ─────────────────────────────────────
 WELL_KNOWN_MAPPING_KEYS = {
-    "ar", "ap", "sales_revenue", "purchase_expense",
-    "tax_payable", "tax_receivable", "cash_default",
+    "ar",
+    "ap",
+    "sales_revenue",
+    "purchase_expense",
+    "tax_payable",
+    "tax_receivable",
+    "cash_default",
 }
 
 

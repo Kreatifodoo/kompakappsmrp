@@ -1,4 +1,5 @@
 """Data access for Accounting module — all queries scoped by tenant_id."""
+
 from datetime import date
 from uuid import UUID
 
@@ -10,7 +11,6 @@ from app.modules.accounting.models import (
     Account,
     AccountMapping,
     JournalEntry,
-    JournalLine,
 )
 
 
@@ -21,23 +21,17 @@ class AccountingRepository:
 
     # ── Accounts ─────────────────────────────────────────
     async def get_account(self, account_id: UUID) -> Account | None:
-        stmt = select(Account).where(
-            Account.id == account_id, Account.tenant_id == self.tenant_id
-        )
+        stmt = select(Account).where(Account.id == account_id, Account.tenant_id == self.tenant_id)
         return (await self.session.execute(stmt)).scalar_one_or_none()
 
     async def get_account_by_code(self, code: str) -> Account | None:
-        stmt = select(Account).where(
-            Account.code == code, Account.tenant_id == self.tenant_id
-        )
+        stmt = select(Account).where(Account.code == code, Account.tenant_id == self.tenant_id)
         return (await self.session.execute(stmt)).scalar_one_or_none()
 
     async def get_accounts_by_ids(self, ids: list[UUID]) -> list[Account]:
         if not ids:
             return []
-        stmt = select(Account).where(
-            Account.id.in_(ids), Account.tenant_id == self.tenant_id
-        )
+        stmt = select(Account).where(Account.id.in_(ids), Account.tenant_id == self.tenant_id)
         return list((await self.session.execute(stmt)).scalars().all())
 
     async def list_accounts(

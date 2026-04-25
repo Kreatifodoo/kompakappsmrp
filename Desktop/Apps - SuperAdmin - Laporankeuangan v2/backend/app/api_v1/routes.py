@@ -1,4 +1,5 @@
 """API v1 router aggregator."""
+
 from fastapi import APIRouter
 
 from app.modules.accounting.api import router as accounting_router

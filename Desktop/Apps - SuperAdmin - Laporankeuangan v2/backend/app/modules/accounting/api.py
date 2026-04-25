@@ -1,4 +1,5 @@
 """HTTP routes for Accounting: /accounts (COA), /journals."""
+
 from datetime import date
 from uuid import UUID
 
@@ -6,8 +7,8 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_write_session
-from app.core.exceptions import NotFoundError
-from app.deps import CurrentUser, get_current_user, require_permission
+from app.core.exceptions import AuthorizationError, NotFoundError, ValidationError
+from app.deps import CurrentUser, require_permission
 from app.modules.accounting.repository import AccountingRepository
 from app.modules.accounting.schemas import (
     WELL_KNOWN_MAPPING_KEYS,
@@ -90,8 +91,11 @@ async def list_journals(
 ) -> list[JournalEntryOut]:
     repo = AccountingRepository(session, current.tenant_id)
     entries = await repo.list_entries(
-        date_from=date_from, date_to=date_to, status=status,
-        limit=limit, offset=offset,
+        date_from=date_from,
+        date_to=date_to,
+        status=status,
+        limit=limit,
+        offset=offset,
     )
     return [JournalEntryOut.model_validate(e) for e in entries]
 
@@ -117,7 +121,6 @@ async def create_journal(
     session: AsyncSession = Depends(get_write_session),
 ) -> JournalEntryOut:
     if post_now and not current.has_permission("journal.post"):
-        from app.core.exceptions import AuthorizationError
         raise AuthorizationError("Missing permission: journal.post")
 
     svc = AccountingService(session, current.tenant_id, current.user_id)
@@ -153,10 +156,8 @@ async def set_mapping(
     session: AsyncSession = Depends(get_write_session),
 ) -> AccountMappingOut:
     if payload.key not in WELL_KNOWN_MAPPING_KEYS:
-        from app.core.exceptions import ValidationError as VE
-        raise VE(
-            f"Unknown mapping key '{payload.key}'. Allowed: "
-            f"{sorted(WELL_KNOWN_MAPPING_KEYS)}"
+        raise ValidationError(
+            f"Unknown mapping key '{payload.key}'. Allowed: {sorted(WELL_KNOWN_MAPPING_KEYS)}"
         )
     repo = AccountingRepository(session, current.tenant_id)
     # Verify account belongs to tenant

@@ -1,4 +1,5 @@
 """Custom exception classes mapped to HTTP responses."""
+
 from fastapi import HTTPException, Request, status
 from fastapi.responses import JSONResponse
 

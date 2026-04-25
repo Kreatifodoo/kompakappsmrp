@@ -1,5 +1,6 @@
 """Business logic for Accounting: COA management, journal posting."""
-from datetime import datetime, timezone
+
+from datetime import UTC, datetime
 from decimal import Decimal
 from uuid import UUID
 
@@ -33,9 +34,7 @@ class AccountingService:
             if not parent:
                 raise NotFoundError("Parent account not found")
             if parent.type != payload.type:
-                raise ValidationError(
-                    "Child account type must match parent type"
-                )
+                raise ValidationError("Child account type must match parent type")
 
         account = Account(
             tenant_id=self.tenant_id,
@@ -60,9 +59,7 @@ class AccountingService:
         await self.session.flush()
         return account
 
-    async def seed_starter_coa(
-        self, *, overwrite_mappings: bool = False
-    ) -> dict:
+    async def seed_starter_coa(self, *, overwrite_mappings: bool = False) -> dict:
         """Provision a standard COA + account mappings for this tenant.
 
         Idempotent: skips accounts whose code already exists. Mappings are
@@ -115,10 +112,7 @@ class AccountingService:
             remaining = still
 
         if remaining:
-            raise ValidationError(
-                f"Starter COA could not resolve parents for: "
-                f"{[a.code for a in remaining]}"
-            )
+            raise ValidationError(f"Starter COA could not resolve parents for: {[a.code for a in remaining]}")
 
         # Pass 2 — bind well-known mappings
         mappings_set = 0
@@ -139,11 +133,9 @@ class AccountingService:
         }
 
     # ─── Journal Entries ────────────────────────────────
-    async def create_journal(
-        self, payload: JournalEntryCreate, *, post_now: bool = False
-    ) -> JournalEntry:
+    async def create_journal(self, payload: JournalEntryCreate, *, post_now: bool = False) -> JournalEntry:
         # Validate all account_ids belong to this tenant
-        account_ids = list({l.account_id for l in payload.lines})
+        account_ids = list({ln.account_id for ln in payload.lines})
         accounts = await self.repo.get_accounts_by_ids(account_ids)
         if len(accounts) != len(account_ids):
             raise ValidationError("One or more accounts do not belong to this tenant")
@@ -151,9 +143,7 @@ class AccountingService:
         if inactive:
             raise ValidationError(f"Inactive accounts cannot be used: {inactive}")
 
-        entry_no = payload.entry_no or await self.repo.next_entry_no(
-            payload.entry_date.year
-        )
+        entry_no = payload.entry_no or await self.repo.next_entry_no(payload.entry_date.year)
 
         entry = JournalEntry(
             tenant_id=self.tenant_id,
@@ -165,7 +155,7 @@ class AccountingService:
             source="manual",
             created_by=self.user_id,
             posted_by=self.user_id if post_now else None,
-            posted_at=datetime.now(timezone.utc) if post_now else None,
+            posted_at=datetime.now(UTC) if post_now else None,
         )
         for idx, line in enumerate(payload.lines, start=1):
             entry.lines.append(
@@ -190,16 +180,14 @@ class AccountingService:
             raise ValidationError("Voided entry cannot be posted")
 
         # Re-verify balance defensively
-        total_debit = sum((l.debit for l in entry.lines), Decimal("0"))
-        total_credit = sum((l.credit for l in entry.lines), Decimal("0"))
+        total_debit = sum((ln.debit for ln in entry.lines), Decimal("0"))
+        total_credit = sum((ln.credit for ln in entry.lines), Decimal("0"))
         if total_debit != total_credit:
-            raise ValidationError(
-                f"Journal not balanced: debit={total_debit} credit={total_credit}"
-            )
+            raise ValidationError(f"Journal not balanced: debit={total_debit} credit={total_credit}")
 
         entry.status = "posted"
         entry.posted_by = self.user_id
-        entry.posted_at = datetime.now(timezone.utc)
+        entry.posted_at = datetime.now(UTC)
         await self.session.flush()
         return entry
 
@@ -225,9 +213,7 @@ class AccountingService:
         total_debit = sum((d for _, d, _ in lines), Decimal("0"))
         total_credit = sum((c for _, _, c in lines), Decimal("0"))
         if total_debit != total_credit:
-            raise ValidationError(
-                f"System journal not balanced: debit={total_debit} credit={total_credit}"
-            )
+            raise ValidationError(f"System journal not balanced: debit={total_debit} credit={total_credit}")
 
         account_ids = list({aid for aid, _, _ in lines})
         accounts = await self.repo.get_accounts_by_ids(account_ids)
@@ -246,7 +232,7 @@ class AccountingService:
             source_id=source_id,
             created_by=self.user_id,
             posted_by=self.user_id,
-            posted_at=datetime.now(timezone.utc),
+            posted_at=datetime.now(UTC),
         )
         for idx, (account_id, debit, credit) in enumerate(lines, start=1):
             entry.lines.append(
@@ -263,6 +249,7 @@ class AccountingService:
     async def void_system_journal(self, source: str, source_id: UUID, reason: str) -> JournalEntry | None:
         """Void the journal linked to a sales/purchase document. Returns None if not found."""
         from sqlalchemy import select
+
         stmt = select(JournalEntry).where(
             JournalEntry.tenant_id == self.tenant_id,
             JournalEntry.source == source,
@@ -274,7 +261,7 @@ class AccountingService:
             return None
         entry.status = "void"
         entry.voided_by = self.user_id
-        entry.voided_at = datetime.now(timezone.utc)
+        entry.voided_at = datetime.now(UTC)
         entry.void_reason = reason
         await self.session.flush()
         return entry
@@ -288,7 +275,7 @@ class AccountingService:
 
         entry.status = "void"
         entry.voided_by = self.user_id
-        entry.voided_at = datetime.now(timezone.utc)
+        entry.voided_at = datetime.now(UTC)
         entry.void_reason = reason
         await self.session.flush()
         return entry

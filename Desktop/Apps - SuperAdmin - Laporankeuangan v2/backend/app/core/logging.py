@@ -1,4 +1,5 @@
 """Structured JSON logging via structlog."""
+
 import logging
 import sys
 

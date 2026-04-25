@@ -1,14 +1,13 @@
 """End-to-end: posting a sales/purchase invoice creates a balanced journal
 in the same DB transaction; voiding the invoice voids the journal."""
+
 from decimal import Decimal
 
 from httpx import AsyncClient
 
 
 # ─── Sales ─────────────────────────────────────────────────
-async def test_sales_invoice_post_creates_balanced_journal(
-    client: AsyncClient, seeded_tenant: dict
-):
+async def test_sales_invoice_post_creates_balanced_journal(client: AsyncClient, seeded_tenant: dict):
     headers = seeded_tenant["headers"]
 
     # Create a customer
@@ -46,29 +45,26 @@ async def test_sales_invoice_post_creates_balanced_journal(
     assert invoice["journal_entry_id"] is not None
 
     # Fetch the linked journal
-    rj = await client.get(
-        f"/api/v1/journals/{invoice['journal_entry_id']}", headers=headers
-    )
+    rj = await client.get(f"/api/v1/journals/{invoice['journal_entry_id']}", headers=headers)
     assert rj.status_code == 200
     journal = rj.json()
     assert journal["status"] == "posted"
     assert journal["source"] == "sales_invoice"
 
     # Verify Dr/Cr distribution: AR 1110, Sales 1000, Tax 110
-    debits = sum(Decimal(l["debit"]) for l in journal["lines"])
-    credits = sum(Decimal(l["credit"]) for l in journal["lines"])
+    debits = sum(Decimal(ln["debit"]) for ln in journal["lines"])
+    credits = sum(Decimal(ln["credit"]) for ln in journal["lines"])
     assert debits == credits == Decimal("1110.00")
-    assert any(Decimal(l["debit"]) == Decimal("1110.00") for l in journal["lines"])
-    assert any(Decimal(l["credit"]) == Decimal("1000.00") for l in journal["lines"])
-    assert any(Decimal(l["credit"]) == Decimal("110.00") for l in journal["lines"])
+    assert any(Decimal(ln["debit"]) == Decimal("1110.00") for ln in journal["lines"])
+    assert any(Decimal(ln["credit"]) == Decimal("1000.00") for ln in journal["lines"])
+    assert any(Decimal(ln["credit"]) == Decimal("110.00") for ln in journal["lines"])
 
 
-async def test_void_sales_invoice_voids_journal(
-    client: AsyncClient, seeded_tenant: dict
-):
+async def test_void_sales_invoice_voids_journal(client: AsyncClient, seeded_tenant: dict):
     headers = seeded_tenant["headers"]
     rc = await client.post(
-        "/api/v1/customers", headers=headers,
+        "/api/v1/customers",
+        headers=headers,
         json={"code": "C002", "name": "ToVoid"},
     )
     customer_id = rc.json()["id"]
@@ -93,20 +89,17 @@ async def test_void_sales_invoice_voids_journal(
     assert rv.json()["status"] == "void"
 
     # Linked journal should also be void
-    rj = await client.get(
-        f"/api/v1/journals/{invoice['journal_entry_id']}", headers=headers
-    )
+    rj = await client.get(f"/api/v1/journals/{invoice['journal_entry_id']}", headers=headers)
     assert rj.json()["status"] == "void"
 
 
 # ─── Purchase ──────────────────────────────────────────────
-async def test_purchase_invoice_post_creates_balanced_journal(
-    client: AsyncClient, seeded_tenant: dict
-):
+async def test_purchase_invoice_post_creates_balanced_journal(client: AsyncClient, seeded_tenant: dict):
     headers = seeded_tenant["headers"]
 
     rs = await client.post(
-        "/api/v1/suppliers", headers=headers,
+        "/api/v1/suppliers",
+        headers=headers,
         json={"code": "S001", "name": "Vendor A"},
     )
     assert rs.status_code == 201
@@ -120,8 +113,7 @@ async def test_purchase_invoice_post_creates_balanced_journal(
             "supplier_id": supplier_id,
             "supplier_invoice_no": "VEN-A-0042",
             "lines": [
-                {"description": "Raw material", "qty": "10",
-                 "unit_price": "50.00", "tax_rate": "11"},
+                {"description": "Raw material", "qty": "10", "unit_price": "50.00", "tax_rate": "11"},
             ],
         },
     )
@@ -133,27 +125,24 @@ async def test_purchase_invoice_post_creates_balanced_journal(
     assert Decimal(invoice["total"]) == Decimal("555.00")
 
     # Verify journal: Dr Expense 500, Dr Tax Receivable 55, Cr AP 555
-    rj = await client.get(
-        f"/api/v1/journals/{invoice['journal_entry_id']}", headers=headers
-    )
+    rj = await client.get(f"/api/v1/journals/{invoice['journal_entry_id']}", headers=headers)
     journal = rj.json()
     assert journal["source"] == "purchase_invoice"
-    debits = sum(Decimal(l["debit"]) for l in journal["lines"])
-    credits = sum(Decimal(l["credit"]) for l in journal["lines"])
+    debits = sum(Decimal(ln["debit"]) for ln in journal["lines"])
+    credits = sum(Decimal(ln["credit"]) for ln in journal["lines"])
     assert debits == credits == Decimal("555.00")
     # AP credit = gross
-    assert any(Decimal(l["credit"]) == Decimal("555.00") for l in journal["lines"])
+    assert any(Decimal(ln["credit"]) == Decimal("555.00") for ln in journal["lines"])
 
 
-async def test_post_invoice_without_mappings_fails(
-    client: AsyncClient, tenant_token: dict
-):
+async def test_post_invoice_without_mappings_fails(client: AsyncClient, tenant_token: dict):
     """Without seeded COA / mappings, posting must error cleanly."""
     headers = tenant_token["headers"]
 
     # Create a customer (sales.write only — no posting yet)
     rc = await client.post(
-        "/api/v1/customers", headers=headers,
+        "/api/v1/customers",
+        headers=headers,
         json={"code": "C100", "name": "Early Bird"},
     )
     assert rc.status_code == 201

@@ -31,11 +31,28 @@ dev = [
 ]
 
 [tool.ruff]
-line-length = 100
+line-length = 110
 target-version = "py311"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "UP", "B", "SIM", "ASYNC"]
+ignore = [
+    # FastAPI / Pydantic / SQLAlchemy idioms — function calls in defaults
+    # are the standard pattern (Depends, Field, mapped_column, Query…).
+    "B008",
+    # `AppException` is a deliberate base class, not an "Error" type.
+    "N818",
+    # SQLAlchemy ORM models commonly use `id`, `type`, `status`, etc.
+    "A003",
+]
+# Single-letter loop vars `l` / `I` are reasonable in tight contexts
+# (line items, lambdas). Keep E741 enabled but allow per-line `noqa`.
+
+[tool.ruff.lint.extend-per-file-ignores]
+# Tests are allowed to import for side-effects + use long URLs/payloads.
+"tests/**" = ["E501"]
+# Migrations are auto-generated style; keep them readable but lax.
+"migrations/**" = ["E501", "I001"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

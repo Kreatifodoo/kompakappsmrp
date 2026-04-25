@@ -1,5 +1,6 @@
 """Data access layer for Identity module."""
-from datetime import datetime, timezone
+
+from datetime import UTC, datetime
 from uuid import UUID
 
 from sqlalchemy import select
@@ -40,7 +41,7 @@ class IdentityRepository:
             return
         user.failed_login_count += 1
         if user.failed_login_count >= 5:
-            user.locked_until = datetime.now(timezone.utc).replace(microsecond=0)
+            user.locked_until = datetime.now(UTC).replace(microsecond=0)
         await self.session.flush()
 
     async def reset_failed_login(self, user_id: UUID) -> None:
@@ -49,7 +50,7 @@ class IdentityRepository:
             return
         user.failed_login_count = 0
         user.locked_until = None
-        user.last_login_at = datetime.now(timezone.utc)
+        user.last_login_at = datetime.now(UTC)
         await self.session.flush()
 
     # ── Tenants ──────────────────────────────────────────────
@@ -66,9 +67,7 @@ class IdentityRepository:
         return tenant
 
     # ── Memberships ──────────────────────────────────────────
-    async def get_membership(
-        self, user_id: UUID, tenant_id: UUID
-    ) -> TenantUser | None:
+    async def get_membership(self, user_id: UUID, tenant_id: UUID) -> TenantUser | None:
         stmt = (
             select(TenantUser)
             .options(selectinload(TenantUser.tenant))
@@ -78,9 +77,7 @@ class IdentityRepository:
 
     async def list_user_memberships(self, user_id: UUID) -> list[TenantUser]:
         stmt = (
-            select(TenantUser)
-            .options(selectinload(TenantUser.tenant))
-            .where(TenantUser.user_id == user_id)
+            select(TenantUser).options(selectinload(TenantUser.tenant)).where(TenantUser.user_id == user_id)
         )
         return list((await self.session.execute(stmt)).scalars().all())
 
@@ -93,9 +90,7 @@ class IdentityRepository:
     async def get_role(self, role_id: UUID) -> Role | None:
         return await self.session.get(Role, role_id)
 
-    async def get_role_by_name(
-        self, name: str, tenant_id: UUID | None
-    ) -> Role | None:
+    async def get_role_by_name(self, name: str, tenant_id: UUID | None) -> Role | None:
         stmt = select(Role).where(Role.name == name, Role.tenant_id == tenant_id)
         return (await self.session.execute(stmt)).scalar_one_or_none()
 
@@ -120,5 +115,5 @@ class IdentityRepository:
         return (await self.session.execute(stmt)).scalar_one_or_none()
 
     async def revoke_refresh_token(self, rt: RefreshToken) -> None:
-        rt.revoked_at = datetime.now(timezone.utc)
+        rt.revoked_at = datetime.now(UTC)
         await self.session.flush()

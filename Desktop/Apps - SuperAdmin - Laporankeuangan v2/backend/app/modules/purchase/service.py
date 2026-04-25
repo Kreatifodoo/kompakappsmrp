@@ -5,7 +5,8 @@ Journal pattern on post:
     Dr  Tax Receivable                           (tax_amount, only if > 0)
         Cr  Accounts Payable                     (gross total)
 """
-from datetime import datetime, timezone
+
+from datetime import UTC, datetime
 from decimal import ROUND_HALF_UP, Decimal
 from uuid import UUID
 
@@ -69,15 +70,13 @@ class PurchaseService:
             raise ValidationError("Cannot bill an inactive supplier")
 
         # Validate per-line expense account overrides belong to tenant + are expense type
-        override_ids = [l.expense_account_id for l in payload.lines if l.expense_account_id]
+        override_ids = [ln.expense_account_id for ln in payload.lines if ln.expense_account_id]
         if override_ids:
             accounts = await self.acct_repo.get_accounts_by_ids(list(set(override_ids)))
             if len(accounts) != len(set(override_ids)):
                 raise ValidationError("Unknown expense account override")
 
-        invoice_no = payload.invoice_no or await self.repo.next_invoice_no(
-            payload.invoice_date.year
-        )
+        invoice_no = payload.invoice_no or await self.repo.next_invoice_no(payload.invoice_date.year)
 
         subtotal = Decimal("0")
         tax_total = Decimal("0")
@@ -137,9 +136,7 @@ class PurchaseService:
         ap = await self.acct_repo.get_mapping("ap")
         default_exp = await self.acct_repo.get_mapping("purchase_expense")
         if not ap or not default_exp:
-            raise ValidationError(
-                "Account mappings missing: configure 'ap' and 'purchase_expense'"
-            )
+            raise ValidationError("Account mappings missing: configure 'ap' and 'purchase_expense'")
 
         lines: list[tuple[UUID, Decimal, Decimal]] = []
 
@@ -177,7 +174,7 @@ class PurchaseService:
         invoice.journal_entry_id = entry.id
         invoice.status = "posted"
         invoice.posted_by = self.user_id
-        invoice.posted_at = datetime.now(timezone.utc)
+        invoice.posted_at = datetime.now(UTC)
         await self.session.flush()
 
     async def void_invoice(self, invoice_id: UUID, reason: str) -> PurchaseInvoice:
@@ -190,13 +187,11 @@ class PurchaseService:
             raise ValidationError("Cannot void invoice with payments applied")
 
         if invoice.status == "posted":
-            await self.acct_svc.void_system_journal(
-                "purchase_invoice", invoice.id, f"Voided: {reason}"
-            )
+            await self.acct_svc.void_system_journal("purchase_invoice", invoice.id, f"Voided: {reason}")
 
         invoice.status = "void"
         invoice.voided_by = self.user_id
-        invoice.voided_at = datetime.now(timezone.utc)
+        invoice.voided_at = datetime.now(UTC)
         invoice.void_reason = reason
         await self.session.flush()
         return invoice

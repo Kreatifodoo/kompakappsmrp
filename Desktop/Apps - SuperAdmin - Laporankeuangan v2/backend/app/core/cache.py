@@ -1,4 +1,5 @@
 """Redis client singleton + helpers."""
+
 from typing import Any
 
 import redis.asyncio as redis_lib

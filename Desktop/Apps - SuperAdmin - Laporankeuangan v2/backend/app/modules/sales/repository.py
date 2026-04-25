@@ -1,4 +1,5 @@
 """Sales data access layer."""
+
 from datetime import date
 from uuid import UUID
 
@@ -16,15 +17,11 @@ class SalesRepository:
 
     # ── Customers ────────────────────────────────────────
     async def get_customer(self, customer_id: UUID) -> Customer | None:
-        stmt = select(Customer).where(
-            Customer.id == customer_id, Customer.tenant_id == self.tenant_id
-        )
+        stmt = select(Customer).where(Customer.id == customer_id, Customer.tenant_id == self.tenant_id)
         return (await self.session.execute(stmt)).scalar_one_or_none()
 
     async def get_customer_by_code(self, code: str) -> Customer | None:
-        stmt = select(Customer).where(
-            Customer.code == code, Customer.tenant_id == self.tenant_id
-        )
+        stmt = select(Customer).where(Customer.code == code, Customer.tenant_id == self.tenant_id)
         return (await self.session.execute(stmt)).scalar_one_or_none()
 
     async def list_customers(self, *, active_only: bool = True) -> list[Customer]:

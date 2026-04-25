@@ -1,4 +1,5 @@
 """Purchase data access layer."""
+
 from datetime import date
 from uuid import UUID
 
@@ -15,15 +16,11 @@ class PurchaseRepository:
         self.tenant_id = tenant_id
 
     async def get_supplier(self, supplier_id: UUID) -> Supplier | None:
-        stmt = select(Supplier).where(
-            Supplier.id == supplier_id, Supplier.tenant_id == self.tenant_id
-        )
+        stmt = select(Supplier).where(Supplier.id == supplier_id, Supplier.tenant_id == self.tenant_id)
         return (await self.session.execute(stmt)).scalar_one_or_none()
 
     async def get_supplier_by_code(self, code: str) -> Supplier | None:
-        stmt = select(Supplier).where(
-            Supplier.code == code, Supplier.tenant_id == self.tenant_id
-        )
+        stmt = select(Supplier).where(Supplier.code == code, Supplier.tenant_id == self.tenant_id)
         return (await self.session.execute(stmt)).scalar_one_or_none()
 
     async def list_suppliers(self, *, active_only: bool = True) -> list[Supplier]:

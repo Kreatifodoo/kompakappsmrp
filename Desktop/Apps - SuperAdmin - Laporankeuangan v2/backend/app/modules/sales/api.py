@@ -1,4 +1,5 @@
 """HTTP routes for Sales: /customers, /sales-invoices."""
+
 from datetime import date
 from uuid import UUID
 
@@ -69,8 +70,12 @@ async def list_invoices(
 ) -> list[SalesInvoiceOut]:
     repo = SalesRepository(session, current.tenant_id)
     invoices = await repo.list_invoices(
-        date_from=date_from, date_to=date_to, status=status,
-        customer_id=customer_id, limit=limit, offset=offset,
+        date_from=date_from,
+        date_to=date_to,
+        status=status,
+        customer_id=customer_id,
+        limit=limit,
+        offset=offset,
     )
     return [SalesInvoiceOut.model_validate(i) for i in invoices]
 

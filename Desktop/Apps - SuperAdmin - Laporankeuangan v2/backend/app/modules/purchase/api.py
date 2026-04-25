@@ -1,4 +1,5 @@
 """HTTP routes for Purchase: /suppliers, /purchase-invoices."""
+
 from datetime import date
 from uuid import UUID
 
@@ -68,8 +69,12 @@ async def list_invoices(
 ) -> list[PurchaseInvoiceOut]:
     repo = PurchaseRepository(session, current.tenant_id)
     invoices = await repo.list_invoices(
-        date_from=date_from, date_to=date_to, status=status,
-        supplier_id=supplier_id, limit=limit, offset=offset,
+        date_from=date_from,
+        date_to=date_to,
+        status=status,
+        supplier_id=supplier_id,
+        limit=limit,
+        offset=offset,
     )
     return [PurchaseInvoiceOut.model_validate(i) for i in invoices]
 

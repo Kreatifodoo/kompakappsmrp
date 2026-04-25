@@ -1,13 +1,10 @@
 """Accounting: starter COA, accounts, journals."""
+
 from httpx import AsyncClient
 
 
-async def test_seed_starter_coa_creates_accounts_and_mappings(
-    client: AsyncClient, tenant_token: dict
-):
-    r = await client.post(
-        "/api/v1/accounts/seed-starter-coa", headers=tenant_token["headers"]
-    )
+async def test_seed_starter_coa_creates_accounts_and_mappings(client: AsyncClient, tenant_token: dict):
+    r = await client.post("/api/v1/accounts/seed-starter-coa", headers=tenant_token["headers"])
     assert r.status_code == 200
     body = r.json()
     assert body["accounts_created"] >= 30
@@ -15,9 +12,7 @@ async def test_seed_starter_coa_creates_accounts_and_mappings(
     assert body["mappings_set"] == 7
 
     # Re-running is idempotent
-    r2 = await client.post(
-        "/api/v1/accounts/seed-starter-coa", headers=tenant_token["headers"]
-    )
+    r2 = await client.post("/api/v1/accounts/seed-starter-coa", headers=tenant_token["headers"])
     assert r2.status_code == 200
     body2 = r2.json()
     assert body2["accounts_created"] == 0
@@ -29,8 +24,13 @@ async def test_seed_starter_coa_creates_accounts_and_mappings(
     assert rm.status_code == 200
     keys = {m["key"] for m in rm.json()}
     assert keys == {
-        "ar", "ap", "sales_revenue", "purchase_expense",
-        "tax_payable", "tax_receivable", "cash_default",
+        "ar",
+        "ap",
+        "sales_revenue",
+        "purchase_expense",
+        "tax_payable",
+        "tax_receivable",
+        "cash_default",
     }
 
 
@@ -51,20 +51,17 @@ async def test_create_custom_account(client: AsyncClient, seeded_tenant: dict):
     assert body["is_system"] is False
 
 
-async def test_duplicate_account_code_conflicts(
-    client: AsyncClient, seeded_tenant: dict
-):
+async def test_duplicate_account_code_conflicts(client: AsyncClient, seeded_tenant: dict):
     payload = {
-        "code": "5999", "name": "X", "type": "expense", "normal_side": "debit",
+        "code": "5999",
+        "name": "X",
+        "type": "expense",
+        "normal_side": "debit",
     }
-    r1 = await client.post(
-        "/api/v1/accounts", headers=seeded_tenant["headers"], json=payload
-    )
+    r1 = await client.post("/api/v1/accounts", headers=seeded_tenant["headers"], json=payload)
     assert r1.status_code == 201
 
-    r2 = await client.post(
-        "/api/v1/accounts", headers=seeded_tenant["headers"], json=payload
-    )
+    r2 = await client.post("/api/v1/accounts", headers=seeded_tenant["headers"], json=payload)
     assert r2.status_code == 409
 
 
@@ -74,9 +71,7 @@ async def _account_id_by_code(client: AsyncClient, headers: dict, code: str) -> 
     return next(a["id"] for a in r.json() if a["code"] == code)
 
 
-async def test_create_balanced_journal_succeeds(
-    client: AsyncClient, seeded_tenant: dict
-):
+async def test_create_balanced_journal_succeeds(client: AsyncClient, seeded_tenant: dict):
     cash = await _account_id_by_code(client, seeded_tenant["headers"], "1110")
     capital = await _account_id_by_code(client, seeded_tenant["headers"], "3100")
 
@@ -99,9 +94,7 @@ async def test_create_balanced_journal_succeeds(
     assert body["entry_no"].startswith("JV-2026-")
 
 
-async def test_unbalanced_journal_rejected(
-    client: AsyncClient, seeded_tenant: dict
-):
+async def test_unbalanced_journal_rejected(client: AsyncClient, seeded_tenant: dict):
     cash = await _account_id_by_code(client, seeded_tenant["headers"], "1110")
     capital = await _account_id_by_code(client, seeded_tenant["headers"], "3100")
 

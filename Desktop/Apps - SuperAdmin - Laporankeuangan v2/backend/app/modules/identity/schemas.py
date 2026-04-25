@@ -1,4 +1,5 @@
 """Pydantic schemas for Identity module HTTP layer."""
+
 from datetime import datetime
 from uuid import UUID
 

@@ -1,7 +1,8 @@
 """Security primitives: password hashing, JWT, refresh tokens."""
+
 import hashlib
 import secrets
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from jose import jwt
@@ -27,7 +28,7 @@ def create_access_token(
     permissions: list[str],
     is_super_admin: bool = False,
 ) -> str:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     payload: dict[str, Any] = {
         "sub": str(user_id),
         "tid": str(tenant_id) if tenant_id else None,
@@ -50,7 +51,7 @@ def create_refresh_token() -> tuple[str, str, datetime]:
     """
     raw = secrets.token_urlsafe(48)
     hashed = hashlib.sha256(raw.encode()).hexdigest()
-    expires_at = datetime.now(timezone.utc) + timedelta(days=settings.JWT_REFRESH_TOKEN_EXPIRE_DAYS)
+    expires_at = datetime.now(UTC) + timedelta(days=settings.JWT_REFRESH_TOKEN_EXPIRE_DAYS)
     return raw, hashed, expires_at
 
 

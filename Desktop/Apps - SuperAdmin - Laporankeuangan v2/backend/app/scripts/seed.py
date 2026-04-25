@@ -3,6 +3,7 @@
 Run:
     python -m app.scripts.seed
 """
+
 import asyncio
 
 from sqlalchemy import select
@@ -42,21 +43,36 @@ PERMISSIONS: list[tuple[str, str]] = [
 ROLES: dict[str, list[str]] = {
     "admin": [code for code, _ in PERMISSIONS],
     "accountant": [
-        "coa.read", "coa.write",
-        "journal.read", "journal.write", "journal.post",
-        "sales.read", "sales.write", "sales.post",
-        "purchase.read", "purchase.write", "purchase.post",
-        "report.read", "report.export",
+        "coa.read",
+        "coa.write",
+        "journal.read",
+        "journal.write",
+        "journal.post",
+        "sales.read",
+        "sales.write",
+        "sales.post",
+        "purchase.read",
+        "purchase.write",
+        "purchase.post",
+        "report.read",
+        "report.export",
     ],
     "staff": [
         "coa.read",
-        "journal.read", "journal.write",
-        "sales.read", "sales.write",
-        "purchase.read", "purchase.write",
+        "journal.read",
+        "journal.write",
+        "sales.read",
+        "sales.write",
+        "purchase.read",
+        "purchase.write",
         "report.read",
     ],
     "viewer": [
-        "coa.read", "journal.read", "sales.read", "purchase.read", "report.read",
+        "coa.read",
+        "journal.read",
+        "sales.read",
+        "purchase.read",
+        "report.read",
     ],
 }
 
@@ -64,10 +80,7 @@ ROLES: dict[str, list[str]] = {
 async def seed() -> None:
     async with transaction() as session:
         # Permissions
-        existing_perms = {
-            p.code: p
-            for p in (await session.execute(select(Permission))).scalars().all()
-        }
+        existing_perms = {p.code: p for p in (await session.execute(select(Permission))).scalars().all()}
         for code, desc in PERMISSIONS:
             if code not in existing_perms:
                 p = Permission(code=code, description=desc)
@@ -79,10 +92,10 @@ async def seed() -> None:
         existing_roles = {
             r.name: r
             for r in (
-                await session.execute(
-                    select(Role).where(Role.tenant_id.is_(None), Role.is_system.is_(True))
-                )
-            ).scalars().all()
+                await session.execute(select(Role).where(Role.tenant_id.is_(None), Role.is_system.is_(True)))
+            )
+            .scalars()
+            .all()
         }
 
         for role_name, perm_codes in ROLES.items():
@@ -98,11 +111,7 @@ async def seed() -> None:
                 await session.flush()
 
             # Wipe + re-attach permissions (idempotent)
-            await session.execute(
-                RolePermission.__table__.delete().where(
-                    RolePermission.role_id == role.id
-                )
-            )
+            await session.execute(RolePermission.__table__.delete().where(RolePermission.role_id == role.id))
             for code in perm_codes:
                 perm = existing_perms[code]
                 session.add(RolePermission(role_id=role.id, permission_id=perm.id))

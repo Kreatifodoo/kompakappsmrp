@@ -2,6 +2,7 @@
 
 For inter-process events (API ↔ Celery worker), use Redis Pub/Sub or LISTEN/NOTIFY.
 """
+
 import asyncio
 from collections.abc import Awaitable, Callable
 from typing import Any
@@ -32,12 +33,8 @@ async def publish(event_type: str, payload: dict[str, Any]) -> None:
     asyncio.create_task(_dispatch(event_type, handlers, payload))
 
 
-async def _dispatch(
-    event_type: str, handlers: list[EventHandler], payload: dict[str, Any]
-) -> None:
-    results = await asyncio.gather(
-        *(h(payload) for h in handlers), return_exceptions=True
-    )
+async def _dispatch(event_type: str, handlers: list[EventHandler], payload: dict[str, Any]) -> None:
+    results = await asyncio.gather(*(h(payload) for h in handlers), return_exceptions=True)
     for handler, result in zip(handlers, results, strict=True):
         if isinstance(result, Exception):
             logger.error(
