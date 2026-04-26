@@ -280,6 +280,48 @@ class ReportsRepository:
         stmt = select(Supplier).where(Supplier.id == supplier_id, Supplier.tenant_id == self.tenant_id)
         return (await self.session.execute(stmt)).scalar_one_or_none()
 
+    # ─── PPN tax report ──────────────────────────────────
+    async def sales_invoices_in_month_for_ppn(
+        self, *, year: int, month: int
+    ) -> list[tuple[Customer, SalesInvoice]]:
+        """Posted (or paid) sales invoices in a given calendar month."""
+        from datetime import date as _date
+
+        start = _date(year, month, 1)
+        end = _date(year + 1, 1, 1) if month == 12 else _date(year, month + 1, 1)
+        stmt = (
+            select(Customer, SalesInvoice)
+            .join(SalesInvoice, SalesInvoice.customer_id == Customer.id)
+            .where(
+                SalesInvoice.tenant_id == self.tenant_id,
+                SalesInvoice.status.in_(("posted", "paid")),
+                SalesInvoice.invoice_date >= start,
+                SalesInvoice.invoice_date < end,
+            )
+            .order_by(SalesInvoice.invoice_date, SalesInvoice.invoice_no)
+        )
+        return list((await self.session.execute(stmt)).all())
+
+    async def purchase_invoices_in_month_for_ppn(
+        self, *, year: int, month: int
+    ) -> list[tuple[Supplier, PurchaseInvoice]]:
+        from datetime import date as _date
+
+        start = _date(year, month, 1)
+        end = _date(year + 1, 1, 1) if month == 12 else _date(year, month + 1, 1)
+        stmt = (
+            select(Supplier, PurchaseInvoice)
+            .join(PurchaseInvoice, PurchaseInvoice.supplier_id == Supplier.id)
+            .where(
+                PurchaseInvoice.tenant_id == self.tenant_id,
+                PurchaseInvoice.status.in_(("posted", "paid")),
+                PurchaseInvoice.invoice_date >= start,
+                PurchaseInvoice.invoice_date < end,
+            )
+            .order_by(PurchaseInvoice.invoice_date, PurchaseInvoice.invoice_no)
+        )
+        return list((await self.session.execute(stmt)).all())
+
     # ─── Bank reconciliation ─────────────────────────────
     async def cash_account_lines_in_period(
         self,

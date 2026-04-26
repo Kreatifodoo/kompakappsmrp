@@ -181,6 +181,51 @@ class BankReconciliationRequest(BaseModel):
     date_tolerance_days: int = 2  # ±2 days default; bank-vs-book posting lag
 
 
+# ─── PPN (Indonesian VAT) report ──────────────────────────
+class PPNSalesLine(BaseModel):
+    """One sales (output VAT) entry for a PPN report row."""
+
+    invoice_id: UUID
+    invoice_no: str
+    invoice_date: date
+    customer_code: str
+    customer_name: str
+    customer_tax_id: str | None
+    base: Decimal  # subtotal (taxable base / DPP)
+    tax: Decimal  # output VAT collected (PPN Keluaran)
+
+
+class PPNPurchaseLine(BaseModel):
+    """One purchase (input VAT) entry."""
+
+    invoice_id: UUID
+    invoice_no: str
+    supplier_invoice_no: str | None
+    invoice_date: date
+    supplier_code: str
+    supplier_name: str
+    supplier_tax_id: str | None
+    base: Decimal
+    tax: Decimal  # input VAT paid (PPN Masukan)
+
+
+class PPNTotals(BaseModel):
+    sales_base_total: Decimal
+    output_vat_total: Decimal  # PPN Keluaran
+    purchase_base_total: Decimal
+    input_vat_total: Decimal  # PPN Masukan
+    net_vat_payable: Decimal  # Output - Input (positive = payable; negative = refund)
+
+
+class PPNReport(BaseModel):
+    period: str  # "YYYY-MM"
+    year: int
+    month: int
+    sales: list[PPNSalesLine]
+    purchases: list[PPNPurchaseLine]
+    totals: PPNTotals
+
+
 class BankReconciliation(BaseModel):
     cash_account_id: UUID
     cash_account_code: str

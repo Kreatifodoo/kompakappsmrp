@@ -20,6 +20,10 @@ from app.modules.reports.schemas import (
     BookCashLine,
     BSLine,
     PLLine,
+    PPNPurchaseLine,
+    PPNReport,
+    PPNSalesLine,
+    PPNTotals,
     ProfitLoss,
     Statement,
     StatementLine,
@@ -600,4 +604,69 @@ class ReportsService:
             book_only_total=book_only_total,
             statement_only_total=statement_only_total,
             difference=book_period_total - statement_period_total,
+        )
+
+    # ─── PPN (Indonesian VAT) report ──────────────────────
+    async def ppn_report(self, *, year: int, month: int) -> PPNReport:
+        """Monthly PPN report — output VAT (sales) vs input VAT
+        (purchases). Voided invoices are excluded; tax-free invoices
+        contribute base only (tax = 0)."""
+        if not 1 <= month <= 12:
+            raise ValidationError(f"Invalid month {month}; must be 1..12")
+
+        sales_rows = await self.repo.sales_invoices_in_month_for_ppn(year=year, month=month)
+        purchase_rows = await self.repo.purchase_invoices_in_month_for_ppn(year=year, month=month)
+
+        sales: list[PPNSalesLine] = []
+        sales_base_total = Decimal("0")
+        output_vat_total = Decimal("0")
+        for customer, inv in sales_rows:
+            sales.append(
+                PPNSalesLine(
+                    invoice_id=inv.id,
+                    invoice_no=inv.invoice_no,
+                    invoice_date=inv.invoice_date,
+                    customer_code=customer.code,
+                    customer_name=customer.name,
+                    customer_tax_id=customer.tax_id,
+                    base=inv.subtotal,
+                    tax=inv.tax_amount,
+                )
+            )
+            sales_base_total += inv.subtotal
+            output_vat_total += inv.tax_amount
+
+        purchases: list[PPNPurchaseLine] = []
+        purchase_base_total = Decimal("0")
+        input_vat_total = Decimal("0")
+        for supplier, inv in purchase_rows:
+            purchases.append(
+                PPNPurchaseLine(
+                    invoice_id=inv.id,
+                    invoice_no=inv.invoice_no,
+                    supplier_invoice_no=inv.supplier_invoice_no,
+                    invoice_date=inv.invoice_date,
+                    supplier_code=supplier.code,
+                    supplier_name=supplier.name,
+                    supplier_tax_id=supplier.tax_id,
+                    base=inv.subtotal,
+                    tax=inv.tax_amount,
+                )
+            )
+            purchase_base_total += inv.subtotal
+            input_vat_total += inv.tax_amount
+
+        return PPNReport(
+            period=f"{year:04d}-{month:02d}",
+            year=year,
+            month=month,
+            sales=sales,
+            purchases=purchases,
+            totals=PPNTotals(
+                sales_base_total=sales_base_total,
+                output_vat_total=output_vat_total,
+                purchase_base_total=purchase_base_total,
+                input_vat_total=input_vat_total,
+                net_vat_payable=output_vat_total - input_vat_total,
+            ),
         )

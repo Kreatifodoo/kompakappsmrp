@@ -14,6 +14,7 @@ from app.modules.reports.schemas import (
     BalanceSheet,
     BankReconciliation,
     BankReconciliationRequest,
+    PPNReport,
     ProfitLoss,
     Statement,
     TrialBalance,
@@ -155,3 +156,18 @@ async def bank_reconciliation(
         raise ValidationError("date_from must be <= date_to")
     svc = ReportsService(session, current.tenant_id)
     return await svc.bank_reconciliation(payload)
+
+
+@router.get(
+    "/ppn",
+    response_model=PPNReport,
+    summary="Indonesian VAT (PPN) report — monthly output vs input VAT",
+)
+async def ppn_report(
+    year: int = Query(..., ge=2000, le=2100),
+    month: int = Query(..., ge=1, le=12),
+    current: CurrentUser = Depends(require_permission("report.read")),
+    session: AsyncSession = Depends(get_read_session),
+) -> PPNReport:
+    svc = ReportsService(session, current.tenant_id)
+    return await svc.ppn_report(year=year, month=month)
