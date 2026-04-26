@@ -75,6 +75,34 @@ uvicorn app.main:app --reload
 
 ## Endpoints (current)
 
+### Roles & Permissions — `/api/v1`
+| Method | Path                          | Permission     |
+|--------|-------------------------------|----------------|
+| GET    | `/permissions`                | `role.manage`  |
+| GET    | `/roles`                      | `role.manage`  |
+| GET    | `/roles/{id}`                 | `role.manage`  |
+| POST   | `/roles`                      | `role.manage`  |
+| PATCH  | `/roles/{id}`                 | `role.manage`  |
+| DELETE | `/roles/{id}`                 | `role.manage`  |
+
+`GET /roles` returns system roles (admin/accountant/staff/viewer with
+`tenant_id=null`, `is_system=true`) **plus** the calling tenant's own
+custom roles. Other tenants' customs are hidden — uniqueness is
+per-tenant, so two tenants can each have a "manager" role with
+different permissions.
+
+`POST /roles` creates a custom role with a chosen subset of the
+permission catalog (use `GET /permissions` to discover codes). The
+name cannot collide with a system role and must be unique within the
+tenant.
+
+`PATCH /roles/{id}` updates name / description / permission set.
+**System roles are read-only** — attempting to PATCH or DELETE one
+returns 422.
+
+`DELETE /roles/{id}` blocks deletion if any user is still assigned to
+the role (returns 409 with the count). Reassign affected users first.
+
 ### Identity — `/api/v1/auth`
 | Method | Path                  | Auth | Description                          |
 |--------|-----------------------|------|--------------------------------------|

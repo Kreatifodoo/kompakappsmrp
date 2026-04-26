@@ -102,6 +102,52 @@ class IdentityRepository:
         )
         return list((await self.session.execute(stmt)).scalars().all())
 
+    async def list_permissions(self) -> list[Permission]:
+        stmt = select(Permission).order_by(Permission.code)
+        return list((await self.session.execute(stmt)).scalars().all())
+
+    async def get_permissions_by_codes(self, codes: list[str]) -> list[Permission]:
+        if not codes:
+            return []
+        stmt = select(Permission).where(Permission.code.in_(codes))
+        return list((await self.session.execute(stmt)).scalars().all())
+
+    async def list_roles_for_tenant(self, tenant_id: UUID) -> list[Role]:
+        """All roles available to a tenant: system roles (tenant_id IS NULL)
+        + this tenant's own custom roles."""
+        from sqlalchemy import or_
+
+        stmt = (
+            select(Role)
+            .where(or_(Role.tenant_id.is_(None), Role.tenant_id == tenant_id))
+            .order_by(Role.is_system.desc(), Role.name)
+        )
+        return list((await self.session.execute(stmt)).scalars().all())
+
+    async def add_role(self, role: Role) -> Role:
+        self.session.add(role)
+        await self.session.flush()
+        return role
+
+    async def replace_role_permissions(self, role_id: UUID, permission_ids: list[UUID]) -> None:
+        """Wipe and re-attach the role's permission set in one go."""
+        await self.session.execute(RolePermission.__table__.delete().where(RolePermission.role_id == role_id))
+        for pid in permission_ids:
+            self.session.add(RolePermission(role_id=role_id, permission_id=pid))
+        await self.session.flush()
+
+    async def delete_role(self, role: Role) -> None:
+        await self.session.delete(role)
+        await self.session.flush()
+
+    async def count_users_with_role(self, role_id: UUID) -> int:
+        from sqlalchemy import func as _f
+
+        from app.modules.identity.models import TenantUser
+
+        stmt = select(_f.count(TenantUser.user_id)).where(TenantUser.role_id == role_id)
+        return (await self.session.execute(stmt)).scalar_one() or 0
+
     # ── Refresh tokens ───────────────────────────────────────
     async def add_refresh_token(self, rt: RefreshToken) -> RefreshToken:
         self.session.add(rt)

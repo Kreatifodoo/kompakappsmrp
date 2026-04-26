@@ -57,3 +57,36 @@ class MeResponse(BaseModel):
     tenant: TenantOut | None
     role: str
     permissions: list[str]
+
+
+# ─── Roles & Permissions ──────────────────────────────────
+class PermissionOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    code: str
+    description: str | None
+
+
+class RoleCreate(BaseModel):
+    name: str = Field(min_length=2, max_length=50)
+    description: str | None = Field(default=None, max_length=255)
+    permission_codes: list[str] = Field(min_length=1)
+
+
+class RoleUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=2, max_length=50)
+    description: str | None = Field(default=None, max_length=255)
+    # If non-None, replaces the role's permission set entirely
+    permission_codes: list[str] | None = None
+
+
+class RoleOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    tenant_id: UUID | None  # NULL for system roles
+    name: str
+    description: str | None
+    is_system: bool
+    permissions: list[str]  # permission codes
