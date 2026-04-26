@@ -509,6 +509,58 @@ for slug in $(ls /opt/legacy/tenants/); do
 done
 ```
 
+## Rate limiting
+
+`RateLimitMiddleware` (in `app/core/middleware.py`) sits in the request
+chain just inside the request-id middleware. It buckets each request
+into a Redis-backed counter and rejects with `429 Too Many Requests`
+once the bucket fills.
+
+### Buckets
+
+| Caller | Key | Default limit |
+|---|---|---|
+| Authenticated (any valid JWT) | `tenant:<tid>` | `RATE_LIMIT_FREE` (60/min) |
+| Anonymous / invalid token | `ip:<addr>` | `RATE_LIMIT_ANONYMOUS` (30/min) |
+| `/health`, `/openapi.json`, `/docs`, `/redoc` | — | bypass entirely |
+
+The window size is `RATE_LIMIT_WINDOW_SEC` (default 60s). Plan-based
+variation (free / pro / enterprise) is plumbed through config but not
+yet read at runtime — the FREE limit applies uniformly today; the hook
+to differentiate per `tenant.plan` lives in `_classify_request`.
+
+### Failure modes
+
+- **Limit exceeded**: 429 with body `{"error": {"code":
+  "rate_limit_exceeded", ...}}` and a `Retry-After: <window_sec>`
+  header.
+- **Redis unreachable**: middleware logs `rate_limit_check_failed` and
+  **fails open** — the request continues. Better than coupling cache
+  outages to API availability.
+- **Disabled**: set `RATE_LIMIT_ENABLED=false` to short-circuit the
+  middleware entirely. The test suite uses this so existing tests
+  don't need a Redis instance.
+
+### Manual smoke test
+
+```bash
+# Anonymous: 30/min on login → spam will start returning 429
+for i in {1..40}; do
+  curl -s -o /dev/null -w "%{http_code}\n" \
+    -H "Content-Type: application/json" \
+    -d '{"email":"x@y.test","password":"wrong"}' \
+    http://localhost:8000/api/v1/auth/login
+done
+
+# Authenticated: 60/min on /me
+TOKEN="..."
+for i in {1..70}; do
+  curl -s -o /dev/null -w "%{http_code}\n" \
+    -H "Authorization: Bearer $TOKEN" \
+    http://localhost:8000/api/v1/auth/me
+done
+```
+
 ## Tenant isolation: Postgres RLS
 
 As of migration `0005`, every business-data table has **Row-Level

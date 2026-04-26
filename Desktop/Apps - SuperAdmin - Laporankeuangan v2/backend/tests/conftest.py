@@ -19,6 +19,9 @@ DEFAULT_TEST_DB_URL = "postgresql+asyncpg://kompak:kompak_dev@localhost:5432/kom
 TEST_DB_URL = os.getenv("TEST_DB_URL", DEFAULT_TEST_DB_URL)
 os.environ["DB_PRIMARY_URL"] = TEST_DB_URL
 os.environ.setdefault("APP_ENV", "test")
+# Rate limiting requires Redis — disable for the standard suite. The
+# dedicated rate-limit tests flip this on per-case.
+os.environ.setdefault("RATE_LIMIT_ENABLED", "false")
 
 from collections.abc import AsyncGenerator  # noqa: E402
 

@@ -15,7 +15,7 @@ from app.core.exceptions import (
     http_exception_handler,
 )
 from app.core.logging import configure_logging
-from app.core.middleware import RequestIdMiddleware
+from app.core.middleware import RateLimitMiddleware, RequestIdMiddleware
 
 
 @asynccontextmanager
@@ -54,7 +54,11 @@ def create_app() -> FastAPI:
         expose_headers=["x-request-id"],
     )
 
-    # Request ID + structured access logs
+    # Order matters: middleware added LAST runs FIRST per request.
+    # We want RequestId outermost (so all logs carry request_id) and
+    # RateLimit just inside it (so rate-limited responses are still
+    # logged with their request_id).
+    app.add_middleware(RateLimitMiddleware)
     app.add_middleware(RequestIdMiddleware)
 
     # Exception handlers

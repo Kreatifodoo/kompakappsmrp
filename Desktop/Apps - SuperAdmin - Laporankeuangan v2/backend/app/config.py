@@ -39,9 +39,12 @@ class Settings(BaseSettings):
     LOG_LEVEL: str = "INFO"
     LOG_JSON: bool = False
 
-    RATE_LIMIT_FREE: int = 60
+    RATE_LIMIT_ENABLED: bool = True
+    RATE_LIMIT_WINDOW_SEC: int = 60
+    RATE_LIMIT_FREE: int = 60  # default authenticated requests / window
     RATE_LIMIT_PRO: int = 600
     RATE_LIMIT_ENTERPRISE: int = 6000
+    RATE_LIMIT_ANONYMOUS: int = 30  # IP-based limit for unauthenticated routes
 
     @property
     def db_replica_url(self) -> str:
