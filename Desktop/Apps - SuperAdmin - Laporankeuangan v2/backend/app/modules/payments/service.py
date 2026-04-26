@@ -23,6 +23,7 @@ from app.modules.accounting.service import AccountingService
 from app.modules.payments.models import Payment, PaymentApplication
 from app.modules.payments.repository import PaymentsRepository
 from app.modules.payments.schemas import PaymentCreate
+from app.modules.periods.service import assert_period_open
 from app.modules.purchase.repository import PurchaseRepository
 from app.modules.sales.repository import SalesRepository
 
@@ -41,6 +42,7 @@ class PaymentsService:
         self.purchase_repo = PurchaseRepository(session, tenant_id)
 
     async def create_payment(self, payload: PaymentCreate, *, post_now: bool = True) -> Payment:
+        await assert_period_open(self.session, self.tenant_id, payload.payment_date)
         # ── Validate cash account ─────────────────────────
         cash_acct = await self.acct_repo.get_account(payload.cash_account_id)
         if not cash_acct:
@@ -206,6 +208,7 @@ class PaymentsService:
             raise NotFoundError("Payment not found")
         if payment.status == "void":
             raise ConflictError("Payment already voided")
+        await assert_period_open(self.session, self.tenant_id, payment.payment_date)
 
         if payment.status == "posted":
             # Void the linked journal

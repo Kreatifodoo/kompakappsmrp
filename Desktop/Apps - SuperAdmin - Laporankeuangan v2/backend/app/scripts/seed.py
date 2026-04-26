@@ -37,6 +37,8 @@ PERMISSIONS: list[tuple[str, str]] = [
     ("payment.post", "Post / void payments (creates journals + settles invoices)"),
     # Audit
     ("audit.read", "View audit logs"),
+    # Periods
+    ("period.close", "Close / reopen accounting periods"),
     # Reports
     ("report.read", "View reports"),
     ("report.export", "Export reports"),
@@ -66,6 +68,7 @@ ROLES: dict[str, list[str]] = {
         "report.read",
         "report.export",
         "audit.read",
+        "period.close",
     ],
     "staff": [
         "coa.read",

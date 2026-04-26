@@ -1,11 +1,12 @@
 """Identity domain models: Tenant, User, Role, Permission, RefreshToken."""
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 
 from sqlalchemy import (
     JSON,
     Boolean,
+    Date,
     DateTime,
     ForeignKey,
     Integer,
@@ -28,6 +29,10 @@ class Tenant(Base):
     plan: Mapped[str] = mapped_column(String(20), default="free", nullable=False)
     status: Mapped[str] = mapped_column(String(20), default="active", nullable=False)
     settings: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    # Period close: any state-changing write on a journal / invoice /
+    # payment dated on or before this date is blocked at the service
+    # layer. NULL = no periods closed yet.
+    closed_through: Mapped[date | None] = mapped_column(Date)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

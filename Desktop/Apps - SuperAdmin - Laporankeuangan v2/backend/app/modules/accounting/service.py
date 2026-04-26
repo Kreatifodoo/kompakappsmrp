@@ -15,6 +15,7 @@ from app.modules.accounting.schemas import (
     JournalEntryCreate,
 )
 from app.modules.accounting.starter_coa import STARTER_COA
+from app.modules.periods.service import assert_period_open
 
 
 class AccountingService:
@@ -148,6 +149,8 @@ class AccountingService:
 
     # ─── Journal Entries ────────────────────────────────
     async def create_journal(self, payload: JournalEntryCreate, *, post_now: bool = False) -> JournalEntry:
+        # Block if the entry's date falls in a closed period
+        await assert_period_open(self.session, self.tenant_id, payload.entry_date)
         # Validate all account_ids belong to this tenant
         account_ids = list({ln.account_id for ln in payload.lines})
         accounts = await self.repo.get_accounts_by_ids(account_ids)
@@ -193,6 +196,7 @@ class AccountingService:
             raise ConflictError("Journal already posted")
         if entry.status == "void":
             raise ValidationError("Voided entry cannot be posted")
+        await assert_period_open(self.session, self.tenant_id, entry.entry_date)
 
         # Re-verify balance defensively
         total_debit = sum((ln.debit for ln in entry.lines), Decimal("0"))
@@ -224,6 +228,8 @@ class AccountingService:
         """
         if not lines or len(lines) < 2:
             raise ValidationError("System journal requires at least 2 lines")
+
+        await assert_period_open(self.session, self.tenant_id, entry_date)
 
         total_debit = sum((d for _, d, _ in lines), Decimal("0"))
         total_credit = sum((c for _, _, c in lines), Decimal("0"))
@@ -275,6 +281,7 @@ class AccountingService:
         entry = (await self.session.execute(stmt)).scalar_one_or_none()
         if entry is None:
             return None
+        await assert_period_open(self.session, self.tenant_id, entry.entry_date)
         entry.status = "void"
         entry.voided_by = self.user_id
         entry.voided_at = datetime.now(UTC)
@@ -288,6 +295,7 @@ class AccountingService:
             raise NotFoundError("Journal entry not found")
         if entry.status == "void":
             raise ConflictError("Journal already voided")
+        await assert_period_open(self.session, self.tenant_id, entry.entry_date)
 
         entry.status = "void"
         entry.voided_by = self.user_id

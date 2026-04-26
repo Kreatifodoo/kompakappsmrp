@@ -52,6 +52,13 @@ class RateLimitError(AppException):
     code = "rate_limit_exceeded"
 
 
+class PeriodClosedError(AppException):
+    """State change attempted on a row dated within a closed period."""
+
+    status_code = 422
+    code = "period_closed"
+
+
 def app_exception_handler(_: Request, exc: AppException) -> JSONResponse:
     return JSONResponse(
         status_code=exc.status_code,

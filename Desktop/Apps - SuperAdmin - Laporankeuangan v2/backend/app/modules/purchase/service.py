@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.exceptions import ConflictError, NotFoundError, ValidationError
 from app.modules.accounting.repository import AccountingRepository
 from app.modules.accounting.service import AccountingService
+from app.modules.periods.service import assert_period_open
 from app.modules.purchase.models import (
     PurchaseInvoice,
     PurchaseInvoiceLine,
@@ -63,6 +64,7 @@ class PurchaseService:
     async def create_invoice(
         self, payload: PurchaseInvoiceCreate, *, post_now: bool = False
     ) -> PurchaseInvoice:
+        await assert_period_open(self.session, self.tenant_id, payload.invoice_date)
         supplier = await self.repo.get_supplier(payload.supplier_id)
         if not supplier:
             raise ValidationError("Supplier not found in this tenant")
@@ -129,6 +131,7 @@ class PurchaseService:
             raise ConflictError("Invoice already posted")
         if invoice.status == "void":
             raise ValidationError("Voided invoice cannot be posted")
+        await assert_period_open(self.session, self.tenant_id, invoice.invoice_date)
         await self._post_internal(invoice)
         return invoice
 
@@ -185,6 +188,7 @@ class PurchaseService:
             raise ConflictError("Invoice already voided")
         if invoice.paid_amount > 0:
             raise ValidationError("Cannot void invoice with payments applied")
+        await assert_period_open(self.session, self.tenant_id, invoice.invoice_date)
 
         if invoice.status == "posted":
             await self.acct_svc.void_system_journal("purchase_invoice", invoice.id, f"Voided: {reason}")
