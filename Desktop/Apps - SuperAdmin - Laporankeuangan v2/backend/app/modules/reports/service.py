@@ -6,6 +6,7 @@ from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.exceptions import NotFoundError
 from app.modules.reports.repository import ReportsRepository
 from app.modules.reports.schemas import (
     AgedBuckets,
@@ -16,6 +17,8 @@ from app.modules.reports.schemas import (
     BSLine,
     PLLine,
     ProfitLoss,
+    Statement,
+    StatementLine,
     TrialBalance,
     TrialBalanceLine,
 )
@@ -354,3 +357,152 @@ class ReportsService:
             total=sum(grand_total.values(), Decimal("0")),
         )
         return AgedReport(as_of=as_of, lines=lines, totals=totals)
+
+    # ─── Statements (customer / supplier) ─────────────────
+    async def customer_statement(
+        self,
+        *,
+        customer_id: UUID,
+        date_from: date,
+        date_to: date,
+    ) -> Statement:
+        customer = await self.repo.get_customer(customer_id)
+        if not customer:
+            raise NotFoundError("Customer not found")
+
+        invoices = await self.repo.all_sales_invoices_for_customer(customer_id)
+        payments = await self.repo.all_payments_for_party(party_id=customer_id, direction="receipt")
+        return self._build_statement(
+            party_id=customer.id,
+            code=customer.code,
+            name=customer.name,
+            date_from=date_from,
+            date_to=date_to,
+            # Both lists are pre-built tuples to keep the helper symmetric
+            invoice_rows=[(inv.invoice_date, inv.invoice_no, inv.description, inv.total) for inv in invoices],
+            payment_rows=[
+                (p.payment_date, p.payment_no, p.reference, applied_amount) for p, applied_amount in payments
+            ],
+            party_normal_side="debit",  # AR is debit-normal
+        )
+
+    async def supplier_statement(
+        self,
+        *,
+        supplier_id: UUID,
+        date_from: date,
+        date_to: date,
+    ) -> Statement:
+        supplier = await self.repo.get_supplier(supplier_id)
+        if not supplier:
+            raise NotFoundError("Supplier not found")
+
+        invoices = await self.repo.all_purchase_invoices_for_supplier(supplier_id)
+        payments = await self.repo.all_payments_for_party(party_id=supplier_id, direction="disbursement")
+        return self._build_statement(
+            party_id=supplier.id,
+            code=supplier.code,
+            name=supplier.name,
+            date_from=date_from,
+            date_to=date_to,
+            invoice_rows=[
+                (
+                    inv.invoice_date,
+                    inv.supplier_invoice_no or inv.invoice_no,
+                    inv.notes,
+                    inv.total,
+                )
+                for inv in invoices
+            ],
+            payment_rows=[
+                (p.payment_date, p.payment_no, p.reference, applied_amount) for p, applied_amount in payments
+            ],
+            party_normal_side="credit",  # AP is credit-normal
+        )
+
+    def _build_statement(
+        self,
+        *,
+        party_id: UUID,
+        code: str,
+        name: str,
+        date_from: date,
+        date_to: date,
+        invoice_rows: list[tuple[date, str, str | None, Decimal]],
+        payment_rows: list[tuple[date, str, str | None, Decimal]],
+        party_normal_side: str,
+    ) -> Statement:
+        """Render a statement from invoice + payment row tuples.
+
+        Balance is signed by the party's normal side: positive = on the
+        natural side. For customers (debit-normal AR), invoices increase
+        the balance, payments decrease it. For suppliers (credit-normal
+        AP), invoices increase, payments decrease.
+        """
+        # ── Opening balance: everything before date_from ──
+        opening = Decimal("0")
+        for inv_date, _no, _desc, total in invoice_rows:
+            if inv_date < date_from:
+                opening += total
+        for pay_date, _no, _ref, amount in payment_rows:
+            if pay_date < date_from:
+                opening -= amount
+
+        # ── In-period rows merged + sorted ────────────────
+        events: list[tuple[date, str, str, str | None, Decimal, Decimal]] = []
+        # tuple: (date, type, reference, description, debit_natural, credit_natural)
+        # debit_natural = increase in balance; credit_natural = decrease
+
+        for inv_date, no, desc, total in invoice_rows:
+            if date_from <= inv_date <= date_to:
+                events.append((inv_date, "invoice", no, desc, total, Decimal("0")))
+        for pay_date, no, ref, amount in payment_rows:
+            if date_from <= pay_date <= date_to:
+                events.append((pay_date, "payment", no, ref, Decimal("0"), amount))
+
+        # Sort: by date, invoices before payments on the same date
+        events.sort(key=lambda e: (e[0], 0 if e[1] == "invoice" else 1, e[2]))
+
+        # Map natural debit/credit to absolute debit/credit columns by party side.
+        # For debit-normal (customer AR): increase = debit column, decrease = credit column
+        # For credit-normal (supplier AP): increase = credit column, decrease = debit column
+        natural_to_debit_col = party_normal_side == "debit"
+
+        lines: list[StatementLine] = []
+        running = opening
+        period_debit = Decimal("0")
+        period_credit = Decimal("0")
+        for ev_date, ev_type, ref, desc, increase, decrease in events:
+            running = running + increase - decrease
+            if natural_to_debit_col:
+                debit = increase
+                credit = decrease
+            else:
+                debit = decrease
+                credit = increase
+            period_debit += debit
+            period_credit += credit
+            lines.append(
+                StatementLine(
+                    date=ev_date,
+                    type=ev_type,
+                    reference=ref,
+                    description=desc,
+                    debit=debit,
+                    credit=credit,
+                    balance=running,
+                )
+            )
+
+        return Statement(
+            party_id=party_id,
+            code=code,
+            name=name,
+            date_from=date_from,
+            date_to=date_to,
+            opening_balance=opening,
+            lines=lines,
+            closing_balance=running,
+            period_debit_total=period_debit,
+            period_credit_total=period_credit,
+        )

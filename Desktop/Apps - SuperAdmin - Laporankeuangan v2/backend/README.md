@@ -106,6 +106,8 @@ uvicorn app.main:app --reload
 | GET    | `/reports/balance-sheet?as_of=YYYY-MM-DD`         | `report.read` |
 | GET    | `/reports/aged-receivables?as_of=YYYY-MM-DD`      | `report.read` |
 | GET    | `/reports/aged-payables?as_of=YYYY-MM-DD`         | `report.read` |
+| GET    | `/reports/customer-statement/{customer_id}?date_from=&date_to=` | `report.read` |
+| GET    | `/reports/supplier-statement/{supplier_id}?date_from=&date_to=` | `report.read` |
 
 All reports:
 - Run against the **read replica** via `get_read_session()` so they
@@ -165,6 +167,23 @@ days overdue:
 Days overdue is computed against `due_date` if set, otherwise against
 `invoice_date`. Voided and fully-paid invoices are excluded. Each
 party row includes its individual invoice list for drill-down.
+
+**Customer / supplier statement** — chronological ledger for one
+party over a date range. Returns:
+
+- `opening_balance` — net of all activity strictly before `date_from`
+- `lines` — one row per posted invoice and per posted payment in
+  `[date_from, date_to]`, sorted by date (invoices before payments
+  on the same date), each with `debit` / `credit` columns and a
+  running `balance` after the row applies
+- `closing_balance` — final running balance
+- `period_debit_total` / `period_credit_total`
+
+The `debit` / `credit` columns are oriented to the party's
+perspective: for customers (AR is debit-normal), invoices show in
+`debit` and receipts in `credit`; for suppliers (AP is credit-normal),
+purchases show in `credit` and disbursements in `debit`. Voided
+invoices and voided payments are excluded entirely.
 
 ### Sales — `/api/v1`
 | Method | Path                                  | Permission       |

@@ -111,3 +111,33 @@ class AgedReport(BaseModel):
     as_of: date
     lines: list[AgedPartyLine]
     totals: AgedBuckets
+
+
+# ─── Customer / Supplier statement ─────────────────────────
+StatementLineType = Literal["invoice", "payment"]
+
+
+class StatementLine(BaseModel):
+    """One row of a statement: an invoice posting OR a payment application,
+    with running balance after this row is applied."""
+
+    date: date
+    type: StatementLineType
+    reference: str  # invoice_no or payment_no
+    description: str | None
+    debit: Decimal  # increases AR / decreases AP from the party's perspective
+    credit: Decimal  # decreases AR / increases AP
+    balance: Decimal  # running balance after this row, signed by party normal_side
+
+
+class Statement(BaseModel):
+    party_id: UUID
+    code: str
+    name: str
+    date_from: date
+    date_to: date
+    opening_balance: Decimal  # balance just before date_from
+    lines: list[StatementLine]
+    closing_balance: Decimal
+    period_debit_total: Decimal
+    period_credit_total: Decimal

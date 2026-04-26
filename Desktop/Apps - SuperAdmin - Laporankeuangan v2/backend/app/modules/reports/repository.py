@@ -210,6 +210,76 @@ class ReportsRepository:
             out.append((account, signed))
         return out
 
+    # ─── Statement queries ────────────────────────────────
+    async def all_sales_invoices_for_customer(self, customer_id: UUID) -> list[SalesInvoice]:
+        """All non-void sales invoices for a customer (any date)."""
+        stmt = (
+            select(SalesInvoice)
+            .where(
+                SalesInvoice.tenant_id == self.tenant_id,
+                SalesInvoice.customer_id == customer_id,
+                SalesInvoice.status.in_(("posted", "paid")),
+            )
+            .order_by(SalesInvoice.invoice_date, SalesInvoice.invoice_no)
+        )
+        return list((await self.session.execute(stmt)).scalars().all())
+
+    async def all_purchase_invoices_for_supplier(self, supplier_id: UUID) -> list[PurchaseInvoice]:
+        """All non-void purchase invoices for a supplier (any date)."""
+        stmt = (
+            select(PurchaseInvoice)
+            .where(
+                PurchaseInvoice.tenant_id == self.tenant_id,
+                PurchaseInvoice.supplier_id == supplier_id,
+                PurchaseInvoice.status.in_(("posted", "paid")),
+            )
+            .order_by(PurchaseInvoice.invoice_date, PurchaseInvoice.invoice_no)
+        )
+        return list((await self.session.execute(stmt)).scalars().all())
+
+    async def all_payments_for_party(
+        self, *, party_id: UUID, direction: str
+    ) -> list[tuple[Payment, Decimal]]:
+        """All posted payments for a party with the per-party application
+        sum (in case applications include other parties — they shouldn't,
+        but defensive). Returns [(payment, total_applied_to_this_party)].
+        """
+        if direction == "receipt":
+            party_filter = Payment.customer_id == party_id
+            invoice_join_condition = PaymentApplication.sales_invoice_id.is_not(None)
+        else:
+            party_filter = Payment.supplier_id == party_id
+            invoice_join_condition = PaymentApplication.purchase_invoice_id.is_not(None)
+
+        # Aggregate non-voided applications per payment
+        stmt = (
+            select(
+                Payment,
+                func.coalesce(func.sum(PaymentApplication.amount), 0).label("total"),
+            )
+            .join(PaymentApplication, PaymentApplication.payment_id == Payment.id)
+            .where(
+                Payment.tenant_id == self.tenant_id,
+                Payment.status == "posted",
+                Payment.direction == direction,
+                party_filter,
+                PaymentApplication.voided.is_(False),
+                invoice_join_condition,
+            )
+            .group_by(Payment.id)
+            .order_by(Payment.payment_date, Payment.payment_no)
+        )
+        rows = (await self.session.execute(stmt)).all()
+        return [(row[0], Decimal(row[1])) for row in rows]
+
+    async def get_customer(self, customer_id: UUID) -> Customer | None:
+        stmt = select(Customer).where(Customer.id == customer_id, Customer.tenant_id == self.tenant_id)
+        return (await self.session.execute(stmt)).scalar_one_or_none()
+
+    async def get_supplier(self, supplier_id: UUID) -> Supplier | None:
+        stmt = select(Supplier).where(Supplier.id == supplier_id, Supplier.tenant_id == self.tenant_id)
+        return (await self.session.execute(stmt)).scalar_one_or_none()
+
     # ─── Aged AP ──────────────────────────────────────────
     async def open_purchase_invoices(self, *, as_of: date) -> list[tuple[Supplier, PurchaseInvoice]]:
         """Posted purchase invoices with outstanding > 0 as of the given date."""
