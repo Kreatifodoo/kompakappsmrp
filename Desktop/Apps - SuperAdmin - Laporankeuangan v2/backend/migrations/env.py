@@ -15,6 +15,7 @@ from app.modules.identity import models as _identity_models  # noqa: F401
 from app.modules.accounting import models as _accounting_models  # noqa: F401
 from app.modules.sales import models as _sales_models  # noqa: F401
 from app.modules.purchase import models as _purchase_models  # noqa: F401
+from app.modules.payments import models as _payments_models  # noqa: F401
 
 config = context.config
 config.set_main_option("sqlalchemy.url", settings.DB_PRIMARY_URL)

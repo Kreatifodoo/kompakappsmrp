@@ -129,14 +129,20 @@ cash account (`accounts.is_cash = true`). The starter COA marks Kas
 via `PATCH /accounts/{id}` (`is_cash` is one of two fields permitted
 on system accounts, alongside `is_active`).
 
-**Cash-basis caveat** — for a credit sale where the AR-creating
-journal (`Dr AR / Cr Sales`) and the later payment journal
-(`Dr Cash / Cr AR`) are separate entries, **neither** journal touches
-both cash AND an income account, so the sale will not appear in
-cash-basis P&L. To get accurate cash-basis on credit sales today,
-record the receipt as a direct journal `Dr Cash / Cr Sales`. A proper
-Payments module that recognizes income at receipt time is on the
-roadmap.
+**Cash-basis on credit sales** — handled correctly via the Payments
+module. When a `Payment` settles a posted sales (or purchase) invoice,
+cash-basis P&L walks the application back to the original invoice's
+journal and proportionally re-recognizes income/expense at *payment*
+date (`income_recognized = invoice_income_line × app_amount /
+invoice_total`). Partial payments produce proportional income
+recognition. Direct cash journals (`Dr Cash / Cr Sales` without an
+invoice round-trip) are still handled by phase 1 (journals touching
+cash); phase 2 adds the payment-application contributions on top.
+
+The two phases avoid double-counting **as long as you don't manually
+post both a direct cash journal AND a Payment for the same invoice**
+— that would attribute the income twice. Standard bookkeeping doesn't
+do both, but it's worth knowing.
 
 **Balance sheet** — snapshot at `as_of` with assets / liabilities /
 explicit equity broken out, **plus a computed `retained_earnings`**
@@ -171,6 +177,32 @@ party row includes its individual invoice list for drill-down.
 | POST   | `/sales-invoices` (`?post_now=...`)   | `sales.write` (+ `sales.post` if posting) |
 | POST   | `/sales-invoices/{id}/post`           | `sales.post`     |
 | POST   | `/sales-invoices/{id}/void`           | `sales.post`     |
+
+### Payments — `/api/v1`
+| Method | Path                                        | Permission       |
+|--------|---------------------------------------------|------------------|
+| GET    | `/payments`                                 | `payment.read`   |
+| GET    | `/payments/{id}`                            | `payment.read`   |
+| POST   | `/payments` (`?post_now=true` default)      | `payment.write` (+ `payment.post` if posting) |
+| POST   | `/payments/{id}/void`                       | `payment.post`   |
+
+A Payment is a discrete cash movement event. `direction='receipt'`
+(cash from a customer) or `direction='disbursement'` (cash to a
+supplier). Each payment carries one or more `PaymentApplication` rows
+that distribute its amount across specific posted invoices. Posting
+creates a balanced journal in the same DB transaction:
+
+```
+Receipt:        Dr Cash account        amount
+                    Cr AR              amount
+Disbursement:   Dr AP                  amount
+                    Cr Cash account    amount
+```
+
+…and increments `paid_amount` on each linked invoice (status flips to
+`paid` if fully settled). Voiding a payment voids its journal AND
+reverses the settlement on every linked invoice in the same
+transaction.
 
 ### Purchase — `/api/v1`
 | Method | Path                                     | Permission         |

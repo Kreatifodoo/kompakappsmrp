@@ -33,5 +33,7 @@ celery_app.autodiscover_tasks(
         "app.modules.accounting",
         "app.modules.sales",
         "app.modules.purchase",
+        "app.modules.payments",
+        "app.modules.reports",
     ]
 )

@@ -15,6 +15,7 @@ from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.accounting.models import Account, JournalEntry, JournalLine
+from app.modules.payments.models import Payment, PaymentApplication
 from app.modules.purchase.models import PurchaseInvoice, Supplier
 from app.modules.sales.models import Customer, SalesInvoice
 
@@ -111,6 +112,103 @@ class ReportsRepository:
             .order_by(Customer.code, SalesInvoice.invoice_date)
         )
         return list((await self.session.execute(stmt)).all())
+
+    # ─── Payments in period (for cash-basis income recognition) ──
+    async def payments_with_invoice_in_period(
+        self,
+        *,
+        date_from: date,
+        date_to: date,
+    ) -> list[tuple[str, UUID, Decimal, Decimal, Decimal]]:
+        """For each posted payment application in [date_from, date_to],
+        return (direction, invoice_id, application_amount, invoice_total,
+        invoice_subtotal). Caller proportionally re-recognizes the income
+        or expense using ratio = app_amount / invoice_total.
+        """
+        # Receipts → sales_invoices
+        sales_stmt = (
+            select(
+                Payment.direction,
+                SalesInvoice.id,
+                PaymentApplication.amount,
+                SalesInvoice.total,
+                SalesInvoice.subtotal,
+            )
+            .join(PaymentApplication, PaymentApplication.payment_id == Payment.id)
+            .join(SalesInvoice, SalesInvoice.id == PaymentApplication.sales_invoice_id)
+            .where(
+                Payment.tenant_id == self.tenant_id,
+                Payment.status == "posted",
+                PaymentApplication.voided.is_(False),
+                Payment.payment_date >= date_from,
+                Payment.payment_date <= date_to,
+            )
+        )
+
+        # Disbursements → purchase_invoices
+        purchase_stmt = (
+            select(
+                Payment.direction,
+                PurchaseInvoice.id,
+                PaymentApplication.amount,
+                PurchaseInvoice.total,
+                PurchaseInvoice.subtotal,
+            )
+            .join(PaymentApplication, PaymentApplication.payment_id == Payment.id)
+            .join(
+                PurchaseInvoice,
+                PurchaseInvoice.id == PaymentApplication.purchase_invoice_id,
+            )
+            .where(
+                Payment.tenant_id == self.tenant_id,
+                Payment.status == "posted",
+                PaymentApplication.voided.is_(False),
+                Payment.payment_date >= date_from,
+                Payment.payment_date <= date_to,
+            )
+        )
+
+        rows = []
+        for r in (await self.session.execute(sales_stmt)).all():
+            rows.append((r[0], r[1], Decimal(r[2]), Decimal(r[3]), Decimal(r[4])))
+        for r in (await self.session.execute(purchase_stmt)).all():
+            rows.append((r[0], r[1], Decimal(r[2]), Decimal(r[3]), Decimal(r[4])))
+        return rows
+
+    async def income_expense_lines_for_invoice_journal(
+        self,
+        *,
+        invoice_id: UUID,
+        invoice_source: str,  # "sales_invoice" or "purchase_invoice"
+    ) -> list[tuple[Account, Decimal]]:
+        """Return [(account, signed_amount)] for income/expense lines on
+        the journal that posted this invoice. Signed by normal_side, so
+        positive = on natural side.
+        """
+        stmt = (
+            select(
+                Account,
+                JournalLine.debit,
+                JournalLine.credit,
+            )
+            .join(JournalEntry, JournalEntry.id == JournalLine.entry_id)
+            .join(Account, Account.id == JournalLine.account_id)
+            .where(
+                JournalEntry.tenant_id == self.tenant_id,
+                JournalEntry.source == invoice_source,
+                JournalEntry.source_id == invoice_id,
+                JournalEntry.status == "posted",
+                Account.type.in_(["income", "expense"]),
+            )
+        )
+        out: list[tuple[Account, Decimal]] = []
+        for row in (await self.session.execute(stmt)).all():
+            account: Account = row[0]
+            debit = Decimal(row[1])
+            credit = Decimal(row[2])
+            signed = credit - debit if account.normal_side == "credit" else debit - credit
+            out.append((account, signed))
+        return out
 
     # ─── Aged AP ──────────────────────────────────────────
     async def open_purchase_invoices(self, *, as_of: date) -> list[tuple[Supplier, PurchaseInvoice]]:

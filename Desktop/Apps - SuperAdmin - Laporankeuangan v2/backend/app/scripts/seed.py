@@ -31,6 +31,10 @@ PERMISSIONS: list[tuple[str, str]] = [
     ("purchase.read", "View purchases (incl. suppliers + invoices)"),
     ("purchase.write", "Create/update suppliers + purchase invoices"),
     ("purchase.post", "Post / void purchase invoices (creates journals)"),
+    # Payments
+    ("payment.read", "View payments (cash receipts + disbursements)"),
+    ("payment.write", "Create payments (drafts)"),
+    ("payment.post", "Post / void payments (creates journals + settles invoices)"),
     # Reports
     ("report.read", "View reports"),
     ("report.export", "Export reports"),
@@ -54,6 +58,9 @@ ROLES: dict[str, list[str]] = {
         "purchase.read",
         "purchase.write",
         "purchase.post",
+        "payment.read",
+        "payment.write",
+        "payment.post",
         "report.read",
         "report.export",
     ],
@@ -65,6 +72,8 @@ ROLES: dict[str, list[str]] = {
         "sales.write",
         "purchase.read",
         "purchase.write",
+        "payment.read",
+        "payment.write",
         "report.read",
     ],
     "viewer": [

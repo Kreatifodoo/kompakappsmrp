@@ -77,6 +77,7 @@ class ReportsService:
         date_to: date,
         cash_basis: bool = False,
     ) -> ProfitLoss:
+        # Phase 1: direct cash-basis (journals that touch cash) OR accrual
         rows = await self.repo.aggregate_by_account(
             date_from=date_from,
             date_to=date_to,
@@ -84,13 +85,45 @@ class ReportsService:
             cash_basis=cash_basis,
         )
 
+        # account_id → (account, signed_amount_so_far)
+        agg: dict = {}
+
+        for account, td, tc in rows:
+            amount = _signed_balance(td, tc, account.normal_side)
+            if amount == 0:
+                continue
+            agg[account.id] = (account, amount)
+
+        # Phase 2 (cash-basis only): add proportional recognition for
+        # payments that settle invoices in this period. Each application
+        # contributes (income_or_expense_line_amount × app_amount / invoice_total)
+        if cash_basis:
+            payment_rows = await self.repo.payments_with_invoice_in_period(
+                date_from=date_from, date_to=date_to
+            )
+            for direction, invoice_id, app_amount, total, _subtotal in payment_rows:
+                if total == 0:
+                    continue
+                ratio = app_amount / total
+                source = "sales_invoice" if direction == "receipt" else "purchase_invoice"
+                lines = await self.repo.income_expense_lines_for_invoice_journal(
+                    invoice_id=invoice_id, invoice_source=source
+                )
+                for account, signed in lines:
+                    contribution = (signed * ratio).quantize(CENT)
+                    if contribution == 0:
+                        continue
+                    if account.id in agg:
+                        existing_acct, existing_amount = agg[account.id]
+                        agg[account.id] = (existing_acct, existing_amount + contribution)
+                    else:
+                        agg[account.id] = (account, contribution)
+
         income: list[PLLine] = []
         expense: list[PLLine] = []
         total_income = Decimal("0")
         total_expense = Decimal("0")
-
-        for account, td, tc in rows:
-            amount = _signed_balance(td, tc, account.normal_side)
+        for account, amount in agg.values():
             if amount == 0:
                 continue
             line = PLLine(
@@ -105,6 +138,9 @@ class ReportsService:
             elif account.type == "expense":
                 expense.append(line)
                 total_expense += amount
+
+        income.sort(key=lambda x: x.code)
+        expense.sort(key=lambda x: x.code)
 
         return ProfitLoss(
             date_from=date_from,

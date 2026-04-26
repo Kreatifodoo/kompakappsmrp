@@ -35,6 +35,7 @@ from sqlalchemy.ext.asyncio import (  # noqa: E402
 from app.core.database import Base, get_read_session, get_write_session  # noqa: E402
 from app.modules.accounting import models as _accounting  # noqa: F401, E402
 from app.modules.identity import models as _identity  # noqa: F401, E402
+from app.modules.payments import models as _payments  # noqa: F401, E402
 from app.modules.purchase import models as _purchase  # noqa: F401, E402
 from app.modules.sales import models as _sales  # noqa: F401, E402
 
@@ -46,6 +47,8 @@ ALL_TABLES = [
     "role_permissions",
     "roles",
     "permissions",
+    "payment_applications",
+    "payments",
     "account_mappings",
     "journal_lines",
     "journal_entries",
