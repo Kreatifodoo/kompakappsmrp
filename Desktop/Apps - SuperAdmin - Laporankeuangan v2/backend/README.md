@@ -98,6 +98,38 @@ uvicorn app.main:app --reload
 | POST   | `/journals/{id}/post`         | `journal.post` |
 | POST   | `/journals/{id}/void`         | `journal.post` |
 
+### Audit — `/api/v1/audit`
+| Method | Path                                    | Permission   |
+|--------|-----------------------------------------|--------------|
+| GET    | `/audit/logs?table_name=&row_id=&user_id=&action=&date_from=&date_to=` | `audit.read` |
+| GET    | `/audit/logs/{row_id}/history?table_name=` | `audit.read` |
+
+Every create / update / delete on tracked business tables is captured
+to the `audit_logs` table by a SQLAlchemy `before_flush` listener —
+no per-service code involved. Each log row carries:
+
+- `tenant_id`, `user_id` (from the JWT, NULL for CLI scripts),
+  `request_id` (from the `x-request-id` header)
+- `table_name`, `row_id`, `action` (`create | update | delete | post |
+  void` — state transitions to status='posted' or 'void' are detected
+  and tagged accordingly)
+- `changes` (JSON):
+  - on `create` / `delete`: full column snapshot
+  - on `update`: only the changed fields, each as
+    `{"old": …, "new": …}`
+- `occurred_at` (timestamp)
+
+**Tracked tables:** `customers`, `sales_invoices`,
+`sales_invoice_lines`, `suppliers`, `purchase_invoices`,
+`purchase_invoice_lines`, `accounts`, `account_mappings`,
+`journal_entries`, `payments`, `payment_applications`. Identity tables
+and the `journal_lines` partition (very high write volume; entry-level
+audit captures the lifecycle) are deliberately excluded.
+
+`audit_logs` itself is RLS-protected, so each tenant only sees its own
+trail. Excluded fields from diffs: `created_at`, `updated_at`,
+`tenant_id` (already on the audit row).
+
 ### Reports — `/api/v1/reports`
 | Method | Path                                              | Permission    |
 |--------|---------------------------------------------------|---------------|

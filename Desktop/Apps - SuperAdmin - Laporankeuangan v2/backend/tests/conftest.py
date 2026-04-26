@@ -34,10 +34,15 @@ from sqlalchemy.ext.asyncio import (  # noqa: E402
 # Import all models so Base.metadata is fully populated
 from app.core.database import Base, get_read_session, get_write_session  # noqa: E402
 from app.modules.accounting import models as _accounting  # noqa: F401, E402
+from app.modules.audit import models as _audit  # noqa: F401, E402
+from app.modules.audit.listener import register_tracked  # noqa: E402
 from app.modules.identity import models as _identity  # noqa: F401, E402
 from app.modules.payments import models as _payments  # noqa: F401, E402
 from app.modules.purchase import models as _purchase  # noqa: F401, E402
 from app.modules.sales import models as _sales  # noqa: F401, E402
+
+# Register audit-tracked model classes once at import time. Idempotent.
+register_tracked()
 
 # Tables to wipe between tests (in order ignoring FKs — we use TRUNCATE
 # with the full set, so order is irrelevant).
@@ -47,6 +52,7 @@ ALL_TABLES = [
     "role_permissions",
     "roles",
     "permissions",
+    "audit_logs",
     "payment_applications",
     "payments",
     "account_mappings",

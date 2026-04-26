@@ -21,6 +21,12 @@ from app.core.middleware import RequestIdMiddleware
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     configure_logging()
+
+    # Register audit-tracked model classes (importing the listener module
+    # also installs the SQLAlchemy `before_flush` event listener)
+    from app.modules.audit.listener import register_tracked
+
+    register_tracked()
     # Warm Redis connection (best-effort; ignore failures so API can start without it)
     with suppress(Exception):
         await get_redis()

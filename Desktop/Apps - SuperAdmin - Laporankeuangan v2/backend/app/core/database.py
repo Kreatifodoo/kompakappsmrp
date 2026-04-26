@@ -77,6 +77,23 @@ async def _apply_tenant_context(session: AsyncSession, request: Request) -> None
     if payload.get("sa"):
         await session.execute(text("SELECT set_config('app.is_super_admin', 'true', true)"))
 
+    # Populate audit contextvars so SQLAlchemy listener tags writes with
+    # the acting user. Best-effort import so a missing audit module
+    # doesn't break the request path.
+    try:
+        from uuid import UUID as _UUID
+
+        from app.modules.audit.listener import current_request_id, current_user_id
+
+        sub = payload.get("sub")
+        if sub:
+            current_user_id.set(_UUID(sub))
+        rid = request.headers.get("x-request-id") if request else None
+        if rid:
+            current_request_id.set(rid)
+    except ImportError:
+        pass
+
 
 async def get_write_session(request: Request = None) -> AsyncGenerator[AsyncSession, None]:
     """FastAPI dependency for write operations."""
