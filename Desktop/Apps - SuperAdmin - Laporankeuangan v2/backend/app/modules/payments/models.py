@@ -43,16 +43,20 @@ class Payment(Base):
         Index("ix_payments_customer", "tenant_id", "customer_id"),
         Index("ix_payments_supplier", "tenant_id", "supplier_id"),
         CheckConstraint(
-            "direction IN ('receipt','disbursement')",
+            "direction IN ('receipt','disbursement','customer_refund','supplier_refund')",
             name="ck_payments_direction",
         ),
         CheckConstraint(
             "status IN ('draft','posted','void')",
             name="ck_payments_status",
         ),
+        # Customer-side directions (receipt + customer_refund) require customer_id;
+        # supplier-side (disbursement + supplier_refund) require supplier_id.
         CheckConstraint(
-            "(direction = 'receipt' AND customer_id IS NOT NULL AND supplier_id IS NULL) OR "
-            "(direction = 'disbursement' AND supplier_id IS NOT NULL AND customer_id IS NULL)",
+            "(direction IN ('receipt','customer_refund') "
+            "    AND customer_id IS NOT NULL AND supplier_id IS NULL) OR "
+            "(direction IN ('disbursement','supplier_refund') "
+            "    AND supplier_id IS NOT NULL AND customer_id IS NULL)",
             name="ck_payments_party_xor",
         ),
         CheckConstraint("amount > 0", name="ck_payments_amount_positive"),

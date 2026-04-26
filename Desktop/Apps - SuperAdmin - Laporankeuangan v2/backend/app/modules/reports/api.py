@@ -12,6 +12,8 @@ from app.deps import CurrentUser, require_permission
 from app.modules.reports.schemas import (
     AgedReport,
     BalanceSheet,
+    BankReconciliation,
+    BankReconciliationRequest,
     ProfitLoss,
     Statement,
     TrialBalance,
@@ -137,3 +139,19 @@ async def supplier_statement(
         raise ValidationError("date_from must be <= date_to")
     svc = ReportsService(session, current.tenant_id)
     return await svc.supplier_statement(supplier_id=supplier_id, date_from=date_from, date_to=date_to)
+
+
+@router.post(
+    "/bank-reconciliation",
+    response_model=BankReconciliation,
+    summary="Match a bank statement against the book entries on a cash account",
+)
+async def bank_reconciliation(
+    payload: BankReconciliationRequest,
+    current: CurrentUser = Depends(require_permission("report.read")),
+    session: AsyncSession = Depends(get_read_session),
+) -> BankReconciliation:
+    if payload.date_from > payload.date_to:
+        raise ValidationError("date_from must be <= date_to")
+    svc = ReportsService(session, current.tenant_id)
+    return await svc.bank_reconciliation(payload)

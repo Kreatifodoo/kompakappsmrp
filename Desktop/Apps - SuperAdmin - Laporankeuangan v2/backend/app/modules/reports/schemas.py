@@ -141,3 +141,57 @@ class Statement(BaseModel):
     closing_balance: Decimal
     period_debit_total: Decimal
     period_credit_total: Decimal
+
+
+# ─── Bank reconciliation ───────────────────────────────────
+class BankStatementLine(BaseModel):
+    """One row from the bank's CSV/PDF, as supplied by the user.
+
+    `amount` is signed from the perspective of OUR bank account:
+    positive = money in (deposit), negative = money out (withdrawal).
+    """
+
+    date: date
+    amount: Decimal
+    reference: str | None = None
+    description: str | None = None
+
+
+class BookCashLine(BaseModel):
+    """One book-side journal-line debit/credit on a cash account."""
+
+    journal_entry_id: UUID
+    entry_no: str
+    entry_date: date
+    amount: Decimal  # signed: + for cash debit (in), - for cash credit (out)
+    description: str | None
+    line_description: str | None
+
+
+class BankRecMatch(BaseModel):
+    book: BookCashLine
+    statement: BankStatementLine
+
+
+class BankReconciliationRequest(BaseModel):
+    cash_account_id: UUID
+    date_from: date
+    date_to: date
+    statement_lines: list[BankStatementLine]
+    date_tolerance_days: int = 2  # ±2 days default; bank-vs-book posting lag
+
+
+class BankReconciliation(BaseModel):
+    cash_account_id: UUID
+    cash_account_code: str
+    cash_account_name: str
+    date_from: date
+    date_to: date
+    matched: list[BankRecMatch]
+    book_only: list[BookCashLine]  # in our books, not on the statement
+    statement_only: list[BankStatementLine]  # on statement, not in our books
+    book_period_total: Decimal  # net signed change in books in period
+    statement_period_total: Decimal  # net signed change on statement in period
+    book_only_total: Decimal  # sum of unmatched book lines (signed)
+    statement_only_total: Decimal  # sum of unmatched statement lines (signed)
+    difference: Decimal  # book_period_total - statement_period_total

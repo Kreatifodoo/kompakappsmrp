@@ -280,6 +280,32 @@ class ReportsRepository:
         stmt = select(Supplier).where(Supplier.id == supplier_id, Supplier.tenant_id == self.tenant_id)
         return (await self.session.execute(stmt)).scalar_one_or_none()
 
+    # ─── Bank reconciliation ─────────────────────────────
+    async def cash_account_lines_in_period(
+        self,
+        *,
+        cash_account_id: UUID,
+        date_from: date,
+        date_to: date,
+    ) -> list[tuple[JournalEntry, JournalLine]]:
+        """Return [(entry, line)] for posted journal lines on the given
+        cash account within the date range. Caller signs the amount
+        (debit = +, credit = -)."""
+        stmt = (
+            select(JournalEntry, JournalLine)
+            .join(JournalLine, JournalLine.entry_id == JournalEntry.id)
+            .where(
+                JournalEntry.tenant_id == self.tenant_id,
+                JournalLine.tenant_id == self.tenant_id,
+                JournalLine.account_id == cash_account_id,
+                JournalEntry.status == "posted",
+                JournalEntry.entry_date >= date_from,
+                JournalEntry.entry_date <= date_to,
+            )
+            .order_by(JournalEntry.entry_date, JournalEntry.entry_no)
+        )
+        return list((await self.session.execute(stmt)).all())
+
     # ─── Aged AP ──────────────────────────────────────────
     async def open_purchase_invoices(self, *, as_of: date) -> list[tuple[Supplier, PurchaseInvoice]]:
         """Posted purchase invoices with outstanding > 0 as of the given date."""

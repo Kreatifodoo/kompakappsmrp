@@ -108,6 +108,7 @@ uvicorn app.main:app --reload
 | GET    | `/reports/aged-payables?as_of=YYYY-MM-DD`         | `report.read` |
 | GET    | `/reports/customer-statement/{customer_id}?date_from=&date_to=` | `report.read` |
 | GET    | `/reports/supplier-statement/{supplier_id}?date_from=&date_to=` | `report.read` |
+| POST   | `/reports/bank-reconciliation`                    | `report.read` |
 
 All reports:
 - Run against the **read replica** via `get_read_session()` so they
@@ -185,6 +186,26 @@ perspective: for customers (AR is debit-normal), invoices show in
 purchases show in `credit` and disbursements in `debit`. Voided
 invoices and voided payments are excluded entirely.
 
+**Bank reconciliation** — POST endpoint. The user uploads a parsed
+bank statement (list of `{date, amount, reference?, description?}`
+where `amount` is signed: positive = money in, negative = money out)
+plus the cash account id and a date range. The service:
+
+1. Fetches all posted journal lines on that cash account in the period
+2. Signs each book line: `debit − credit` (positive = inflow)
+3. For each statement line, finds the first unmatched book line with
+   the same amount within `date_tolerance_days` (default ±2 days)
+4. Returns: `matched[]`, `book_only[]` (in books, not on bank), 
+   `statement_only[]` (on bank, not in books — typically bank fees /
+   interest), plus signed period totals and a `difference` field
+
+Common interpretations of unmatched rows:
+- `book_only` = outstanding deposits, uncashed checks, in-transit
+- `statement_only` = bank fees, interest, ACH adjustments not yet booked
+
+The endpoint is read-only (POST only because the bank statement
+data lives in the request body) and runs against the read replica.
+
 ### Sales — `/api/v1`
 | Method | Path                                  | Permission       |
 |--------|---------------------------------------|------------------|
@@ -205,23 +226,33 @@ invoices and voided payments are excluded entirely.
 | POST   | `/payments` (`?post_now=true` default)      | `payment.write` (+ `payment.post` if posting) |
 | POST   | `/payments/{id}/void`                       | `payment.post`   |
 
-A Payment is a discrete cash movement event. `direction='receipt'`
-(cash from a customer) or `direction='disbursement'` (cash to a
-supplier). Each payment carries one or more `PaymentApplication` rows
-that distribute its amount across specific posted invoices. Posting
-creates a balanced journal in the same DB transaction:
+A Payment is a discrete cash movement event. Four directions:
 
-```
-Receipt:        Dr Cash account        amount
-                    Cr AR              amount
-Disbursement:   Dr AP                  amount
-                    Cr Cash account    amount
-```
+| direction | Money flow | Journal | Applications |
+|---|---|---|---|
+| `receipt` | customer → us | Dr Cash / Cr AR | required, sum ≤ amount |
+| `disbursement` | us → supplier | Dr AP / Cr Cash | required, sum ≤ amount |
+| `customer_refund` | us → customer | Dr AR / Cr Cash | not allowed (v1) |
+| `supplier_refund` | supplier → us | Dr Cash / Cr AP | not allowed (v1) |
 
-…and increments `paid_amount` on each linked invoice (status flips to
+Posting creates a balanced journal in the same DB transaction and
+increments `paid_amount` on each linked invoice (status flips to
 `paid` if fully settled). Voiding a payment voids its journal AND
 reverses the settlement on every linked invoice in the same
 transaction.
+
+**Overpayment:** sum of applications can be **less than** the payment
+amount. The full amount still flows through the journal (Dr Cash X /
+Cr AR X), so the excess sits as unallocated credit on the customer's
+AR balance. Refund it later via a `customer_refund` payment, or apply
+it to a future invoice.
+
+**Refunds:** `customer_refund` issues cash back to a customer (clearing
+unallocated credit / overpayment); `supplier_refund` accepts cash back
+from a supplier. Refunds don't take applications in v1 — they just
+adjust the AR/AP balance for the party. Payment numbers use distinct
+prefixes per direction: `RCV-`, `DSB-`, `REF-` (customer refund),
+`RFR-` (supplier refund).
 
 ### Purchase — `/api/v1`
 | Method | Path                                     | Permission         |

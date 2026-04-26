@@ -6,7 +6,7 @@ from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import NotFoundError
+from app.core.exceptions import NotFoundError, ValidationError
 from app.modules.reports.repository import ReportsRepository
 from app.modules.reports.schemas import (
     AgedBuckets,
@@ -14,6 +14,10 @@ from app.modules.reports.schemas import (
     AgedPartyLine,
     AgedReport,
     BalanceSheet,
+    BankRecMatch,
+    BankReconciliation,
+    BankReconciliationRequest,
+    BookCashLine,
     BSLine,
     PLLine,
     ProfitLoss,
@@ -505,4 +509,95 @@ class ReportsService:
             closing_balance=running,
             period_debit_total=period_debit,
             period_credit_total=period_credit,
+        )
+
+    # ─── Bank reconciliation ──────────────────────────────
+    async def bank_reconciliation(self, payload: BankReconciliationRequest) -> BankReconciliation:
+        # Validate the cash account belongs to this tenant + is_cash=true
+        from app.modules.accounting.repository import AccountingRepository
+
+        acct_repo = AccountingRepository(self.session, self.tenant_id)
+        account = await acct_repo.get_account(payload.cash_account_id)
+        if account is None:
+            raise NotFoundError("Cash account not found")
+        if not account.is_cash:
+            raise ValidationError(f"Account {account.code} is not flagged is_cash=true")
+
+        # ── Pull book lines ───────────────────────────────
+        rows = await self.repo.cash_account_lines_in_period(
+            cash_account_id=payload.cash_account_id,
+            date_from=payload.date_from,
+            date_to=payload.date_to,
+        )
+        book_lines: list[BookCashLine] = []
+        for entry, line in rows:
+            signed = (line.debit - line.credit).quantize(CENT)
+            if signed == 0:
+                continue
+            book_lines.append(
+                BookCashLine(
+                    journal_entry_id=entry.id,
+                    entry_no=entry.entry_no,
+                    entry_date=entry.entry_date,
+                    amount=signed,
+                    description=entry.description,
+                    line_description=line.description,
+                )
+            )
+
+        # ── Match by (amount, date within tolerance) ──────
+        # Index book lines by amount → list of indices, popped greedily
+        from collections import defaultdict
+        from datetime import timedelta
+
+        unmatched_book: dict = defaultdict(list)
+        for idx, bl in enumerate(book_lines):
+            unmatched_book[bl.amount].append(idx)
+
+        matched: list[BankRecMatch] = []
+        statement_only: list = []
+        used_book_indices: set[int] = set()
+        tol = timedelta(days=max(0, payload.date_tolerance_days))
+
+        for sl in payload.statement_lines:
+            sl_amt = sl.amount.quantize(CENT)
+            candidates = unmatched_book.get(sl_amt, [])
+            picked = None
+            for cand_idx in candidates:
+                if cand_idx in used_book_indices:
+                    continue
+                bl = book_lines[cand_idx]
+                if abs((bl.entry_date - sl.date).days) <= tol.days:
+                    picked = cand_idx
+                    break
+            if picked is None:
+                statement_only.append(sl)
+            else:
+                used_book_indices.add(picked)
+                matched.append(BankRecMatch(book=book_lines[picked], statement=sl))
+
+        book_only = [bl for i, bl in enumerate(book_lines) if i not in used_book_indices]
+
+        # ── Totals ────────────────────────────────────────
+        book_period_total = sum((bl.amount for bl in book_lines), Decimal("0"))
+        statement_period_total = sum(
+            (sl.amount.quantize(CENT) for sl in payload.statement_lines), Decimal("0")
+        )
+        book_only_total = sum((bl.amount for bl in book_only), Decimal("0"))
+        statement_only_total = sum((sl.amount.quantize(CENT) for sl in statement_only), Decimal("0"))
+
+        return BankReconciliation(
+            cash_account_id=account.id,
+            cash_account_code=account.code,
+            cash_account_name=account.name,
+            date_from=payload.date_from,
+            date_to=payload.date_to,
+            matched=matched,
+            book_only=book_only,
+            statement_only=statement_only,
+            book_period_total=book_period_total,
+            statement_period_total=statement_period_total,
+            book_only_total=book_only_total,
+            statement_only_total=statement_only_total,
+            difference=book_period_total - statement_period_total,
         )

@@ -57,8 +57,15 @@ class PaymentsRepository:
         await self.session.flush()
         return payment
 
+    _PREFIX_BY_DIRECTION = {
+        "receipt": "RCV",
+        "disbursement": "DSB",
+        "customer_refund": "REF",  # refund to customer (cash out)
+        "supplier_refund": "RFR",  # refund from supplier (cash in)
+    }
+
     async def next_payment_no(self, year: int, direction: str) -> str:
-        prefix = f"{'RCV' if direction == 'receipt' else 'DSB'}-{year}-"
+        prefix = f"{self._PREFIX_BY_DIRECTION[direction]}-{year}-"
         stmt = select(func.count(Payment.id)).where(
             Payment.tenant_id == self.tenant_id,
             Payment.payment_no.like(f"{prefix}%"),

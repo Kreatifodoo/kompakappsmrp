@@ -97,7 +97,9 @@ async def test_partial_payment_keeps_invoice_posted(client: AsyncClient, seeded_
     assert Decimal(inv_now["paid_amount"]) == Decimal("400.00")
 
 
-async def test_overpayment_is_rejected(client: AsyncClient, seeded_tenant: dict):
+async def test_per_invoice_overapplication_is_rejected(client: AsyncClient, seeded_tenant: dict):
+    """Applying more than an invoice's outstanding to that single invoice
+    is still rejected, even though payment-level overpayment is now allowed."""
     headers = seeded_tenant["headers"]
     cust = await _create_customer(client, headers, "C003")
     invoice = await _post_sales_invoice(client, headers, cust, "500", "2026-04-01")
@@ -110,13 +112,159 @@ async def test_overpayment_is_rejected(client: AsyncClient, seeded_tenant: dict)
             "payment_date": "2026-04-10",
             "direction": "receipt",
             "customer_id": cust,
-            "amount": "999.00",  # exceeds invoice total of 500
+            "amount": "999.00",
             "cash_account_id": cash_id,
             "applications": [{"sales_invoice_id": invoice["id"], "amount": "999.00"}],
         },
     )
     assert r.status_code == 422
     assert "outstanding" in r.json()["error"]["message"].lower()
+
+
+async def test_overpayment_creates_unallocated_credit(client: AsyncClient, seeded_tenant: dict):
+    """Customer pays 1100 against a 1000 invoice. Apps total only 1000;
+    the extra 100 still flows through the journal (Dr Cash 1100/Cr AR 1100),
+    leaving the customer with a 100 unallocated credit on AR."""
+    headers = seeded_tenant["headers"]
+    cust = await _create_customer(client, headers, "C-OVR")
+    invoice = await _post_sales_invoice(client, headers, cust, "1000", "2026-04-01")
+    cash_id = await _kas_account_id(client, headers)
+
+    r = await client.post(
+        "/api/v1/payments",
+        headers=headers,
+        json={
+            "payment_date": "2026-04-10",
+            "direction": "receipt",
+            "customer_id": cust,
+            "amount": "1100",
+            "cash_account_id": cash_id,
+            "applications": [{"sales_invoice_id": invoice["id"], "amount": "1000"}],
+        },
+    )
+    assert r.status_code == 201, r.text
+    payment = r.json()
+    assert payment["status"] == "posted"
+
+    # Invoice fully paid via the 1000 application
+    ri = await client.get(f"/api/v1/sales-invoices/{invoice['id']}", headers=headers)
+    assert ri.json()["status"] == "paid"
+    assert Decimal(ri.json()["paid_amount"]) == Decimal("1000.00")
+
+    # Journal posted full 1100 against AR (extra 100 = unallocated credit)
+    rj = await client.get(f"/api/v1/journals/{payment['journal_entry_id']}", headers=headers)
+    journal = rj.json()
+    debits = sum(Decimal(ln["debit"]) for ln in journal["lines"])
+    credits = sum(Decimal(ln["credit"]) for ln in journal["lines"])
+    assert debits == credits == Decimal("1100.00")
+
+
+async def test_apps_sum_greater_than_amount_rejected(client: AsyncClient, seeded_tenant: dict):
+    """sum(applications) > amount is always invalid."""
+    headers = seeded_tenant["headers"]
+    cust = await _create_customer(client, headers, "C-SGT")
+    inv1 = await _post_sales_invoice(client, headers, cust, "600", "2026-04-01")
+    inv2 = await _post_sales_invoice(client, headers, cust, "600", "2026-04-02")
+    cash_id = await _kas_account_id(client, headers)
+
+    r = await client.post(
+        "/api/v1/payments",
+        headers=headers,
+        json={
+            "payment_date": "2026-04-10",
+            "direction": "receipt",
+            "customer_id": cust,
+            "amount": "1000",
+            "cash_account_id": cash_id,
+            "applications": [
+                {"sales_invoice_id": inv1["id"], "amount": "600"},
+                {"sales_invoice_id": inv2["id"], "amount": "500"},
+            ],
+        },
+    )
+    # Sum 1100 > amount 1000 → reject
+    assert r.status_code == 422
+
+
+async def test_customer_refund_reverses_ar(client: AsyncClient, seeded_tenant: dict):
+    """Overpayment of 100, then customer_refund of 100. AR goes back to 0
+    (both confirmed via the trial balance)."""
+    headers = seeded_tenant["headers"]
+    cust = await _create_customer(client, headers, "C-RFD")
+    invoice = await _post_sales_invoice(client, headers, cust, "1000", "2026-04-01")
+    cash_id = await _kas_account_id(client, headers)
+
+    # Step 1: overpay 1100 against 1000 invoice
+    rp = await client.post(
+        "/api/v1/payments",
+        headers=headers,
+        json={
+            "payment_date": "2026-04-10",
+            "direction": "receipt",
+            "customer_id": cust,
+            "amount": "1100",
+            "cash_account_id": cash_id,
+            "applications": [{"sales_invoice_id": invoice["id"], "amount": "1000"}],
+        },
+    )
+    assert rp.status_code == 201
+
+    # AR balance from trial balance: customer credit of 100 → AR debit balance = -100
+    rtb = await client.get("/api/v1/reports/trial-balance?as_of=2026-12-31", headers=headers)
+    ar_line = next(li for li in rtb.json()["lines"] if li["code"] == "1200")
+    assert Decimal(ar_line["balance"]) == Decimal("-100.00")
+
+    # Step 2: refund the 100 overpayment to customer
+    rrf = await client.post(
+        "/api/v1/payments",
+        headers=headers,
+        json={
+            "payment_date": "2026-04-15",
+            "direction": "customer_refund",
+            "customer_id": cust,
+            "amount": "100",
+            "cash_account_id": cash_id,
+            # No applications for refunds (v1)
+        },
+    )
+    assert rrf.status_code == 201, rrf.text
+    refund = rrf.json()
+    assert refund["payment_no"].startswith("REF-2026-")
+    assert refund["status"] == "posted"
+
+    # Verify journal: Dr AR 100 / Cr Cash 100
+    rj = await client.get(f"/api/v1/journals/{refund['journal_entry_id']}", headers=headers)
+    journal = rj.json()
+    assert any(Decimal(ln["debit"]) == Decimal("100.00") for ln in journal["lines"])
+    assert any(Decimal(ln["credit"]) == Decimal("100.00") for ln in journal["lines"])
+
+    # AR balance now back to 0
+    rtb2 = await client.get("/api/v1/reports/trial-balance?as_of=2026-12-31", headers=headers)
+    # AR may not be in the lines anymore (zero balance + include_zero=false)
+    ar_lines = [li for li in rtb2.json()["lines"] if li["code"] == "1200"]
+    assert ar_lines == [] or Decimal(ar_lines[0]["balance"]) == Decimal("0")
+
+
+async def test_refund_with_applications_rejected(client: AsyncClient, seeded_tenant: dict):
+    headers = seeded_tenant["headers"]
+    cust = await _create_customer(client, headers, "C-RFA")
+    invoice = await _post_sales_invoice(client, headers, cust, "100", "2026-04-01")
+    cash_id = await _kas_account_id(client, headers)
+
+    r = await client.post(
+        "/api/v1/payments",
+        headers=headers,
+        json={
+            "payment_date": "2026-04-15",
+            "direction": "customer_refund",
+            "customer_id": cust,
+            "amount": "100",
+            "cash_account_id": cash_id,
+            "applications": [{"sales_invoice_id": invoice["id"], "amount": "100"}],
+        },
+    )
+    assert r.status_code == 422
+    assert "applications" in r.json()["error"]["message"].lower()
 
 
 async def test_void_payment_reverses_settlement(client: AsyncClient, seeded_tenant: dict):

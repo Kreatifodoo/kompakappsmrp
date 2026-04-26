@@ -7,8 +7,13 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-PaymentDirection = Literal["receipt", "disbursement"]
+PaymentDirection = Literal["receipt", "disbursement", "customer_refund", "supplier_refund"]
 PaymentStatus = Literal["draft", "posted", "void"]
+
+CUSTOMER_DIRECTIONS = {"receipt", "customer_refund"}
+SUPPLIER_DIRECTIONS = {"disbursement", "supplier_refund"}
+SETTLEMENT_DIRECTIONS = {"receipt", "disbursement"}  # support invoice applications
+REFUND_DIRECTIONS = {"customer_refund", "supplier_refund"}
 
 
 class PaymentApplicationIn(BaseModel):
@@ -46,31 +51,52 @@ class PaymentCreate(BaseModel):
     cash_account_id: UUID
     reference: str | None = Field(default=None, max_length=100)
     notes: str | None = Field(default=None, max_length=1000)
-    applications: list[PaymentApplicationIn] = Field(min_length=1)
+    # Optional. For settlement (receipt/disbursement), at least one
+    # application is required and sum(apps) ≤ amount (overpayment leaves
+    # the difference as unallocated credit on the party's AR/AP balance).
+    # For refund directions, applications are not allowed (v1).
+    applications: list[PaymentApplicationIn] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def _validate(self) -> "PaymentCreate":
         # Party / direction consistency
-        if self.direction == "receipt":
+        if self.direction in CUSTOMER_DIRECTIONS:
             if self.customer_id is None or self.supplier_id is not None:
-                raise ValueError("Receipts require customer_id (and no supplier_id)")
+                raise ValueError(f"{self.direction} requires customer_id (and no supplier_id)")
+        else:  # supplier directions
+            if self.supplier_id is None or self.customer_id is not None:
+                raise ValueError(f"{self.direction} requires supplier_id (and no customer_id)")
+
+        if self.direction in REFUND_DIRECTIONS:
+            if self.applications:
+                raise ValueError(
+                    f"{self.direction} does not support invoice applications "
+                    "in v1 — submit refunds without applications; they clear "
+                    "unallocated AR/AP credit on the party's account"
+                )
+            return self
+
+        # Settlement directions: applications required + invoice type checks
+        if not self.applications:
+            raise ValueError(f"{self.direction} requires at least one application")
+
+        if self.direction == "receipt":
             if any(a.purchase_invoice_id is not None for a in self.applications):
                 raise ValueError("Receipts cannot apply to purchase invoices")
             if any(a.sales_invoice_id is None for a in self.applications):
                 raise ValueError("Each application must specify sales_invoice_id")
         else:  # disbursement
-            if self.supplier_id is None or self.customer_id is not None:
-                raise ValueError("Disbursements require supplier_id (and no customer_id)")
             if any(a.sales_invoice_id is not None for a in self.applications):
                 raise ValueError("Disbursements cannot apply to sales invoices")
             if any(a.purchase_invoice_id is None for a in self.applications):
                 raise ValueError("Each application must specify purchase_invoice_id")
 
-        # Sum check
+        # Allow overpayment: sum(apps) ≤ amount (difference flows to
+        # unallocated AR/AP credit). Reject only sum > amount.
         total_applied = sum((a.amount for a in self.applications), Decimal("0"))
-        if total_applied != self.amount:
+        if total_applied > self.amount:
             raise ValueError(
-                f"Sum of applications ({total_applied}) must equal payment amount ({self.amount})"
+                f"Sum of applications ({total_applied}) cannot exceed payment amount ({self.amount})"
             )
         return self
 

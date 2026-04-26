@@ -49,48 +49,55 @@ class PaymentsService:
             raise ValidationError(f"Account {cash_acct.code} is not flagged is_cash=true")
 
         # ── Validate party + each application ─────────────
-        if payload.direction == "receipt":
+        # Customer-side directions (receipt + customer_refund)
+        if payload.direction in ("receipt", "customer_refund"):
             customer = await self.sales_repo.get_customer(payload.customer_id)
             if not customer:
                 raise ValidationError("Customer not found in this tenant")
 
-            for app in payload.applications:
-                inv = await self.sales_repo.get_invoice(app.sales_invoice_id)
-                if not inv:
-                    raise ValidationError(f"Sales invoice {app.sales_invoice_id} not found")
-                if inv.customer_id != customer.id:
-                    raise ValidationError(
-                        f"Invoice {inv.invoice_no} does not belong to customer {customer.code}"
-                    )
-                if inv.status != "posted":
-                    raise ValidationError(
-                        f"Invoice {inv.invoice_no} is {inv.status}; only posted invoices can receive payment"
-                    )
-                outstanding = inv.total - inv.paid_amount
-                if app.amount > outstanding:
-                    raise ValidationError(
-                        f"Application of {app.amount} on {inv.invoice_no} exceeds outstanding {outstanding}"
-                    )
-        else:  # disbursement
+            # Only `receipt` carries applications (refunds are unallocated)
+            if payload.direction == "receipt":
+                for app in payload.applications:
+                    inv = await self.sales_repo.get_invoice(app.sales_invoice_id)
+                    if not inv:
+                        raise ValidationError(f"Sales invoice {app.sales_invoice_id} not found")
+                    if inv.customer_id != customer.id:
+                        raise ValidationError(
+                            f"Invoice {inv.invoice_no} does not belong to customer {customer.code}"
+                        )
+                    if inv.status != "posted":
+                        raise ValidationError(
+                            f"Invoice {inv.invoice_no} is {inv.status}; "
+                            f"only posted invoices can receive payment"
+                        )
+                    outstanding = inv.total - inv.paid_amount
+                    if app.amount > outstanding:
+                        raise ValidationError(
+                            f"Application of {app.amount} on {inv.invoice_no} "
+                            f"exceeds outstanding {outstanding}"
+                        )
+        else:  # supplier-side (disbursement + supplier_refund)
             supplier = await self.purchase_repo.get_supplier(payload.supplier_id)
             if not supplier:
                 raise ValidationError("Supplier not found in this tenant")
 
-            for app in payload.applications:
-                inv = await self.purchase_repo.get_invoice(app.purchase_invoice_id)
-                if not inv:
-                    raise ValidationError(f"Purchase invoice {app.purchase_invoice_id} not found")
-                if inv.supplier_id != supplier.id:
-                    raise ValidationError(
-                        f"Invoice {inv.invoice_no} does not belong to supplier {supplier.code}"
-                    )
-                if inv.status != "posted":
-                    raise ValidationError(f"Invoice {inv.invoice_no} is {inv.status}; cannot pay")
-                outstanding = inv.total - inv.paid_amount
-                if app.amount > outstanding:
-                    raise ValidationError(
-                        f"Application of {app.amount} on {inv.invoice_no} exceeds outstanding {outstanding}"
-                    )
+            if payload.direction == "disbursement":
+                for app in payload.applications:
+                    inv = await self.purchase_repo.get_invoice(app.purchase_invoice_id)
+                    if not inv:
+                        raise ValidationError(f"Purchase invoice {app.purchase_invoice_id} not found")
+                    if inv.supplier_id != supplier.id:
+                        raise ValidationError(
+                            f"Invoice {inv.invoice_no} does not belong to supplier {supplier.code}"
+                        )
+                    if inv.status != "posted":
+                        raise ValidationError(f"Invoice {inv.invoice_no} is {inv.status}; cannot pay")
+                    outstanding = inv.total - inv.paid_amount
+                    if app.amount > outstanding:
+                        raise ValidationError(
+                            f"Application of {app.amount} on {inv.invoice_no} "
+                            f"exceeds outstanding {outstanding}"
+                        )
 
         # ── Build header + applications ───────────────────
         payment_no = payload.payment_no or await self.repo.next_payment_no(
@@ -129,27 +136,43 @@ class PaymentsService:
         return payment
 
     async def _post_internal(self, payment: Payment) -> None:
-        # Find AR or AP mapping
-        if payment.direction == "receipt":
+        # Build the 2-line balanced journal based on direction.
+        # Customer-side: receipts reduce AR; refunds increase AR (reverse).
+        # Supplier-side: disbursements reduce AP; refunds increase AP.
+        if payment.direction in ("receipt", "customer_refund"):
             ar = await self.acct_repo.get_mapping("ar")
             if not ar:
                 raise ValidationError("Account mapping missing: configure 'ar'")
-            # Dr Cash / Cr AR
-            lines = [
-                (payment.cash_account_id, payment.amount, Decimal("0")),
-                (ar.account_id, Decimal("0"), payment.amount),
-            ]
-            description = f"Receipt {payment.payment_no}"
-        else:  # disbursement
+            if payment.direction == "receipt":
+                # Dr Cash / Cr AR
+                lines = [
+                    (payment.cash_account_id, payment.amount, Decimal("0")),
+                    (ar.account_id, Decimal("0"), payment.amount),
+                ]
+                description = f"Receipt {payment.payment_no}"
+            else:  # customer_refund — Dr AR / Cr Cash (reverse of receipt)
+                lines = [
+                    (ar.account_id, payment.amount, Decimal("0")),
+                    (payment.cash_account_id, Decimal("0"), payment.amount),
+                ]
+                description = f"Refund to customer {payment.payment_no}"
+        else:  # disbursement / supplier_refund
             ap = await self.acct_repo.get_mapping("ap")
             if not ap:
                 raise ValidationError("Account mapping missing: configure 'ap'")
-            # Dr AP / Cr Cash
-            lines = [
-                (ap.account_id, payment.amount, Decimal("0")),
-                (payment.cash_account_id, Decimal("0"), payment.amount),
-            ]
-            description = f"Disbursement {payment.payment_no}"
+            if payment.direction == "disbursement":
+                # Dr AP / Cr Cash
+                lines = [
+                    (ap.account_id, payment.amount, Decimal("0")),
+                    (payment.cash_account_id, Decimal("0"), payment.amount),
+                ]
+                description = f"Disbursement {payment.payment_no}"
+            else:  # supplier_refund — Dr Cash / Cr AP (reverse of disbursement)
+                lines = [
+                    (payment.cash_account_id, payment.amount, Decimal("0")),
+                    (ap.account_id, Decimal("0"), payment.amount),
+                ]
+                description = f"Refund from supplier {payment.payment_no}"
 
         entry = await self.acct_svc.post_system_journal(
             entry_date=payment.payment_date,
