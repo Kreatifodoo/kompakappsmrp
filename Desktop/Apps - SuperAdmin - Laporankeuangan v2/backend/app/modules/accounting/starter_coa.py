@@ -30,7 +30,7 @@ STARTER_COA: list[StarterAccount] = [
     StarterAccount("1110", "Kas", "asset", "debit", "1100", "cash_default", is_cash=True),
     StarterAccount("1120", "Bank", "asset", "debit", "1100", None, is_cash=True),
     StarterAccount("1200", "Piutang Usaha", "asset", "debit", "1000", "ar"),
-    StarterAccount("1300", "Persediaan", "asset", "debit", "1000", None),
+    StarterAccount("1300", "Persediaan", "asset", "debit", "1000", "inventory"),
     StarterAccount("1400", "PPN Masukan (Tax Receivable)", "asset", "debit", "1000", "tax_receivable"),
     StarterAccount("1500", "Aset Tetap", "asset", "debit", "1000", None),
     StarterAccount("1510", "Peralatan", "asset", "debit", "1500", None),
@@ -63,3 +63,14 @@ STARTER_COA: list[StarterAccount] = [
     StarterAccount("5300", "Beban Bunga & Bank", "expense", "debit", "5000", None),
     StarterAccount("5900", "Beban Lain-lain", "expense", "debit", "5000", None),
 ]
+
+
+# Additional mapping keys to bind to existing starter accounts.
+# Two mapping keys → one account is permitted (the unique constraint is
+# on (tenant_id, key)). `purchase_expense` and `cogs` both point at the
+# 5100 HPP account because for inventory-tracked items, COGS is hit via
+# the new `cogs` mapping; for service-only tenants, the existing
+# `purchase_expense` route still works.
+EXTRA_STARTER_MAPPINGS: dict[str, str] = {
+    "cogs": "5100",
+}

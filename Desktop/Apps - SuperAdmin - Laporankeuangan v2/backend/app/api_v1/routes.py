@@ -6,6 +6,7 @@ from app.modules.accounting.api import router as accounting_router
 from app.modules.audit.api import router as audit_router
 from app.modules.identity.api import router as identity_router
 from app.modules.identity.roles_api import router as roles_router
+from app.modules.inventory.api import router as inventory_router
 from app.modules.payments.api import router as payments_router
 from app.modules.periods.api import router as periods_router
 from app.modules.purchase.api import router as purchase_router
@@ -22,3 +23,4 @@ api_v1_router.include_router(payments_router)
 api_v1_router.include_router(reports_router)
 api_v1_router.include_router(audit_router)
 api_v1_router.include_router(periods_router)
+api_v1_router.include_router(inventory_router)

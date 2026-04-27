@@ -40,6 +40,7 @@ from app.modules.accounting import models as _accounting  # noqa: F401, E402
 from app.modules.audit import models as _audit  # noqa: F401, E402
 from app.modules.audit.listener import register_tracked  # noqa: E402
 from app.modules.identity import models as _identity  # noqa: F401, E402
+from app.modules.inventory import models as _inventory  # noqa: F401, E402
 from app.modules.payments import models as _payments  # noqa: F401, E402
 from app.modules.periods import models as _periods  # noqa: F401, E402
 from app.modules.purchase import models as _purchase  # noqa: F401, E402
@@ -58,6 +59,10 @@ ALL_TABLES = [
     "permissions",
     "audit_logs",
     "period_closure_events",
+    "stock_balances",
+    "stock_movements",
+    "items",
+    "warehouses",
     "payment_applications",
     "payments",
     "account_mappings",

@@ -9,7 +9,7 @@ async def test_seed_starter_coa_creates_accounts_and_mappings(client: AsyncClien
     body = r.json()
     assert body["accounts_created"] >= 30
     assert body["accounts_skipped"] == 0
-    assert body["mappings_set"] == 7
+    assert body["mappings_set"] == 9
 
     # Re-running is idempotent
     r2 = await client.post("/api/v1/accounts/seed-starter-coa", headers=tenant_token["headers"])
@@ -19,7 +19,7 @@ async def test_seed_starter_coa_creates_accounts_and_mappings(client: AsyncClien
     assert body2["accounts_skipped"] >= 30
     assert body2["mappings_set"] == 0  # already bound
 
-    # All 7 well-known mappings present
+    # All 9 well-known mappings present
     rm = await client.get("/api/v1/account-mappings", headers=tenant_token["headers"])
     assert rm.status_code == 200
     keys = {m["key"] for m in rm.json()}
@@ -31,6 +31,8 @@ async def test_seed_starter_coa_creates_accounts_and_mappings(client: AsyncClien
         "tax_payable",
         "tax_receivable",
         "cash_default",
+        "inventory",
+        "cogs",
     }
 
 

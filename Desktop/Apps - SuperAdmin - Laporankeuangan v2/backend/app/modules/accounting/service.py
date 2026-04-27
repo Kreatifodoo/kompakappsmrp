@@ -14,7 +14,7 @@ from app.modules.accounting.schemas import (
     AccountUpdate,
     JournalEntryCreate,
 )
-from app.modules.accounting.starter_coa import STARTER_COA
+from app.modules.accounting.starter_coa import EXTRA_STARTER_MAPPINGS, STARTER_COA
 from app.modules.periods.service import assert_period_open
 
 
@@ -129,7 +129,7 @@ class AccountingService:
         if remaining:
             raise ValidationError(f"Starter COA could not resolve parents for: {[a.code for a in remaining]}")
 
-        # Pass 2 — bind well-known mappings
+        # Pass 2 — bind well-known mappings (one per StarterAccount row)
         mappings_set = 0
         for sa in STARTER_COA:
             if not sa.mapping_key:
@@ -139,6 +139,18 @@ class AccountingService:
             if existing_map and not overwrite_mappings:
                 continue
             await self.repo.set_mapping(sa.mapping_key, account.id)
+            mappings_set += 1
+
+        # Pass 3 — extra mappings that share an account with another key
+        # (e.g. cogs and purchase_expense both → 5100)
+        for key, code in EXTRA_STARTER_MAPPINGS.items():
+            account = existing_by_code.get(code)
+            if account is None:
+                continue
+            existing_map = await self.repo.get_mapping(key)
+            if existing_map and not overwrite_mappings:
+                continue
+            await self.repo.set_mapping(key, account.id)
             mappings_set += 1
 
         return {

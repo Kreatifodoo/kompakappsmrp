@@ -116,6 +116,8 @@ WELL_KNOWN_MAPPING_KEYS = {
     "tax_payable",
     "tax_receivable",
     "cash_default",
+    "inventory",  # asset account that absorbs item-tracked stock
+    "cogs",  # expense account hit on stock-out for sold items
 }
 
 
