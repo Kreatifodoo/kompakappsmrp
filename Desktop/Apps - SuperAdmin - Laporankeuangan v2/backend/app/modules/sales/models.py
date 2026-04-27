@@ -129,5 +129,14 @@ class SalesInvoiceLine(Base):
     line_total: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
     tax_rate: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=Decimal("0"), nullable=False)
     tax_amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=Decimal("0"), nullable=False)
+    # Inventory integration: when item_id refers to a `stock`-type item,
+    # posting the invoice creates a stock-out movement on warehouse_id
+    # and adds Dr COGS / Cr Inventory to the journal at avg_cost.
+    item_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("items.id", ondelete="RESTRICT")
+    )
+    warehouse_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("warehouses.id", ondelete="RESTRICT")
+    )
 
     invoice: Mapped[SalesInvoice] = relationship(back_populates="lines")

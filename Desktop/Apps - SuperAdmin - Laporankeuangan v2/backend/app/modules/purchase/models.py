@@ -129,9 +129,19 @@ class PurchaseInvoiceLine(Base):
     line_total: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
     tax_rate: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=Decimal("0"), nullable=False)
     tax_amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=Decimal("0"), nullable=False)
-    # Optional per-line expense account override (else uses tenant default purchase_expense)
+    # Optional per-line expense account override (else uses tenant default purchase_expense).
+    # Ignored for stock-tracked items — the line debits the `inventory` mapping instead.
     expense_account_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("accounts.id", ondelete="RESTRICT")
+    )
+    # Inventory integration: when item_id refers to a `stock`-type item,
+    # posting the invoice creates a stock-in movement on warehouse_id
+    # at this line's unit_price and routes the debit to inventory.
+    item_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("items.id", ondelete="RESTRICT")
+    )
+    warehouse_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("warehouses.id", ondelete="RESTRICT")
     )
 
     invoice: Mapped[PurchaseInvoice] = relationship(back_populates="lines")

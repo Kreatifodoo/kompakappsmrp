@@ -15,6 +15,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.exceptions import ConflictError, NotFoundError, ValidationError
 from app.modules.accounting.repository import AccountingRepository
 from app.modules.accounting.service import AccountingService
+from app.modules.inventory.repository import InventoryRepository
+from app.modules.inventory.service import InventoryService
 from app.modules.periods.service import assert_period_open
 from app.modules.purchase.models import (
     PurchaseInvoice,
@@ -43,6 +45,8 @@ class PurchaseService:
         self.repo = PurchaseRepository(session, tenant_id)
         self.acct_repo = AccountingRepository(session, tenant_id)
         self.acct_svc = AccountingService(session, tenant_id, user_id)
+        self.inv_repo = InventoryRepository(session, tenant_id)
+        self.inv_svc = InventoryService(session, tenant_id, user_id)
 
     # ─── Suppliers ──────────────────────────────────────
     async def create_supplier(self, payload: SupplierCreate) -> Supplier:
@@ -94,6 +98,17 @@ class PurchaseService:
             created_by=self.user_id,
         )
         for idx, line in enumerate(payload.lines, start=1):
+            # Inventory link validation: stock items require warehouse_id
+            if line.item_id is not None:
+                item = await self.inv_repo.get_item(line.item_id)
+                if not item:
+                    raise ValidationError(f"Line {idx}: item {line.item_id} not found in this tenant")
+                if item.type == "stock" and line.warehouse_id is None:
+                    raise ValidationError(f"Line {idx}: stock item {item.sku} requires warehouse_id")
+                if line.warehouse_id is not None:
+                    wh = await self.inv_repo.get_warehouse(line.warehouse_id)
+                    if not wh:
+                        raise ValidationError(f"Line {idx}: warehouse {line.warehouse_id} not found")
             line_total = _money(line.qty * line.unit_price)
             line_tax = _money(line_total * line.tax_rate / Decimal("100"))
             subtotal += line_total
@@ -109,6 +124,8 @@ class PurchaseService:
                     tax_rate=line.tax_rate,
                     tax_amount=line_tax,
                     expense_account_id=line.expense_account_id,
+                    item_id=line.item_id,
+                    warehouse_id=line.warehouse_id,
                 )
             )
 
@@ -143,11 +160,35 @@ class PurchaseService:
 
         lines: list[tuple[UUID, Decimal, Decimal]] = []
 
-        # Dr each line — to its override expense account, or the default one
-        # (Aggregate by account so one combined debit per account, cleaner reports)
+        # Resolve the inventory account once if any line is stock-tracked
+        inv_account_id: UUID | None = None
+        for ln in invoice.lines:
+            if ln.item_id is not None and ln.warehouse_id is not None:
+                # We need it — fetch lazily
+                if inv_account_id is None:
+                    inv_mapping = await self.acct_repo.get_mapping("inventory")
+                    if not inv_mapping:
+                        raise ValidationError(
+                            "Account mapping missing: configure 'inventory' before purchasing stock items"
+                        )
+                    inv_account_id = inv_mapping.account_id
+                break
+
+        # Dr each line — stock-tracked lines hit the inventory account,
+        # else override expense account, else default purchase_expense.
+        # Aggregate by account so one combined debit per account.
         debits_by_account: dict[UUID, Decimal] = {}
         for ln in invoice.lines:
-            acct_id = ln.expense_account_id or default_exp.account_id
+            if ln.item_id is not None and ln.warehouse_id is not None:
+                # Verify it's actually a stock item — non-stock items with
+                # an item_id still go to the expense path
+                item = await self.inv_repo.get_item(ln.item_id)
+                if item is not None and item.type == "stock":
+                    acct_id = inv_account_id
+                else:
+                    acct_id = ln.expense_account_id or default_exp.account_id
+            else:
+                acct_id = ln.expense_account_id or default_exp.account_id
             debits_by_account[acct_id] = debits_by_account.get(acct_id, Decimal("0")) + ln.line_total
 
         for acct_id, amount in debits_by_account.items():
@@ -174,6 +215,30 @@ class PurchaseService:
             source_id=invoice.id,
         )
 
+        # Stock-in movements: one per stock-tracked line, valued at the
+        # line's unit_price (this becomes the cost basis for weighted-
+        # average on subsequent receipts).
+        for ln in invoice.lines:
+            if ln.item_id is None or ln.warehouse_id is None:
+                continue
+            item = await self.inv_repo.get_item(ln.item_id)
+            if item is None or item.type != "stock":
+                continue
+            wh = await self.inv_repo.get_warehouse(ln.warehouse_id)
+            if wh is None:
+                continue
+            await self.inv_svc._post_movement_inner(
+                item=item,
+                warehouse=wh,
+                movement_date=invoice.invoice_date,
+                direction="in",
+                qty=ln.qty,
+                unit_cost=ln.unit_price,
+                notes=f"Purchase {invoice.invoice_no} line {ln.line_no}",
+                source="purchase_invoice",
+                source_id=invoice.id,
+            )
+
         invoice.journal_entry_id = entry.id
         invoice.status = "posted"
         invoice.posted_by = self.user_id
@@ -192,6 +257,31 @@ class PurchaseService:
 
         if invoice.status == "posted":
             await self.acct_svc.void_system_journal("purchase_invoice", invoice.id, f"Voided: {reason}")
+            # Compensate every stock-in with a stock-out at the same
+            # unit_cost so qty drops back exactly. This will fail with
+            # 422 if intervening movements have already consumed the
+            # stock — that's correct: voiding receipts you've already
+            # sold from is genuinely problematic and needs manual
+            # adjustment.
+            originals = await self.inv_repo.list_movements_for_source("purchase_invoice", invoice.id)
+            for m in originals:
+                if m.direction != "in":
+                    continue
+                item = await self.inv_repo.get_item(m.item_id)
+                wh = await self.inv_repo.get_warehouse(m.warehouse_id)
+                if item is None or wh is None:
+                    continue
+                await self.inv_svc._post_movement_inner(
+                    item=item,
+                    warehouse=wh,
+                    movement_date=invoice.invoice_date,
+                    direction="out",
+                    qty=m.qty,
+                    unit_cost=m.unit_cost,
+                    notes=f"Void of purchase {invoice.invoice_no}",
+                    source="void_purchase_invoice",
+                    source_id=invoice.id,
+                )
 
         invoice.status = "void"
         invoice.voided_by = self.user_id

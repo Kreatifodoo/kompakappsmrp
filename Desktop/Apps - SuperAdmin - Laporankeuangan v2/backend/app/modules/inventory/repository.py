@@ -108,6 +108,17 @@ class InventoryRepository:
         await self.session.flush()
         return movement
 
+    async def list_movements_for_source(self, source: str, source_id: UUID) -> list[StockMovement]:
+        """All stock movements created by a specific source document
+        (e.g. a sales/purchase invoice). Used by void to find what to
+        reverse."""
+        stmt = select(StockMovement).where(
+            StockMovement.tenant_id == self.tenant_id,
+            StockMovement.source == source,
+            StockMovement.source_id == source_id,
+        )
+        return list((await self.session.execute(stmt)).scalars().all())
+
     async def list_movements(
         self,
         *,

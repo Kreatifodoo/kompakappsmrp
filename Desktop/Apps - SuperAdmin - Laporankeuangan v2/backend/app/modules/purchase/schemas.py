@@ -50,7 +50,13 @@ class PurchaseInvoiceLineIn(BaseModel):
     qty: Decimal = Field(gt=0)
     unit_price: Decimal = Field(ge=0)
     tax_rate: Decimal = Field(default=Decimal("0"), ge=0, le=100)
-    expense_account_id: UUID | None = None  # override default purchase expense
+    # Override the tenant's default purchase-expense account. Ignored
+    # when item_id points at a stock-type item (debit goes to inventory).
+    expense_account_id: UUID | None = None
+    # Inventory link. Stock-type items require warehouse_id; posting
+    # creates a stock-in at this line's unit_price.
+    item_id: UUID | None = None
+    warehouse_id: UUID | None = None
 
 
 class PurchaseInvoiceLineOut(BaseModel):
@@ -65,6 +71,8 @@ class PurchaseInvoiceLineOut(BaseModel):
     tax_rate: Decimal
     tax_amount: Decimal
     expense_account_id: UUID | None
+    item_id: UUID | None
+    warehouse_id: UUID | None
 
 
 class PurchaseInvoiceCreate(BaseModel):

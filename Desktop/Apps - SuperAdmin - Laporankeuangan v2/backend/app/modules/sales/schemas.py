@@ -50,6 +50,11 @@ class SalesInvoiceLineIn(BaseModel):
     qty: Decimal = Field(gt=0)
     unit_price: Decimal = Field(ge=0)
     tax_rate: Decimal = Field(default=Decimal("0"), ge=0, le=100)
+    # Optional inventory link. For `stock`-type items the service
+    # requires warehouse_id and creates a stock-out + COGS journal lines
+    # on post.
+    item_id: UUID | None = None
+    warehouse_id: UUID | None = None
 
 
 class SalesInvoiceLineOut(BaseModel):
@@ -63,6 +68,8 @@ class SalesInvoiceLineOut(BaseModel):
     line_total: Decimal
     tax_rate: Decimal
     tax_amount: Decimal
+    item_id: UUID | None
+    warehouse_id: UUID | None
 
 
 class SalesInvoiceCreate(BaseModel):
