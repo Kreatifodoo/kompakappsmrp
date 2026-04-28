@@ -12,9 +12,11 @@ from app.core.exceptions import NotFoundError
 from app.deps import CurrentUser, require_permission
 from app.modules.inventory.repository import InventoryRepository
 from app.modules.inventory.schemas import (
+    CostingMethodOut,
     ItemCreate,
     ItemOut,
     ItemUpdate,
+    SetCostingMethodRequest,
     StockBalanceOut,
     StockMovementCreate,
     StockMovementOut,
@@ -233,3 +235,36 @@ async def stock_valuation(
 
     lines.sort(key=lambda li: li.sku)
     return StockValuationReport(lines=lines, total_value=total_value)
+
+
+# ─── Costing method ──────────────────────────────────────
+@router.get("/costing-method", response_model=CostingMethodOut)
+async def get_costing_method(
+    current: CurrentUser = Depends(require_permission("inventory.read")),
+    session: AsyncSession = Depends(get_read_session),
+) -> CostingMethodOut:
+    from sqlalchemy import select
+
+    from app.modules.identity.models import Tenant
+
+    method = (
+        await session.execute(select(Tenant.costing_method).where(Tenant.id == current.tenant_id))
+    ).scalar_one()
+    return CostingMethodOut(method=method)
+
+
+@router.put(
+    "/costing-method",
+    response_model=CostingMethodOut,
+    summary="Switch the tenant's inventory costing method (avg/fifo/lifo)",
+)
+async def set_costing_method(
+    payload: SetCostingMethodRequest,
+    current: CurrentUser = Depends(require_permission("inventory.write")),
+    session: AsyncSession = Depends(get_write_session),
+) -> CostingMethodOut:
+    svc = InventoryService(session, current.tenant_id, current.user_id)
+    method = await svc.set_costing_method(
+        method=payload.method, seed_opening_layers=payload.seed_opening_layers
+    )
+    return CostingMethodOut(method=method)

@@ -173,3 +173,61 @@ class StockBalance(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
     )
+
+
+class StockCostLayer(Base):
+    """One cost layer per stock-in receipt under FIFO/LIFO costing.
+
+    For weighted-average tenants this table stays empty; only FIFO and
+    LIFO write rows here. Each layer records the unit_cost at receipt
+    and the running remaining_qty as outflows consume it. Layers are
+    consumed in received_at order (asc for FIFO, desc for LIFO) and
+    `is_exhausted` is denormalized to keep the consume query fast.
+    """
+
+    __tablename__ = "stock_cost_layers"
+    __table_args__ = (
+        Index(
+            "ix_stock_cost_layers_consume",
+            "tenant_id",
+            "item_id",
+            "warehouse_id",
+            "is_exhausted",
+            "received_at",
+        ),
+        CheckConstraint("original_qty > 0", name="ck_stock_cost_layers_orig_positive"),
+        CheckConstraint(
+            "remaining_qty >= 0 AND remaining_qty <= original_qty",
+            name="ck_stock_cost_layers_remaining_bounds",
+        ),
+        CheckConstraint("unit_cost >= 0", name="ck_stock_cost_layers_unit_cost_nonneg"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("tenants.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    item_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("items.id", ondelete="CASCADE"), nullable=False
+    )
+    warehouse_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("warehouses.id", ondelete="CASCADE"), nullable=False
+    )
+    # The IN movement that created this layer (for traceability;
+    # nullable for "opening balance" layers seeded on method switch).
+    source_movement_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("stock_movements.id", ondelete="SET NULL")
+    )
+    received_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    original_qty: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
+    remaining_qty: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
+    unit_cost: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
+    is_exhausted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )

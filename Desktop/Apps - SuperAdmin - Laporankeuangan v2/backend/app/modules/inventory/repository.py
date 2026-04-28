@@ -5,7 +5,13 @@ from uuid import UUID
 from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.inventory.models import Item, StockBalance, StockMovement, Warehouse
+from app.modules.inventory.models import (
+    Item,
+    StockBalance,
+    StockCostLayer,
+    StockMovement,
+    Warehouse,
+)
 
 
 class InventoryRepository:
@@ -166,3 +172,37 @@ class InventoryRepository:
             avg = (value / qty) if qty != 0 else Decimal("0")
             out.append((row.item_id, qty, avg))
         return out
+
+    # ── Cost layers (FIFO/LIFO) ──────────────────────────
+    async def add_cost_layer(self, layer: StockCostLayer) -> StockCostLayer:
+        self.session.add(layer)
+        await self.session.flush()
+        return layer
+
+    async def consumable_layers(
+        self, item_id: UUID, warehouse_id: UUID, *, lifo: bool
+    ) -> list[StockCostLayer]:
+        """Layers with remaining_qty > 0, ordered for consumption.
+        FIFO → oldest first (received_at ASC); LIFO → newest first."""
+        order = StockCostLayer.received_at.desc() if lifo else StockCostLayer.received_at.asc()
+        tiebreak = StockCostLayer.id.desc() if lifo else StockCostLayer.id.asc()
+        stmt = (
+            select(StockCostLayer)
+            .where(
+                StockCostLayer.tenant_id == self.tenant_id,
+                StockCostLayer.item_id == item_id,
+                StockCostLayer.warehouse_id == warehouse_id,
+                StockCostLayer.is_exhausted.is_(False),
+            )
+            .order_by(order, tiebreak)
+        )
+        return list((await self.session.execute(stmt)).scalars().all())
+
+    async def list_open_balances_with_avg(self) -> list[StockBalance]:
+        """All non-zero balances, used to seed opening cost layers when
+        a tenant switches from `avg` to FIFO/LIFO."""
+        stmt = select(StockBalance).where(
+            StockBalance.tenant_id == self.tenant_id,
+            StockBalance.on_hand_qty > 0,
+        )
+        return list((await self.session.execute(stmt)).scalars().all())

@@ -157,3 +157,21 @@ class StockValuationLine(BaseModel):
 
 
 StockValuationReport.model_rebuild()
+
+
+# ─── Costing method ───────────────────────────────────────
+CostingMethod = Literal["avg", "fifo", "lifo"]
+
+
+class CostingMethodOut(BaseModel):
+    method: CostingMethod
+
+
+class SetCostingMethodRequest(BaseModel):
+    method: CostingMethod
+    # When switching avg → fifo/lifo, seed an opening cost layer per
+    # existing (item, warehouse) balance using the current avg_cost. If
+    # false, the switch leaves no layers and the next outflow on any
+    # item with stock-on-hand will fail until layers are populated
+    # manually (via stock-in receipts). Default true.
+    seed_opening_layers: bool = True

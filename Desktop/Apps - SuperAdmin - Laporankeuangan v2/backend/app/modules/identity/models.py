@@ -33,6 +33,11 @@ class Tenant(Base):
     # payment dated on or before this date is blocked at the service
     # layer. NULL = no periods closed yet.
     closed_through: Mapped[date | None] = mapped_column(Date)
+    # Inventory costing method: 'avg' (weighted average — default),
+    # 'fifo' (first-in first-out), or 'lifo' (last-in first-out). FIFO
+    # and LIFO use the stock_cost_layers table; avg writes only to
+    # stock_balances.
+    costing_method: Mapped[str] = mapped_column(String(10), default="avg", nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

@@ -1,20 +1,34 @@
-"""Inventory business logic — weighted-average costing.
+"""Inventory business logic — pluggable costing method.
 
-Costing formula on stock-in:
+Per-tenant `costing_method` selects between:
+- 'avg' (weighted average — default):
     new_avg = (old_qty × old_avg + in_qty × in_unit_cost) / (old_qty + in_qty)
+    outflows valued at current avg_cost.
+- 'fifo' (first-in first-out): each stock-in creates a cost layer.
+    Outflows consume layers in received_at ASC order. Movement's
+    unit_cost is the blended average of consumed layer costs.
+- 'lifo' (last-in first-out): same layer mechanic, consume newest
+    layers first.
 
-Stock-out and adjust-out use the current avg_cost (not the supplied
-unit_cost), which preserves accumulated cost basis. Adjust-in is
-treated identically to a regular stock-in.
+For FIFO/LIFO the StockBalance.avg_cost field is kept in sync as the
+qty-weighted blended cost of remaining layers — that way valuation
+reports work uniformly across all three methods.
 """
 
 from decimal import ROUND_HALF_UP, Decimal
 from uuid import UUID
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import ConflictError, NotFoundError, ValidationError
-from app.modules.inventory.models import Item, StockMovement, Warehouse
+from app.modules.identity.models import Tenant
+from app.modules.inventory.models import (
+    Item,
+    StockCostLayer,
+    StockMovement,
+    Warehouse,
+)
 from app.modules.inventory.repository import InventoryRepository
 from app.modules.inventory.schemas import (
     ItemCreate,
@@ -123,6 +137,13 @@ class InventoryService:
             source_id=source_id,
         )
 
+    async def _get_costing_method(self) -> str:
+        """Cached fetch of the tenant's costing_method per service instance."""
+        if not hasattr(self, "_costing_method_cache"):
+            stmt = select(Tenant.costing_method).where(Tenant.id == self.tenant_id)
+            self._costing_method_cache = (await self.session.execute(stmt)).scalar_one()
+        return self._costing_method_cache
+
     async def _post_movement_inner(
         self,
         *,
@@ -137,35 +158,15 @@ class InventoryService:
         source_id: UUID | None,
     ) -> StockMovement:
         bal = await self.repo.upsert_balance(item.id, warehouse.id)
+        method = await self._get_costing_method()
 
         qty = _q4(qty)
         if qty <= 0:
             raise ValidationError("Movement qty must be positive")
 
-        if direction in ("in", "adjust_in"):
-            applied_unit_cost = _q4(unit_cost)
-            old_qty = bal.on_hand_qty
-            new_qty = _q4(old_qty + qty)
-            if new_qty > 0:
-                # Weighted average — keep 4 decimals for cost precision
-                bal.avg_cost = _q4((old_qty * bal.avg_cost + qty * applied_unit_cost) / new_qty)
-            else:
-                bal.avg_cost = applied_unit_cost
-            bal.on_hand_qty = new_qty
-        elif direction in ("out", "adjust_out"):
-            if bal.on_hand_qty < qty:
-                raise ValidationError(f"Insufficient stock: on hand {bal.on_hand_qty} < requested {qty}")
-            # avg_cost is unchanged; outflows are valued at current avg
-            applied_unit_cost = _q4(bal.avg_cost)
-            bal.on_hand_qty = _q4(bal.on_hand_qty - qty)
-            # If we just zeroed out, reset avg to 0 so a fresh restock
-            # picks up the new cost cleanly
-            if bal.on_hand_qty == 0:
-                bal.avg_cost = Decimal("0")
-        else:
-            raise ValidationError(f"Unknown direction '{direction}'")
-
-        total_cost = _q2(qty * applied_unit_cost)
+        # ── Pre-flush the StockMovement row WITHOUT cost yet so layer
+        # rows can FK to it. We'll fill in unit_cost / total_cost /
+        # qty_after / avg_cost_after right before the final flush.
         movement = StockMovement(
             tenant_id=self.tenant_id,
             item_id=item.id,
@@ -173,14 +174,149 @@ class InventoryService:
             movement_date=movement_date,
             direction=direction,
             qty=qty,
-            unit_cost=applied_unit_cost,
-            total_cost=total_cost,
+            unit_cost=Decimal("0"),  # will be set below
+            total_cost=Decimal("0"),
             source=source,
             source_id=source_id,
             notes=notes,
-            qty_after=bal.on_hand_qty,
-            avg_cost_after=bal.avg_cost,
+            qty_after=Decimal("0"),
+            avg_cost_after=Decimal("0"),
             created_by=self.user_id,
         )
-        await self.repo.add_movement(movement)
+
+        if direction in ("in", "adjust_in"):
+            applied_unit_cost = _q4(unit_cost)
+            old_qty = bal.on_hand_qty
+            new_qty = _q4(old_qty + qty)
+            # Weighted-average bookkeeping is kept up to date for ALL
+            # methods so valuation reports are uniform.
+            if new_qty > 0:
+                bal.avg_cost = _q4((old_qty * bal.avg_cost + qty * applied_unit_cost) / new_qty)
+            else:
+                bal.avg_cost = applied_unit_cost
+            bal.on_hand_qty = new_qty
+            total_cost = _q2(qty * applied_unit_cost)
+
+            # FIFO/LIFO: also create a cost layer so future outflows can
+            # consume in receipt order
+            if method in ("fifo", "lifo"):
+                await self.repo.add_movement(movement)  # need movement.id first
+                self.session.add(
+                    StockCostLayer(
+                        tenant_id=self.tenant_id,
+                        item_id=item.id,
+                        warehouse_id=warehouse.id,
+                        source_movement_id=movement.id,
+                        original_qty=qty,
+                        remaining_qty=qty,
+                        unit_cost=applied_unit_cost,
+                    )
+                )
+            else:
+                await self.repo.add_movement(movement)
+
+        elif direction in ("out", "adjust_out"):
+            if bal.on_hand_qty < qty:
+                raise ValidationError(f"Insufficient stock: on hand {bal.on_hand_qty} < requested {qty}")
+
+            if method == "avg":
+                applied_unit_cost = _q4(bal.avg_cost)
+                total_cost = _q2(qty * applied_unit_cost)
+                bal.on_hand_qty = _q4(bal.on_hand_qty - qty)
+                if bal.on_hand_qty == 0:
+                    bal.avg_cost = Decimal("0")
+                await self.repo.add_movement(movement)
+            else:
+                # FIFO/LIFO: walk layers and consume oldest/newest first
+                layers = await self.repo.consumable_layers(item.id, warehouse.id, lifo=(method == "lifo"))
+                remaining_to_take = qty
+                consumed_value = Decimal("0")
+                for layer in layers:
+                    if remaining_to_take <= 0:
+                        break
+                    take = min(layer.remaining_qty, remaining_to_take)
+                    consumed_value += _q4(take * layer.unit_cost)
+                    layer.remaining_qty = _q4(layer.remaining_qty - take)
+                    if layer.remaining_qty == 0:
+                        layer.is_exhausted = True
+                    remaining_to_take = _q4(remaining_to_take - take)
+
+                if remaining_to_take > 0:
+                    # Defensive — would mean layers and balance disagree
+                    raise ValidationError(
+                        "Cost layers do not cover the on-hand qty; data integrity issue — contact support"
+                    )
+                applied_unit_cost = _q4(consumed_value / qty) if qty != 0 else Decimal("0")
+                total_cost = _q2(consumed_value)
+                bal.on_hand_qty = _q4(bal.on_hand_qty - qty)
+                # Refresh avg_cost from remaining layers (qty-weighted)
+                bal.avg_cost = await self._weighted_avg_from_layers(item.id, warehouse.id)
+                await self.repo.add_movement(movement)
+        else:
+            raise ValidationError(f"Unknown direction '{direction}'")
+
+        movement.unit_cost = applied_unit_cost
+        movement.total_cost = total_cost
+        movement.qty_after = bal.on_hand_qty
+        movement.avg_cost_after = bal.avg_cost
+        await self.session.flush()
         return movement
+
+    async def _weighted_avg_from_layers(self, item_id: UUID, warehouse_id: UUID) -> Decimal:
+        """Compute the qty-weighted blended cost of remaining FIFO/LIFO
+        layers for a single (item, warehouse). Returns 0 if no remaining
+        layers — caller should keep on_hand_qty consistent."""
+        layers = await self.repo.consumable_layers(item_id, warehouse_id, lifo=False)
+        total_qty = Decimal("0")
+        total_value = Decimal("0")
+        for la in layers:
+            total_qty += la.remaining_qty
+            total_value += la.remaining_qty * la.unit_cost
+        if total_qty == 0:
+            return Decimal("0")
+        return _q4(total_value / total_qty)
+
+    # ─── Costing-method switch ──────────────────────────
+    async def set_costing_method(self, *, method: str, seed_opening_layers: bool = True) -> str:
+        """Set the tenant's costing method.
+
+        - 'avg' → 'fifo' or 'lifo': optionally seed one cost layer per
+          existing balance (qty=on_hand, unit_cost=avg_cost) so that
+          subsequent outflows have something to consume.
+        - 'fifo' ↔ 'lifo': layers preserved; only consumption order
+          changes for future outflows.
+        - 'fifo'/'lifo' → 'avg': layers become inert (kept for history);
+          on_hand_qty + avg_cost on the balance keep working.
+        """
+        if method not in ("avg", "fifo", "lifo"):
+            raise ValidationError(f"costing_method must be one of avg/fifo/lifo (got '{method}')")
+        tenant = await self.session.get(Tenant, self.tenant_id)
+        if tenant is None:
+            raise NotFoundError("Tenant not found")
+        previous = tenant.costing_method
+        if previous == method:
+            return method  # no-op
+
+        # Seed opening layers when going avg → fifo/lifo
+        if previous == "avg" and method in ("fifo", "lifo") and seed_opening_layers:
+            balances = await self.repo.list_open_balances_with_avg()
+            for bal in balances:
+                self.session.add(
+                    StockCostLayer(
+                        tenant_id=self.tenant_id,
+                        item_id=bal.item_id,
+                        warehouse_id=bal.warehouse_id,
+                        source_movement_id=None,  # opening, no movement
+                        original_qty=bal.on_hand_qty,
+                        remaining_qty=bal.on_hand_qty,
+                        unit_cost=bal.avg_cost,
+                    )
+                )
+
+        tenant.costing_method = method
+        # Bust the cache so subsequent posts in this session pick up
+        # the new method
+        if hasattr(self, "_costing_method_cache"):
+            del self._costing_method_cache
+        await self.session.flush()
+        return method
