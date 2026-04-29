@@ -222,3 +222,30 @@ class StockTransferOut(BaseModel):
 
 class TransferVoidRequest(BaseModel):
     reason: str = Field(min_length=1, max_length=500)
+
+
+# ─── Cost layers ledger ───────────────────────────────────
+class CostLayerOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    item_id: UUID
+    warehouse_id: UUID
+    source_movement_id: UUID | None
+    received_at: datetime
+    original_qty: Decimal
+    remaining_qty: Decimal
+    unit_cost: Decimal
+    is_exhausted: bool
+    remaining_value: Decimal  # remaining_qty × unit_cost (server-computed)
+
+
+class CostLayersReport(BaseModel):
+    """Drill-down on an item's cost layers, used to understand the
+    cost basis currently sitting on shelf under FIFO/LIFO. Empty for
+    tenants on `avg` costing (layers aren't written for avg)."""
+
+    item_id: UUID
+    layers: list[CostLayerOut]
+    total_remaining_qty: Decimal
+    total_remaining_value: Decimal

@@ -13,6 +13,8 @@ from app.deps import CurrentUser, require_permission
 from app.modules.inventory.repository import InventoryRepository
 from app.modules.inventory.schemas import (
     CostingMethodOut,
+    CostLayerOut,
+    CostLayersReport,
     ItemCreate,
     ItemOut,
     ItemUpdate,
@@ -321,3 +323,54 @@ async def void_transfer(
     svc = InventoryService(session, current.tenant_id, current.user_id)
     tr = await svc.void_transfer(transfer_id, payload.reason)
     return StockTransferOut.model_validate(tr)
+
+
+# ─── Cost-layers ledger ──────────────────────────────────
+@router.get(
+    "/items/{item_id}/cost-layers",
+    response_model=CostLayersReport,
+    summary="Cost-layer drill-down for one item (FIFO/LIFO tenants only)",
+)
+async def item_cost_layers(
+    item_id: UUID,
+    warehouse_id: UUID | None = Query(default=None),
+    include_exhausted: bool = Query(default=False, description="Include consumed layers in the response"),
+    current: CurrentUser = Depends(require_permission("inventory.read")),
+    session: AsyncSession = Depends(get_read_session),
+) -> CostLayersReport:
+    repo = InventoryRepository(session, current.tenant_id)
+    item = await repo.get_item(item_id)
+    if not item:
+        raise NotFoundError("Item not found")
+
+    layers = await repo.list_layers_for_item(
+        item_id, warehouse_id=warehouse_id, include_exhausted=include_exhausted
+    )
+    out: list[CostLayerOut] = []
+    total_qty = Decimal("0")
+    total_value = Decimal("0")
+    for la in layers:
+        remaining_value = (la.remaining_qty * la.unit_cost).quantize(Decimal("0.01"))
+        out.append(
+            CostLayerOut(
+                id=la.id,
+                item_id=la.item_id,
+                warehouse_id=la.warehouse_id,
+                source_movement_id=la.source_movement_id,
+                received_at=la.received_at,
+                original_qty=la.original_qty,
+                remaining_qty=la.remaining_qty,
+                unit_cost=la.unit_cost,
+                is_exhausted=la.is_exhausted,
+                remaining_value=remaining_value,
+            )
+        )
+        total_qty += la.remaining_qty
+        total_value += remaining_value
+
+    return CostLayersReport(
+        item_id=item.id,
+        layers=out,
+        total_remaining_qty=total_qty,
+        total_remaining_value=total_value,
+    )

@@ -209,6 +209,33 @@ class InventoryRepository:
         )
         return list((await self.session.execute(stmt)).scalars().all())
 
+    async def list_layers_for_item(
+        self,
+        item_id: UUID,
+        *,
+        warehouse_id: UUID | None = None,
+        include_exhausted: bool = False,
+    ) -> list[StockCostLayer]:
+        """Cost-layer drill-down for one item.
+
+        Default: only non-exhausted layers (those currently
+        contributing to on-hand value). `include_exhausted=True`
+        returns the full history. Always ordered by received_at ASC
+        for stable presentation regardless of consumption order.
+        """
+        conds = [
+            StockCostLayer.tenant_id == self.tenant_id,
+            StockCostLayer.item_id == item_id,
+        ]
+        if warehouse_id is not None:
+            conds.append(StockCostLayer.warehouse_id == warehouse_id)
+        if not include_exhausted:
+            conds.append(StockCostLayer.is_exhausted.is_(False))
+        stmt = (
+            select(StockCostLayer).where(and_(*conds)).order_by(StockCostLayer.received_at, StockCostLayer.id)
+        )
+        return list((await self.session.execute(stmt)).scalars().all())
+
     # ── Stock transfers ──────────────────────────────────
     async def add_transfer(self, transfer: StockTransfer) -> StockTransfer:
         self.session.add(transfer)
