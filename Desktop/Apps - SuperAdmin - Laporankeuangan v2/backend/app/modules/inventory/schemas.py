@@ -175,3 +175,50 @@ class SetCostingMethodRequest(BaseModel):
     # item with stock-on-hand will fail until layers are populated
     # manually (via stock-in receipts). Default true.
     seed_opening_layers: bool = True
+
+
+# ─── Stock transfer ───────────────────────────────────────
+TransferStatus = Literal["posted", "void"]
+
+
+class StockTransferLineIn(BaseModel):
+    item_id: UUID
+    qty: Decimal = Field(gt=0)
+    notes: str | None = Field(default=None, max_length=500)
+
+
+class StockTransferLineOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    line_no: int
+    item_id: UUID
+    qty: Decimal
+    unit_cost: Decimal
+    notes: str | None
+
+
+class StockTransferCreate(BaseModel):
+    transfer_no: str | None = Field(default=None, max_length=30)
+    transfer_date: date
+    source_warehouse_id: UUID
+    destination_warehouse_id: UUID
+    notes: str | None = Field(default=None, max_length=1000)
+    lines: list[StockTransferLineIn] = Field(min_length=1)
+
+
+class StockTransferOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    transfer_no: str
+    transfer_date: date
+    source_warehouse_id: UUID
+    destination_warehouse_id: UUID
+    status: TransferStatus
+    notes: str | None
+    lines: list[StockTransferLineOut]
+
+
+class TransferVoidRequest(BaseModel):
+    reason: str = Field(min_length=1, max_length=500)

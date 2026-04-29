@@ -4,12 +4,14 @@ from uuid import UUID
 
 from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.modules.inventory.models import (
     Item,
     StockBalance,
     StockCostLayer,
     StockMovement,
+    StockTransfer,
     Warehouse,
 )
 
@@ -206,3 +208,45 @@ class InventoryRepository:
             StockBalance.on_hand_qty > 0,
         )
         return list((await self.session.execute(stmt)).scalars().all())
+
+    # ── Stock transfers ──────────────────────────────────
+    async def add_transfer(self, transfer: StockTransfer) -> StockTransfer:
+        self.session.add(transfer)
+        await self.session.flush()
+        return transfer
+
+    async def get_transfer(self, transfer_id: UUID) -> StockTransfer | None:
+        stmt = (
+            select(StockTransfer)
+            .options(selectinload(StockTransfer.lines))
+            .where(
+                StockTransfer.id == transfer_id,
+                StockTransfer.tenant_id == self.tenant_id,
+            )
+        )
+        return (await self.session.execute(stmt)).scalar_one_or_none()
+
+    async def list_transfers(
+        self, *, status: str | None = None, limit: int = 100, offset: int = 0
+    ) -> list[StockTransfer]:
+        conds = [StockTransfer.tenant_id == self.tenant_id]
+        if status:
+            conds.append(StockTransfer.status == status)
+        stmt = (
+            select(StockTransfer)
+            .options(selectinload(StockTransfer.lines))
+            .where(and_(*conds))
+            .order_by(StockTransfer.transfer_date.desc(), StockTransfer.transfer_no.desc())
+            .limit(limit)
+            .offset(offset)
+        )
+        return list((await self.session.execute(stmt)).scalars().all())
+
+    async def next_transfer_no(self, year: int) -> str:
+        prefix = f"TR-{year}-"
+        stmt = select(func.count(StockTransfer.id)).where(
+            StockTransfer.tenant_id == self.tenant_id,
+            StockTransfer.transfer_no.like(f"{prefix}%"),
+        )
+        count = (await self.session.execute(stmt)).scalar_one() or 0
+        return f"{prefix}{count + 1:05d}"

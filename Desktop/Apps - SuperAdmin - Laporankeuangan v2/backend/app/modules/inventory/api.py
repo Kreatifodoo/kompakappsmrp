@@ -22,8 +22,11 @@ from app.modules.inventory.schemas import (
     StockMovementOut,
     StockOnHandLine,
     StockOnHandReport,
+    StockTransferCreate,
+    StockTransferOut,
     StockValuationLine,
     StockValuationReport,
+    TransferVoidRequest,
     WarehouseCreate,
     WarehouseOut,
     WarehouseUpdate,
@@ -268,3 +271,53 @@ async def set_costing_method(
         method=payload.method, seed_opening_layers=payload.seed_opening_layers
     )
     return CostingMethodOut(method=method)
+
+
+# ─── Stock transfers ─────────────────────────────────────
+@router.get("/stock-transfers", response_model=list[StockTransferOut])
+async def list_transfers(
+    status: str | None = Query(default=None),
+    limit: int = Query(default=100, le=500),
+    offset: int = Query(default=0, ge=0),
+    current: CurrentUser = Depends(require_permission("inventory.read")),
+    session: AsyncSession = Depends(get_write_session),
+) -> list[StockTransferOut]:
+    repo = InventoryRepository(session, current.tenant_id)
+    rows = await repo.list_transfers(status=status, limit=limit, offset=offset)
+    return [StockTransferOut.model_validate(r) for r in rows]
+
+
+@router.get("/stock-transfers/{transfer_id}", response_model=StockTransferOut)
+async def get_transfer(
+    transfer_id: UUID,
+    current: CurrentUser = Depends(require_permission("inventory.read")),
+    session: AsyncSession = Depends(get_write_session),
+) -> StockTransferOut:
+    repo = InventoryRepository(session, current.tenant_id)
+    tr = await repo.get_transfer(transfer_id)
+    if not tr:
+        raise NotFoundError("Transfer not found")
+    return StockTransferOut.model_validate(tr)
+
+
+@router.post("/stock-transfers", response_model=StockTransferOut, status_code=201)
+async def create_transfer(
+    payload: StockTransferCreate,
+    current: CurrentUser = Depends(require_permission("inventory.write")),
+    session: AsyncSession = Depends(get_write_session),
+) -> StockTransferOut:
+    svc = InventoryService(session, current.tenant_id, current.user_id)
+    tr = await svc.create_transfer(payload)
+    return StockTransferOut.model_validate(tr)
+
+
+@router.post("/stock-transfers/{transfer_id}/void", response_model=StockTransferOut)
+async def void_transfer(
+    transfer_id: UUID,
+    payload: TransferVoidRequest,
+    current: CurrentUser = Depends(require_permission("inventory.write")),
+    session: AsyncSession = Depends(get_write_session),
+) -> StockTransferOut:
+    svc = InventoryService(session, current.tenant_id, current.user_id)
+    tr = await svc.void_transfer(transfer_id, payload.reason)
+    return StockTransferOut.model_validate(tr)

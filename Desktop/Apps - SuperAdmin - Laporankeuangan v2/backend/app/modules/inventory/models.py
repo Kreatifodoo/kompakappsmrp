@@ -18,6 +18,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Index,
+    Integer,
     Numeric,
     PrimaryKeyConstraint,
     String,
@@ -25,7 +26,7 @@ from sqlalchemy import (
     func,
 )
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
 
@@ -231,3 +232,86 @@ class StockCostLayer(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+
+
+class StockTransfer(Base):
+    """Header for an inter-warehouse stock transfer.
+
+    Posting creates a stock-out movement on the source warehouse and a
+    stock-in movement on the destination warehouse per line, both
+    linked back via source='stock_transfer' / source_id=transfer.id.
+    The IN uses the same blended unit_cost as the OUT, so cost basis
+    crosses warehouses unchanged. No GL impact (Inventory account
+    balance is unchanged).
+    """
+
+    __tablename__ = "stock_transfers"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "transfer_no", name="uq_stock_transfers_tenant_no"),
+        Index("ix_stock_transfers_tenant_date", "tenant_id", "transfer_date"),
+        Index("ix_stock_transfers_tenant_status", "tenant_id", "status"),
+        CheckConstraint("status IN ('posted','void')", name="ck_stock_transfers_status"),
+        CheckConstraint(
+            "source_warehouse_id <> destination_warehouse_id",
+            name="ck_stock_transfers_distinct_warehouses",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    transfer_no: Mapped[str] = mapped_column(String(30), nullable=False)
+    transfer_date: Mapped[date] = mapped_column(Date, nullable=False)
+    source_warehouse_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("warehouses.id", ondelete="RESTRICT"), nullable=False
+    )
+    destination_warehouse_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("warehouses.id", ondelete="RESTRICT"), nullable=False
+    )
+    status: Mapped[str] = mapped_column(String(20), default="posted", nullable=False)
+    notes: Mapped[str | None] = mapped_column(String(1000))
+
+    created_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    voided_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    voided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    void_reason: Mapped[str | None] = mapped_column(String(500))
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+    lines: Mapped[list["StockTransferLine"]] = relationship(
+        back_populates="transfer",
+        cascade="all, delete-orphan",
+        order_by="StockTransferLine.line_no",
+    )
+
+
+class StockTransferLine(Base):
+    __tablename__ = "stock_transfer_lines"
+    __table_args__ = (
+        Index("ix_stock_transfer_lines_transfer", "transfer_id"),
+        CheckConstraint("qty > 0", name="ck_stock_transfer_lines_qty_positive"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    transfer_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("stock_transfers.id", ondelete="CASCADE"), nullable=False
+    )
+    line_no: Mapped[int] = mapped_column(Integer, nullable=False)
+    item_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("items.id", ondelete="RESTRICT"), nullable=False
+    )
+    qty: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
+    # Snapshotted at post time — the cost that flowed source → destination
+    unit_cost: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
+    notes: Mapped[str | None] = mapped_column(String(500))
+
+    transfer: Mapped[StockTransfer] = relationship(back_populates="lines")

@@ -27,6 +27,8 @@ from app.modules.inventory.models import (
     Item,
     StockCostLayer,
     StockMovement,
+    StockTransfer,
+    StockTransferLine,
     Warehouse,
 )
 from app.modules.inventory.repository import InventoryRepository
@@ -34,6 +36,7 @@ from app.modules.inventory.schemas import (
     ItemCreate,
     ItemUpdate,
     StockMovementCreate,
+    StockTransferCreate,
     WarehouseCreate,
     WarehouseUpdate,
 )
@@ -320,3 +323,132 @@ class InventoryService:
             del self._costing_method_cache
         await self.session.flush()
         return method
+
+    # ─── Stock transfers ────────────────────────────────
+    async def create_transfer(self, payload: StockTransferCreate) -> StockTransfer:
+        """Atomic inter-warehouse move: one stock-out from source +
+        one stock-in into destination per line, in the same DB
+        transaction. The IN uses the OUT's resolved unit_cost so cost
+        crosses warehouses unchanged. No GL impact (Inventory account
+        net-zero)."""
+        await assert_period_open(self.session, self.tenant_id, payload.transfer_date)
+
+        if payload.source_warehouse_id == payload.destination_warehouse_id:
+            raise ValidationError("Source and destination warehouses must be different")
+
+        src = await self.repo.get_warehouse(payload.source_warehouse_id)
+        if not src:
+            raise ValidationError("Source warehouse not found in this tenant")
+        if not src.is_active:
+            raise ValidationError("Source warehouse is inactive")
+
+        dst = await self.repo.get_warehouse(payload.destination_warehouse_id)
+        if not dst:
+            raise ValidationError("Destination warehouse not found in this tenant")
+        if not dst.is_active:
+            raise ValidationError("Destination warehouse is inactive")
+
+        transfer_no = payload.transfer_no or await self.repo.next_transfer_no(payload.transfer_date.year)
+
+        transfer = StockTransfer(
+            tenant_id=self.tenant_id,
+            transfer_no=transfer_no,
+            transfer_date=payload.transfer_date,
+            source_warehouse_id=src.id,
+            destination_warehouse_id=dst.id,
+            status="posted",
+            notes=payload.notes,
+            created_by=self.user_id,
+        )
+        await self.repo.add_transfer(transfer)
+
+        for idx, line in enumerate(payload.lines, start=1):
+            item = await self.repo.get_item(line.item_id)
+            if not item:
+                raise ValidationError(f"Line {idx}: item {line.item_id} not found")
+            if item.type != "stock":
+                raise ValidationError(f"Line {idx}: only stock-type items can be transferred")
+            if not item.is_active:
+                raise ValidationError(f"Line {idx}: item {item.sku} is inactive")
+
+            # OUT from source — service applies the costing method
+            out_movement = await self._post_movement_inner(
+                item=item,
+                warehouse=src,
+                movement_date=payload.transfer_date,
+                direction="out",
+                qty=line.qty,
+                unit_cost=Decimal("0"),  # ignored on outflow
+                notes=line.notes or f"Transfer {transfer_no} → {dst.code}",
+                source="stock_transfer",
+                source_id=transfer.id,
+            )
+            # IN at destination at the same blended unit_cost — preserves
+            # cost basis across warehouses
+            await self._post_movement_inner(
+                item=item,
+                warehouse=dst,
+                movement_date=payload.transfer_date,
+                direction="in",
+                qty=line.qty,
+                unit_cost=out_movement.unit_cost,
+                notes=line.notes or f"Transfer {transfer_no} ← {src.code}",
+                source="stock_transfer",
+                source_id=transfer.id,
+            )
+
+            self.session.add(
+                StockTransferLine(
+                    tenant_id=self.tenant_id,
+                    transfer_id=transfer.id,
+                    line_no=idx,
+                    item_id=item.id,
+                    qty=_q4(line.qty),
+                    unit_cost=out_movement.unit_cost,
+                    notes=line.notes,
+                )
+            )
+
+        await self.session.flush()
+        return transfer
+
+    async def void_transfer(self, transfer_id: UUID, reason: str) -> StockTransfer:
+        transfer = await self.repo.get_transfer(transfer_id)
+        if not transfer:
+            raise NotFoundError("Transfer not found")
+        if transfer.status == "void":
+            raise ConflictError("Transfer already voided")
+        await assert_period_open(self.session, self.tenant_id, transfer.transfer_date)
+
+        # Reverse direction on each leg: source got an OUT → void with IN
+        # at the same unit_cost. Destination got an IN → void with OUT.
+        # Will raise insufficient-stock if the destination has already
+        # consumed the transferred units; that's correct.
+        movements = await self.repo.list_movements_for_source("stock_transfer", transfer.id)
+        for m in movements:
+            new_dir = "in" if m.direction == "out" else "out"
+            item = await self.repo.get_item(m.item_id)
+            wh = await self.repo.get_warehouse(m.warehouse_id)
+            if item is None or wh is None:
+                continue
+            await self._post_movement_inner(
+                item=item,
+                warehouse=wh,
+                movement_date=transfer.transfer_date,
+                direction=new_dir,
+                qty=m.qty,
+                unit_cost=m.unit_cost,
+                notes=f"Void of transfer {transfer.transfer_no}",
+                source="void_stock_transfer",
+                source_id=transfer.id,
+            )
+
+        from datetime import UTC
+        from datetime import datetime as _datetime
+
+        transfer.status = "void"
+        transfer.voided_by = self.user_id
+        transfer.voided_at = _datetime.now(UTC)
+        transfer.void_reason = reason
+        await self.session.flush()
+        return transfer

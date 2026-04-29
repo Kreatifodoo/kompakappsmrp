@@ -59,6 +59,8 @@ ALL_TABLES = [
     "permissions",
     "audit_logs",
     "period_closure_events",
+    "stock_transfer_lines",
+    "stock_transfers",
     "stock_cost_layers",
     "stock_balances",
     "stock_movements",
