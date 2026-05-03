@@ -16,12 +16,51 @@ jobs:
           username: ${{ secrets.LINODE_USER }}
           key: ${{ secrets.LINODE_SSH_KEY }}
           script: |
+            set -euo pipefail
             APPDIR="/opt/kompakapp/Desktop/Apps - SuperAdmin - Laporankeuangan v2"
+            BACKEND_DIR="$APPDIR/backend"
+            VENV="$BACKEND_DIR/.venv"
+
+            echo "── [1] Pull latest code ───────────────────────────"
             git -C "$APPDIR" pull origin main
+
+            echo "── [2] Build license-generator-offline.html ───────"
             cd "$APPDIR"
             python3 build.py
-            pkill -f "python.*serve.py" || true
+
+            echo "── [3] Install/update Python deps (FastAPI) ───────"
+            if [ ! -d "$VENV" ]; then
+              python3.12 -m venv "$VENV"
+            fi
+            "$VENV/bin/pip" install --upgrade pip -q
+            "$VENV/bin/pip" install -e "$BACKEND_DIR" -q
+
+            echo "── [4] Run Alembic migrations ──────────────────────"
+            cd "$BACKEND_DIR"
+            "$VENV/bin/alembic" upgrade head
+
+            echo "── [5] Restart FastAPI backend ─────────────────────"
+            systemctl restart kompak-api
             sleep 2
-            nohup python3 app/serve.py > /tmp/kompakapp.log 2>&1 &
+            systemctl is-active --quiet kompak-api \
+              && echo "✅ kompak-api running" \
+              || { echo "❌ kompak-api FAILED"; journalctl -u kompak-api -n 30; exit 1; }
+
+            echo "── [6] Restart legacy SPA server ───────────────────"
+            systemctl restart kompak-spa
             sleep 1
-            echo "✅ Deployment selesai! Aplikasi running di https://accounting.kompakapps.com"
+            systemctl is-active --quiet kompak-spa \
+              && echo "✅ kompak-spa running" \
+              || { echo "❌ kompak-spa FAILED"; journalctl -u kompak-spa -n 20; exit 1; }
+
+            echo "── [7] Reload nginx config ─────────────────────────"
+            cp "$APPDIR/deploy/nginx.conf" /etc/nginx/sites-available/kompakapp
+            nginx -t && systemctl reload nginx \
+              && echo "✅ nginx reloaded" \
+              || { echo "❌ nginx config error"; exit 1; }
+
+            echo ""
+            echo "🚀 Deploy selesai!"
+            echo "   https://accounting.kompakapps.com"
+            echo "   https://accounting.kompakapps.com/docs  (FastAPI docs)"
+            echo "   https://accounting.kompakapps.com/health"
