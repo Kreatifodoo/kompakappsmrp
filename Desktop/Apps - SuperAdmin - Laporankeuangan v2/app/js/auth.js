@@ -53,6 +53,10 @@ function setSession(user) {
     username: user.username,
     role: user.role,
     isSuperAdmin: user.isSuperAdmin || false,
+    // Backend-user fields (preserved when present so hasPermission can check them)
+    isBackendUser: user.isBackendUser || false,
+    permissions: user.permissions || [],
+    tenantId: user.tenantId || null,
     loginAt: Date.now(),
     expiresAt: Date.now() + SESSION_TIMEOUT
   };
@@ -238,6 +242,7 @@ async function login(username, password) {
       isSuperAdmin: backendUser.user?.is_super_admin || false,
       isBackendUser: true,
       permissions: backendUser.permissions || [],
+      tenantId: backendUser.tenant?.id || null,
     };
     setSession(user);
     return { success: true };
