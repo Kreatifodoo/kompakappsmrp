@@ -210,8 +210,17 @@ class FinReportHandler(http.server.SimpleHTTPRequestHandler):
 
 
 # ── Start Server ────────────────────────────────────────
+# ThreadingTCPServer: each request is handled in its own thread so one
+# slow/stuck request does not block the entire server.
+# allow_reuse_address: lets the process bind immediately after a restart
+# without waiting for TIME_WAIT sockets to expire.
+class ThreadedServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
+    allow_reuse_address = True
+    daemon_threads = True   # threads die when main process exits
+
+
 if __name__ == '__main__':
-    with socketserver.TCPServer(("", PORT), FinReportHandler) as httpd:
+    with ThreadedServer(("", PORT), FinReportHandler) as httpd:
         print(f'FinReport berjalan di http://localhost:{PORT}')
         print(f'  Data folder   : {DATA_DIR}')
         print(f'  Filestore     : {FILESTORE_DIR}')
