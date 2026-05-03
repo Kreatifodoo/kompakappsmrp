@@ -43,6 +43,7 @@ from app.modules.identity import models as _identity  # noqa: F401, E402
 from app.modules.inventory import models as _inventory  # noqa: F401, E402
 from app.modules.payments import models as _payments  # noqa: F401, E402
 from app.modules.periods import models as _periods  # noqa: F401, E402
+from app.modules.pos import models as _pos  # noqa: F401, E402
 from app.modules.purchase import models as _purchase  # noqa: F401, E402
 from app.modules.sales import models as _sales  # noqa: F401, E402
 
@@ -52,6 +53,9 @@ register_tracked()
 # Tables to wipe between tests (in order ignoring FKs — we use TRUNCATE
 # with the full set, so order is irrelevant).
 ALL_TABLES = [
+    "pos_order_lines",
+    "pos_orders",
+    "pos_sessions",
     "refresh_tokens",
     "tenant_users",
     "role_permissions",
