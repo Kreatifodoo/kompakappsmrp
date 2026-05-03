@@ -175,7 +175,7 @@ function seedDefaultRoles() {
   if (!localStorage.getItem(ROLES_KEY)) saveRoles(DEFAULT_ROLES);
 }
 
-function hasPermission(action) {
+function _legacyHasPermission(action) {
   const session = getCurrentUser();
   if (!session) return false;
   if (session.isSuperAdmin) return true; // Super Admin punya semua akses
@@ -264,15 +264,13 @@ function logout() {
   showLoginScreen();
 }
 
-// Override hasPermission to also check backend permissions
-const _origHasPermission = hasPermission;
+// Unified hasPermission: handles backend JWT users AND legacy localStorage users.
 function hasPermission(action) {
   const session = getCurrentUser();
   if (!session) return false;
   // Backend users: check permissions array from JWT claims
   if (session.isBackendUser && Array.isArray(session.permissions)) {
     if (session.isSuperAdmin) return true;
-    // Map legacy frontend permission keys to backend permission strings
     const permMap = {
       upload:      'journal.write',
       editCOA:     'account.write',
@@ -286,7 +284,7 @@ function hasPermission(action) {
     const backendPerm = permMap[action] || action;
     return session.permissions.includes(backendPerm);
   }
-  return _origHasPermission(action);
+  return _legacyHasPermission(action);
 }
 
 // ===== FIRST RUN SETUP =====
