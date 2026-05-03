@@ -278,13 +278,13 @@ function hasPermission(action) {
     if (session.isSuperAdmin) return true;
     const permMap = {
       upload:      'journal.write',
-      editCOA:     'account.write',
+      editCOA:     'coa.write',
       editJournal: 'journal.write',
       viewReport:  'report.read',
-      export:      'report.read',
-      manageUsers: 'user.manage',
-      resetData:   'tenant.admin',
-      lock:        'tenant.admin',
+      export:      'report.export',
+      manageUsers: 'user.write',
+      resetData:   'tenant.settings',
+      lock:        'tenant.settings',
     };
     const backendPerm = permMap[action] || action;
     return session.permissions.includes(backendPerm);
