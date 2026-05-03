@@ -245,6 +245,11 @@ async function login(username, password) {
       tenantId: backendUser.tenant?.id || null,
     };
     setSession(user);
+    // Background sync: push local data (COA, customers, suppliers) to backend.
+    // Fire-and-forget — don't block login UX.
+    if (typeof BackendSync !== 'undefined') {
+      setTimeout(() => BackendSync.syncAll(), 1500);
+    }
     return { success: true };
   }
 

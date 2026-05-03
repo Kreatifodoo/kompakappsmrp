@@ -320,13 +320,22 @@ function saveVendorFromModal() {
     payableCoa,
     isActive:      document.getElementById('vendorIsActive').value === 'true'
   };
+  let savedVnd;
   if (_editingVendorId) {
     const idx = PurchaseState.vendors.findIndex(v => v.id === _editingVendorId);
-    if (idx >= 0) PurchaseState.vendors[idx] = { ...PurchaseState.vendors[idx], ...data };
+    if (idx >= 0) {
+      PurchaseState.vendors[idx] = { ...PurchaseState.vendors[idx], ...data };
+      savedVnd = PurchaseState.vendors[idx];
+    }
   } else {
-    PurchaseState.vendors.push({ id: _genPurchaseId('vnd'), ...data });
+    savedVnd = { id: _genPurchaseId('vnd'), code: 'SUP-' + (PurchaseState.vendors.length + 1).toString().padStart(4,'0'), ...data };
+    PurchaseState.vendors.push(savedVnd);
   }
   savePurchaseData();
+  // Background sync to backend (no-op if not logged into backend)
+  if (typeof BackendSync !== 'undefined' && savedVnd) {
+    BackendSync.syncSupplier(savedVnd);
+  }
   closeVendorModal();
   renderMasterVendorPage();
   showToast('Vendor disimpan', 'success');
@@ -752,6 +761,24 @@ function confirmBill(billId) {
 
   savePurchaseData();
   _rebuildAfterPurchase();
+
+  // Background sync to backend (no-op if not logged into backend)
+  if (typeof BackendSync !== 'undefined') {
+    const vendor = PurchaseState.vendors.find(v => v.id === bill.vendorId);
+    BackendSync.syncPurchaseInvoice({
+      billNo:           bill.id,
+      date:             bill.date,
+      dueDate:          bill.dueDate || null,
+      vendorInvoiceNo:  bill.vendorRef || null,
+      notes:            bill.ref || null,
+      lines: (bill.items || []).map(it => ({
+        description: it.description || it.productName || 'Item',
+        qty:         it.qty,
+        unitPrice:   it.unitPrice,
+      })),
+    }, vendor);
+  }
+
   closeBillModal();
   renderVendorBillPage();
   showToast(`Bill ${billId} dikonfirmasi ✓`, 'success');

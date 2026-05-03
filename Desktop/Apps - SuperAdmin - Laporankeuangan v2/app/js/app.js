@@ -2452,6 +2452,7 @@ function saveManualJournal() {
     return;
   }
 
+  let savedJournal;
   if (_cjEditId) {
     // Edit mode — update existing
     const j = (AppState.manualJournals || []).find(j => j.id === _cjEditId);
@@ -2459,15 +2460,28 @@ function saveManualJournal() {
       j.date        = date;
       j.description = description;
       j.entries     = entries;
+      savedJournal  = j;
     }
   } else {
     // Create mode
     const id = _nextManualJournalId();
     AppState.manualJournals = AppState.manualJournals || [];
-    AppState.manualJournals.push({ id, no: id, date, description, isManual: true, entries });
+    savedJournal = { id, no: id, date, description, isManual: true, entries };
+    AppState.manualJournals.push(savedJournal);
   }
 
   _saveManualJournals();
+
+  // Background sync to backend (no-op if not logged into backend)
+  if (typeof BackendSync !== 'undefined' && savedJournal && !_cjEditId) {
+    BackendSync.syncJournal({
+      id:          savedJournal.id,
+      date:        savedJournal.date,
+      description: savedJournal.description,
+      reference:   savedJournal.id,
+      entries:     savedJournal.entries,
+    });
+  }
 
   // Rebuild AppState.journals + ledger + laporan
   AppState.journals = (AppState.journals || []).filter(j => !j.id?.startsWith('JE-MAN'));

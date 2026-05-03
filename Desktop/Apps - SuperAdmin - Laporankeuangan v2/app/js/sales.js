@@ -319,13 +319,22 @@ function saveCustomerFromModal() {
     receivableCoa,
     isActive: document.getElementById('custIsActive').value === 'true'
   };
+  let savedCust;
   if (_editingCustomerId) {
     const idx = CustomerState.customers.findIndex(c => c.id === _editingCustomerId);
-    if (idx >= 0) CustomerState.customers[idx] = { ...CustomerState.customers[idx], ...data };
+    if (idx >= 0) {
+      CustomerState.customers[idx] = { ...CustomerState.customers[idx], ...data };
+      savedCust = CustomerState.customers[idx];
+    }
   } else {
-    CustomerState.customers.push({ id: _genSalesId('cust'), ...data });
+    savedCust = { id: _genSalesId('cust'), code: 'CUST-' + (CustomerState.customers.length + 1).toString().padStart(4,'0'), ...data };
+    CustomerState.customers.push(savedCust);
   }
   saveCustomerData();
+  // Background sync to backend (no-op if not logged into backend)
+  if (typeof BackendSync !== 'undefined' && savedCust) {
+    BackendSync.syncCustomer(savedCust);
+  }
   closeCustomerModal();
   renderMasterCustomerPage();
   showToast('Customer disimpan', 'success');
@@ -735,6 +744,23 @@ function confirmInvoice(invoiceId) {
 
   saveCustomerData();
   _rebuildAfterCustomer();
+
+  // Background sync to backend (no-op if not logged into backend)
+  if (typeof BackendSync !== 'undefined') {
+    const customer = CustomerState.customers.find(c => c.id === inv.customerId);
+    BackendSync.syncSalesInvoice({
+      invoiceNo:  inv.id,
+      date:       inv.date,
+      dueDate:    inv.dueDate || null,
+      notes:      inv.ref || null,
+      lines: (inv.items || []).map(it => ({
+        description: it.description || it.productName || 'Item',
+        qty:         it.qty,
+        unitPrice:   it.unitPrice,
+      })),
+    }, customer);
+  }
+
   closeInvoiceModal();
   renderCustomerInvoicePage();
   showToast(`Invoice ${invoiceId} dikonfirmasi ✓`, 'success');
