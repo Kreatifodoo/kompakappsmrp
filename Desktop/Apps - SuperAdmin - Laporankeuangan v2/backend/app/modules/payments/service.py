@@ -209,21 +209,26 @@ class PaymentsService:
 
         await self.session.flush()
 
-        # Fire receipt email event (only for customer receipts)
-        if payment.payment_type == "receipt" and customer_email:
-            try:
-                from app.core.events import publish
+        # Fire payment events (realtime + email + webhooks).
+        try:
+            from app.core.events import publish
+            common = {
+                "tenant_id":   str(self.tenant_id),
+                "payment_id":  str(payment.id),
+                "payment_no":  payment.payment_no,
+                "amount":      float(payment.amount),
+                "payment_date": payment.payment_date.isoformat(),
+            }
+            if payment.payment_type == "receipt":
                 await publish("payment.received", {
-                    "tenant_id": str(self.tenant_id),
-                    "payment_id": str(payment.id),
-                    "payment_no": payment.payment_no,
-                    "amount": float(payment.amount),
-                    "payment_date": payment.payment_date.isoformat(),
+                    **common,
                     "customer_email": customer_email,
-                    "customer_name": customer_name,
+                    "customer_name":  customer_name,
                 })
-            except Exception:
-                pass
+            elif payment.payment_type == "disbursement":
+                await publish("payment.disbursed", common)
+        except Exception:
+            pass
 
     async def void_payment(self, payment_id: UUID, reason: str) -> Payment:
         payment = await self.repo.get(payment_id)

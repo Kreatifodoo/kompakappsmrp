@@ -221,6 +221,19 @@ class AccountingService:
         entry.posted_by = self.user_id
         entry.posted_at = datetime.now(UTC)
         await self.session.flush()
+
+        # Publish event for downstream subscribers (realtime, audit, etc.)
+        try:
+            from app.core.events import publish
+            await publish("journal.posted", {
+                "tenant_id":   str(self.tenant_id),
+                "entry_id":    str(entry.id),
+                "entry_no":    entry.entry_no,
+                "entry_date":  entry.entry_date.isoformat(),
+                "description": entry.description,
+            })
+        except Exception:
+            pass
         return entry
 
     # ─── System-generated journals (called by Sales/Purchase) ────

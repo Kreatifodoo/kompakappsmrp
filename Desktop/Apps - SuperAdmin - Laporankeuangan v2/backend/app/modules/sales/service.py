@@ -268,4 +268,15 @@ class SalesService:
         invoice.voided_at = datetime.now(UTC)
         invoice.void_reason = reason
         await self.session.flush()
+
+        try:
+            from app.core.events import publish
+            await publish("sales_invoice.voided", {
+                "tenant_id":  str(self.tenant_id),
+                "invoice_id": str(invoice.id),
+                "invoice_no": invoice.invoice_no,
+                "reason":     reason,
+            })
+        except Exception:
+            pass
         return invoice

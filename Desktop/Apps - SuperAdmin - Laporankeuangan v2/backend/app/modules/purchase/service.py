@@ -245,6 +245,21 @@ class PurchaseService:
         invoice.posted_at = datetime.now(UTC)
         await self.session.flush()
 
+        # Publish event for downstream subscribers (realtime, email, webhooks).
+        try:
+            supplier = await self.repo.get_supplier(invoice.supplier_id) if invoice.supplier_id else None
+            from app.core.events import publish
+            await publish("purchase_invoice.posted", {
+                "tenant_id":     str(self.tenant_id),
+                "invoice_id":    str(invoice.id),
+                "invoice_no":    invoice.invoice_no,
+                "total":         float(invoice.total),
+                "due_date":      invoice.due_date.isoformat() if invoice.due_date else None,
+                "supplier_name": getattr(supplier, "name", None) if supplier else None,
+            })
+        except Exception:
+            pass
+
     async def void_invoice(self, invoice_id: UUID, reason: str) -> PurchaseInvoice:
         invoice = await self.repo.get_invoice(invoice_id)
         if not invoice:
@@ -288,4 +303,15 @@ class PurchaseService:
         invoice.voided_at = datetime.now(UTC)
         invoice.void_reason = reason
         await self.session.flush()
+
+        try:
+            from app.core.events import publish
+            await publish("purchase_invoice.voided", {
+                "tenant_id":  str(self.tenant_id),
+                "invoice_id": str(invoice.id),
+                "invoice_no": invoice.invoice_no,
+                "reason":     reason,
+            })
+        except Exception:
+            pass
         return invoice
