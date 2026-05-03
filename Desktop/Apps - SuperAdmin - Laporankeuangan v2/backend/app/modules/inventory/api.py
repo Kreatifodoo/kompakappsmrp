@@ -1,6 +1,7 @@
 """HTTP routes for inventory: items, warehouses, stock movements, and
 on-hand / valuation reports."""
 
+from datetime import date
 from decimal import Decimal
 from uuid import UUID
 
@@ -20,6 +21,7 @@ from app.modules.inventory.schemas import (
     ItemUpdate,
     SetCostingMethodRequest,
     StockBalanceOut,
+    StockCardReport,
     StockMovementCreate,
     StockMovementOut,
     StockOnHandLine,
@@ -373,4 +375,27 @@ async def item_cost_layers(
         layers=out,
         total_remaining_qty=total_qty,
         total_remaining_value=total_value,
+    )
+
+
+# ─── Stock card report ───────────────────────────────────
+@router.get(
+    "/items/{item_id}/stock-card",
+    response_model=StockCardReport,
+    summary="Per-(item, warehouse) chronological stock card with opening/closing balances",
+)
+async def item_stock_card(
+    item_id: UUID,
+    warehouse_id: UUID = Query(..., description="Warehouse to scope the card to"),
+    date_from: date | None = Query(default=None, description="Inclusive start date (YYYY-MM-DD)"),
+    date_to: date | None = Query(default=None, description="Inclusive end date (YYYY-MM-DD)"),
+    current: CurrentUser = Depends(require_permission("inventory.read")),
+    session: AsyncSession = Depends(get_read_session),
+) -> StockCardReport:
+    svc = InventoryService(session, current.tenant_id, current.user_id)
+    return await svc.stock_card_report(
+        item_id,
+        warehouse_id,
+        date_from=date_from,
+        date_to=date_to,
     )

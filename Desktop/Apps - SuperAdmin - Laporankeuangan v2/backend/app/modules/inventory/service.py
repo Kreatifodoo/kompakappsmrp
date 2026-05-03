@@ -452,3 +452,110 @@ class InventoryService:
         transfer.void_reason = reason
         await self.session.flush()
         return transfer
+
+    # ── Stock card report ────────────────────────────────
+    async def stock_card_report(
+        self,
+        item_id: UUID,
+        warehouse_id: UUID,
+        *,
+        date_from=None,
+        date_to=None,
+    ):
+        """Chronological stock card for one (item, warehouse) combination.
+
+        Returns a StockCardReport with opening/closing balances and one
+        line per movement in [date_from, date_to].  The opening balance
+        is derived from the most recent movement *before* date_from (its
+        qty_after / avg_cost_after snapshot).  If date_from is None the
+        opening balance is always 0 / 0 (full history from the start).
+        """
+        from app.modules.inventory.schemas import StockCardLine, StockCardReport
+
+        item = await self.repo.get_item(item_id)
+        if not item:
+            raise NotFoundError("Item not found")
+
+        warehouse = await self.repo.get_warehouse(warehouse_id)
+        if not warehouse:
+            raise NotFoundError("Warehouse not found")
+
+        # ── Opening balance ───────────────────────────────────────────
+        opening_qty = Decimal("0")
+        opening_avg_cost = Decimal("0")
+
+        if date_from is not None:
+            prev = await self.repo.last_movement_before(item_id, warehouse_id, date_from)
+            if prev is not None:
+                opening_qty = prev.qty_after
+                opening_avg_cost = prev.avg_cost_after
+
+        opening_value = _q2(opening_qty * opening_avg_cost)
+
+        # ── Period movements ──────────────────────────────────────────
+        movements = await self.repo.movements_in_range(
+            item_id, warehouse_id, date_from=date_from, date_to=date_to
+        )
+
+        lines: list[StockCardLine] = []
+        period_in_qty = Decimal("0")
+        period_out_qty = Decimal("0")
+        period_in_value = Decimal("0")
+        period_out_value = Decimal("0")
+
+        for m in movements:
+            value_after = _q2(m.qty_after * m.avg_cost_after)
+            lines.append(
+                StockCardLine(
+                    movement_id=m.id,
+                    movement_date=m.movement_date,
+                    direction=m.direction,
+                    qty=m.qty,
+                    unit_cost=m.unit_cost,
+                    total_cost=m.total_cost,
+                    source=m.source,
+                    source_id=m.source_id,
+                    notes=m.notes,
+                    qty_after=m.qty_after,
+                    avg_cost_after=m.avg_cost_after,
+                    value_after=value_after,
+                )
+            )
+            if m.direction in ("in", "adjust_in"):
+                period_in_qty += m.qty
+                period_in_value += m.total_cost
+            else:
+                period_out_qty += m.qty
+                period_out_value += m.total_cost
+
+        # ── Closing balance ───────────────────────────────────────────
+        if lines:
+            closing_qty = lines[-1].qty_after
+            closing_avg_cost = lines[-1].avg_cost_after
+        else:
+            closing_qty = opening_qty
+            closing_avg_cost = opening_avg_cost
+
+        closing_value = _q2(closing_qty * closing_avg_cost)
+
+        return StockCardReport(
+            item_id=item.id,
+            sku=item.sku,
+            name=item.name,
+            unit=item.unit,
+            warehouse_id=warehouse.id,
+            warehouse_code=warehouse.code,
+            date_from=date_from,
+            date_to=date_to,
+            opening_qty=opening_qty,
+            opening_avg_cost=opening_avg_cost,
+            opening_value=opening_value,
+            lines=lines,
+            closing_qty=closing_qty,
+            closing_avg_cost=closing_avg_cost,
+            closing_value=closing_value,
+            period_in_qty=period_in_qty,
+            period_out_qty=period_out_qty,
+            period_in_value=period_in_value,
+            period_out_value=period_out_value,
+        )

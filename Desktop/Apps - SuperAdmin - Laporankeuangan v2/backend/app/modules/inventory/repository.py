@@ -209,6 +209,55 @@ class InventoryRepository:
         )
         return list((await self.session.execute(stmt)).scalars().all())
 
+    async def last_movement_before(
+        self, item_id: UUID, warehouse_id: UUID, before_date
+    ) -> StockMovement | None:
+        """Most recent movement strictly before `before_date` for the
+        given (item, warehouse). Used to seed the opening balance of
+        a stock-card report — the qty_after / avg_cost_after of this
+        movement IS the opening state at date_from."""
+        stmt = (
+            select(StockMovement)
+            .where(
+                StockMovement.tenant_id == self.tenant_id,
+                StockMovement.item_id == item_id,
+                StockMovement.warehouse_id == warehouse_id,
+                StockMovement.movement_date < before_date,
+            )
+            .order_by(
+                StockMovement.movement_date.desc(),
+                StockMovement.created_at.desc(),
+            )
+            .limit(1)
+        )
+        return (await self.session.execute(stmt)).scalar_one_or_none()
+
+    async def movements_in_range(
+        self,
+        item_id: UUID,
+        warehouse_id: UUID,
+        *,
+        date_from=None,
+        date_to=None,
+    ) -> list[StockMovement]:
+        """Per-(item, warehouse) movements in [date_from, date_to],
+        ordered chronologically. Either bound is optional."""
+        conds = [
+            StockMovement.tenant_id == self.tenant_id,
+            StockMovement.item_id == item_id,
+            StockMovement.warehouse_id == warehouse_id,
+        ]
+        if date_from is not None:
+            conds.append(StockMovement.movement_date >= date_from)
+        if date_to is not None:
+            conds.append(StockMovement.movement_date <= date_to)
+        stmt = (
+            select(StockMovement)
+            .where(and_(*conds))
+            .order_by(StockMovement.movement_date, StockMovement.created_at)
+        )
+        return list((await self.session.execute(stmt)).scalars().all())
+
     async def list_layers_for_item(
         self,
         item_id: UUID,

@@ -249,3 +249,48 @@ class CostLayersReport(BaseModel):
     layers: list[CostLayerOut]
     total_remaining_qty: Decimal
     total_remaining_value: Decimal
+
+
+# ─── Stock card report ───────────────────────────────────
+class StockCardLine(BaseModel):
+    """One row of an item's stock card — a single movement plus the
+    running qty/avg/value snapshot taken at that movement."""
+
+    movement_id: UUID
+    movement_date: date
+    direction: str
+    qty: Decimal
+    unit_cost: Decimal
+    total_cost: Decimal
+    source: str
+    source_id: UUID | None
+    notes: str | None
+    qty_after: Decimal
+    avg_cost_after: Decimal
+    value_after: Decimal  # qty_after × avg_cost_after (server-computed)
+
+
+class StockCardReport(BaseModel):
+    """Per-(item, warehouse) chronological card with opening / closing
+    balances and per-row running snapshot. Always per single warehouse
+    so running qty + avg_cost form a coherent series."""
+
+    item_id: UUID
+    sku: str
+    name: str
+    unit: str
+    warehouse_id: UUID
+    warehouse_code: str
+    date_from: date | None
+    date_to: date | None
+    opening_qty: Decimal
+    opening_avg_cost: Decimal
+    opening_value: Decimal
+    lines: list[StockCardLine]
+    closing_qty: Decimal
+    closing_avg_cost: Decimal
+    closing_value: Decimal
+    period_in_qty: Decimal  # sum of qty for in + adjust_in
+    period_out_qty: Decimal  # sum of qty for out + adjust_out
+    period_in_value: Decimal  # sum of total_cost for in + adjust_in
+    period_out_value: Decimal  # sum of total_cost for out + adjust_out
