@@ -52,6 +52,23 @@ const BackendSync = (() => {
     });
   }
 
+  // Sleep helper for throttling — backend has 60 req/min rate limit on free plan
+  const _sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
+  // Adaptive backoff: on 429, wait the suggested time then retry once
+  async function _withBackoff(fn, label) {
+    try { return await fn(); }
+    catch (e) {
+      const msg = (e?.message || '').toLowerCase();
+      if (msg.includes('429') || msg.includes('rate limit')) {
+        console.warn(`[BackendSync] rate-limited on ${label}, sleeping 65s`);
+        await _sleep(65000);
+        return _silent(fn(), label);
+      }
+      throw e;
+    }
+  }
+
   // Cache backend account IDs by legacy code (e.g. '1-1100' → uuid)
   const _accountIdByCode = new Map();
 
@@ -74,19 +91,28 @@ const BackendSync = (() => {
     const accounts = await Api.accounts.list().catch(() => []);
     const existing = new Set(accounts.map(a => a.code));
 
-    let created = 0;
-    for (const acct of Object.values(COA)) {
-      if (acct.category === 'Header') continue;        // skip group headers
-      if (existing.has(acct.code)) continue;           // already in backend
+    // Filter pending creates first so we know the workload
+    const todo = Object.values(COA).filter(a => a.category !== 'Header' && !existing.has(a.code));
+    if (todo.length === 0) {
+      await _refreshAccountCache();
+      return { created: 0, total: Object.keys(COA).length, alreadySynced: true };
+    }
 
+    // Throttle to ~50 req/min to stay under 60 req/min rate limit (1100ms gap)
+    let created = 0;
+    for (const acct of todo) {
       const body = {
         code: acct.code,
         name: acct.name,
         type: TYPE_MAP[acct.type] || 'asset',
         normal_side: NORMAL_MAP[acct.normal] || 'debit',
       };
-      const r = await _silent(Api.accounts.create(body), `COA ${acct.code}`);
+      const r = await _withBackoff(
+        () => _silent(Api.accounts.create(body), `COA ${acct.code}`),
+        `COA ${acct.code}`
+      );
       if (r) created++;
+      await _sleep(1200);
     }
 
     await _refreshAccountCache();
