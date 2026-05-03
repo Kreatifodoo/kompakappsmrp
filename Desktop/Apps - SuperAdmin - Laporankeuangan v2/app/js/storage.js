@@ -37,18 +37,11 @@ const DataStore = {
    * Pings server API; if available, pulls all data files into localStorage.
    */
   async init() {
-    try {
-      const res = await fetch('/api/ping', { method: 'GET', cache: 'no-store' });
-      if (res.ok) {
-        this._serverAvailable = true;
-        this._apiBase = '/api';
-        await this._pullAll();
-        console.log('[DataStore] ✓ Server mode — data loaded from files');
-      }
-    } catch (e) {
-      this._serverAvailable = false;
-      console.warn('[DataStore] Server not available — localStorage-only mode');
-    }
+    // Full-online mode: file-based DataStore disabled.
+    // The FastAPI backend (/api/v1) is now the source of truth.
+    // BackendLoader hydrates state on login; saves go directly via Api.* / BackendSync.*
+    this._serverAvailable = false;
+    console.log('[DataStore] Disabled — using FastAPI backend instead');
   },
 
   /**

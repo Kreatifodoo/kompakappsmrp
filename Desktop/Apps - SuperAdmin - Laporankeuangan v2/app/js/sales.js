@@ -97,36 +97,29 @@ function _invStatusBadge(status) {
 }
 
 // ===== STORAGE =====
+// Full-online mode: localStorage disabled. Backend FastAPI is source of truth.
+// Data is loaded via BackendLoader.loadCustomers/loadSalesInvoices/loadPayments
+// on login. Each save handler pushes to backend via BackendSync.* directly.
 function saveCustomerData() {
-  try {
-    localStorage.setItem(CUSTOMER_STORAGE_KEY, JSON.stringify({
-      customers: CustomerState.customers,
-      invoices:  CustomerState.invoices,
-      payments:  CustomerState.payments
-    }));
-    if (typeof DataStore !== 'undefined') DataStore.push(CUSTOMER_STORAGE_KEY);
-  } catch(e) { console.warn('[Sales] Save failed:', e); }
+  // No-op: state is mirrored to backend via BackendSync hooks at each save site.
+  // Counters (_invJeCounter, _recJeCounter) are still updated in memory below.
+  return;
 }
 
 function loadCustomerData() {
+  // No-op: BackendLoader.loadAll() populates CustomerState from backend
+  // immediately after login. This function is kept as a stub so legacy
+  // callers (e.g. on app start) don't break.
   try {
-    const raw = localStorage.getItem(CUSTOMER_STORAGE_KEY);
-    if (raw) {
-      const d = JSON.parse(raw);
-      if (Array.isArray(d.customers)) CustomerState.customers = d.customers;
-      if (Array.isArray(d.invoices))  CustomerState.invoices  = d.invoices;
-      if (Array.isArray(d.payments))  CustomerState.payments  = d.payments;
-      // Restore JE counters
-      CustomerState.invoices.forEach(inv => {
-        const n = parseInt((inv.journalId || '').replace('JE-INV-', '')) || 0;
-        if (n > _invJeCounter) _invJeCounter = n;
-      });
-      CustomerState.payments.forEach(p => {
-        const n = parseInt((p.journalId || '').replace('JE-REC-', '')) || 0;
-        if (n > _recJeCounter) _recJeCounter = n;
-      });
-    }
-  } catch(e) { console.warn('[Sales] Load failed:', e); }
+    // Restore JE counters from in-memory state if present
+    CustomerState.invoices?.forEach(inv => {
+      const n = parseInt((inv.journalId || '').replace('JE-INV-', '')) || 0;
+      if (n > _invJeCounter) _invJeCounter = n;
+    });
+    CustomerState.payments?.forEach(p => {
+      const n = parseInt((p.journalId || '').replace('JE-REC-', '')) || 0;
+      if (n > _recJeCounter) _recJeCounter = n;
+    });
   _restoreCustomerJournalsToState();
 }
 

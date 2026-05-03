@@ -39,30 +39,17 @@ const AppState = {
   charts: {}
 };
 
-// ===== LOCALSTORAGE PERSISTENCE =====
+// ===== STORAGE (full-online mode) =====
+// Backend FastAPI is the source of truth. Bank-statement PDF parsing stays
+// in-memory only — users re-upload statements per session if needed.
 const STORAGE_KEY = 'finreport_gki_v1';
 
 function saveToStorage() {
-  try {
-    const data = {
-      version: 1,
-      savedAt: new Date().toISOString(),
-      isLocked: AppState.isLocked || false,
-      statements: AppState.statements.map(s => ({
-        fileName: s.fileName,
-        header: s.header,
-        summary: s.summary,
-        transactions: s.transactions.map(({ raw, ...tx }) => tx) // strip raw PDF line
-      }))
-    };
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-    if (typeof DataStore !== 'undefined') DataStore.push(STORAGE_KEY);
-  } catch(e) { console.warn('[Storage] Save failed:', e); }
+  return;  // No-op in full-online mode
 }
 
 function clearStorage() {
-  localStorage.removeItem(STORAGE_KEY);
-  if (typeof DataStore !== 'undefined') DataStore.push(STORAGE_KEY);
+  // No-op
 }
 
 function loadFromStorage() {
@@ -2203,24 +2190,18 @@ const MANUAL_JOURNAL_KEY = 'manual_journals_v1';
 let _cjEditId = null; // null = create mode, string = edit mode
 
 function _saveManualJournals() {
-  try {
-    localStorage.setItem(MANUAL_JOURNAL_KEY, JSON.stringify(AppState.manualJournals || []));
-    if (typeof DataStore !== 'undefined') DataStore.push(MANUAL_JOURNAL_KEY);
-  } catch(e) { console.warn('[ManualJournal] Save failed:', e); }
+  return;  // No-op — journals go to backend via BackendSync.syncJournal
 }
 
 function _loadManualJournals() {
-  try {
-    const raw = localStorage.getItem(MANUAL_JOURNAL_KEY);
-    AppState.manualJournals = raw ? JSON.parse(raw) : [];
-  } catch(e) { AppState.manualJournals = []; }
+  // No-op — BackendLoader.loadJournals populates AppState.manualJournals on login
+  if (!Array.isArray(AppState.manualJournals)) AppState.manualJournals = [];
 }
 
 function _nextManualJournalId() {
-  const KEY = 'manual_journals_counter';
-  const n = (parseInt(localStorage.getItem(KEY) || '0')) + 1;
-  localStorage.setItem(KEY, String(n));
-  if (typeof DataStore !== 'undefined') DataStore.push(KEY);
+  // Generate a per-session counter (in-memory only)
+  if (!window.__manualJournalCounter) window.__manualJournalCounter = 0;
+  const n = ++window.__manualJournalCounter;
   return 'JE-MAN-' + String(n).padStart(4, '0');
 }
 

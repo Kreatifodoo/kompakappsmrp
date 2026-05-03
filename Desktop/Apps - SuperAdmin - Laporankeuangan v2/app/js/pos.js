@@ -65,65 +65,24 @@ const DEFAULT_FEE_MASTERS = [
 ];
 
 // ===== STORAGE =====
+// Full-online mode: localStorage disabled. POS data lives in backend (items,
+// pos_sessions, pos_orders). Loaded by BackendLoader on login.
 const POS_MAX_ORDERS = 500;
 
 function savePosData() {
-  // Prune old orders to prevent localStorage quota overflow
+  // No-op — saves go to backend via Api.posSessions/posOrders/items hooks.
+  // Keep prune logic only to bound in-memory order list during long sessions.
   if (PosState.orders.length > POS_MAX_ORDERS) {
     PosState.orders = PosState.orders.slice(0, POS_MAX_ORDERS);
-  }
-
-  const payload = {
-    products:       PosState.products,
-    orders:         PosState.orders,
-    paymentMethods: PosState.paymentMethods,
-    sessions:       PosState.sessions,
-    currentSession: PosState.currentSession,
-    settings:       PosState.settings,
-    feeMasters:     PosState.feeMasters,
-    categories:     PosState.categories
-  };
-
-  try {
-    localStorage.setItem(POS_STORAGE_KEY, JSON.stringify(payload));
-    if (typeof DataStore !== 'undefined') DataStore.push(POS_STORAGE_KEY);
-  } catch(e) {
-    console.error('[POS] Save failed:', e);
-    // If quota exceeded, prune more aggressively and retry
-    if (e.name === 'QuotaExceededError' || e.code === 22) {
-      try {
-        PosState.orders = PosState.orders.slice(0, Math.floor(POS_MAX_ORDERS / 2));
-        payload.orders = PosState.orders;
-        localStorage.setItem(POS_STORAGE_KEY, JSON.stringify(payload));
-        if (typeof DataStore !== 'undefined') DataStore.push(POS_STORAGE_KEY);
-        if (typeof showToast === 'function') showToast('Penyimpanan penuh — order lama dipangkas otomatis.', 'warning');
-      } catch(e2) {
-        console.error('[POS] Save failed even after pruning:', e2);
-        if (typeof showToast === 'function') showToast('Gagal menyimpan data POS. Penyimpanan penuh.', 'error');
-      }
-    }
   }
 }
 
 function loadPosData() {
-  try {
-    const raw = localStorage.getItem(POS_STORAGE_KEY);
-    if (raw) {
-      const data = JSON.parse(raw);
-      if (data.products)       PosState.products       = data.products;
-      if (data.orders)         PosState.orders         = data.orders;
-      if (data.paymentMethods) PosState.paymentMethods = data.paymentMethods;
-      if (data.sessions)       PosState.sessions       = data.sessions;
-      if (data.currentSession !== undefined) PosState.currentSession = data.currentSession;
-      if (data.settings)       PosState.settings       = { ...PosState.settings, ...data.settings };
-      if (data.feeMasters)     PosState.feeMasters     = data.feeMasters;
-      if (data.categories)     PosState.categories     = data.categories;
-    }
-  } catch(e) { console.warn('[POS] Load failed:', e); }
-
-  if (!PosState.products.length)       { PosState.products       = [...DEFAULT_PRODUCTS];        savePosData(); }
-  if (!PosState.paymentMethods.length) { PosState.paymentMethods = [...DEFAULT_PAYMENT_METHODS]; savePosData(); }
-  if (!PosState.categories || !PosState.categories.length) { PosState.categories = DEFAULT_CATEGORIES.map(c => ({...c})); savePosData(); }
+  // No-op for storage. Backend loads happen via BackendLoader. Just seed
+  // defaults for the in-memory catalogues if backend hasn't populated them.
+  if (!PosState.products.length)       { PosState.products       = [...DEFAULT_PRODUCTS]; }
+  if (!PosState.paymentMethods.length) { PosState.paymentMethods = [...DEFAULT_PAYMENT_METHODS]; }
+  if (!PosState.categories || !PosState.categories.length) { PosState.categories = DEFAULT_CATEGORIES.map(c => ({...c})); }
 
   // Migration: jika belum ada feeMasters, buat dari legacy taxRate/serviceRate
   if (!PosState.feeMasters || PosState.feeMasters.length === 0) {

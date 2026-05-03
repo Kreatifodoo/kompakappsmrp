@@ -96,36 +96,22 @@ function _billStatusBadge(status) {
 }
 
 // ===== STORAGE =====
+// Full-online mode: localStorage disabled. Backend FastAPI is source of truth.
+// Loaded via BackendLoader.loadSuppliers/loadPurchaseBills/loadPayments on login.
 function savePurchaseData() {
-  try {
-    localStorage.setItem(PURCHASE_STORAGE_KEY, JSON.stringify({
-      vendors:  PurchaseState.vendors,
-      bills:    PurchaseState.bills,
-      payments: PurchaseState.payments
-    }));
-    if (typeof DataStore !== 'undefined') DataStore.push(PURCHASE_STORAGE_KEY);
-  } catch(e) { console.warn('[Purchase] Save failed:', e); }
+  return;  // No-op — saves go to backend via BackendSync hooks
 }
 
 function loadPurchaseData() {
-  try {
-    const raw = localStorage.getItem(PURCHASE_STORAGE_KEY);
-    if (raw) {
-      const d = JSON.parse(raw);
-      if (Array.isArray(d.vendors))  PurchaseState.vendors  = d.vendors;
-      if (Array.isArray(d.bills))    PurchaseState.bills    = d.bills;
-      if (Array.isArray(d.payments)) PurchaseState.payments = d.payments;
-      // Restore JE counters from existing data
-      PurchaseState.bills.forEach(b => {
-        const n = parseInt((b.journalId || '').replace('JE-BILL-', '')) || 0;
-        if (n > _billJeCounter) _billJeCounter = n;
-      });
-      PurchaseState.payments.forEach(p => {
-        const n = parseInt((p.journalId || '').replace('JE-PAY-', '')) || 0;
-        if (n > _payJeCounter) _payJeCounter = n;
-      });
-    }
-  } catch(e) { console.warn('[Purchase] Load failed:', e); }
+  // No-op for storage. Just sync JE counters from existing in-memory state.
+  PurchaseState.bills?.forEach(b => {
+    const n = parseInt((b.journalId || '').replace('JE-BILL-', '')) || 0;
+    if (n > _billJeCounter) _billJeCounter = n;
+  });
+  PurchaseState.payments?.forEach(p => {
+    const n = parseInt((p.journalId || '').replace('JE-PAY-', '')) || 0;
+    if (n > _payJeCounter) _payJeCounter = n;
+  });
   _restorePurchaseJournalsToState();
 }
 

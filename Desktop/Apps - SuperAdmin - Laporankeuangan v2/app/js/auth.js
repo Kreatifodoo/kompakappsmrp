@@ -245,10 +245,18 @@ async function login(username, password) {
       tenantId: backendUser.tenant?.id || null,
     };
     setSession(user);
-    // Background sync: push local data (COA, customers, suppliers) to backend.
-    // Fire-and-forget — don't block login UX.
+    // Full-online mode: hydrate ALL state from backend before letting the UI render.
+    // This replaces the old localStorage load — backend is now the source of truth.
+    if (typeof BackendLoader !== 'undefined') {
+      try {
+        await BackendLoader.loadAll();
+      } catch (e) {
+        console.warn('[Auth] BackendLoader.loadAll failed:', e?.message);
+      }
+    }
+    // Optional one-shot sync of any default-seed COA the tenant doesn't have yet.
     if (typeof BackendSync !== 'undefined') {
-      setTimeout(() => BackendSync.syncAll(), 1500);
+      setTimeout(() => BackendSync.syncCOA(), 2000);
     }
     return { success: true };
   }
