@@ -135,11 +135,18 @@ const BackendSync = (() => {
 
   async function syncAllCustomers() {
     if (typeof CustomerState === 'undefined') return { skipped: true };
+    if (!_isLoggedIn()) return { skipped: true };
+    // Check existing first to avoid 409 noise
+    const existing = await Api.customers.list().catch(() => []);
+    const codes = new Set(existing.map(c => c.code));
     let synced = 0;
     for (const c of CustomerState.customers) {
+      const code = c.code || `CUST-${c.id}`.slice(0, 30);
+      if (codes.has(code)) continue;
       if (await syncCustomer(c)) synced++;
+      await _sleep(1200); // throttle
     }
-    return { synced };
+    return { synced, alreadySynced: existing.length };
   }
 
   // ─── Supplier sync ──────────────────────────────────────────
@@ -158,11 +165,17 @@ const BackendSync = (() => {
 
   async function syncAllSuppliers() {
     if (typeof PurchaseState === 'undefined') return { skipped: true };
+    if (!_isLoggedIn()) return { skipped: true };
+    const existing = await Api.suppliers.list().catch(() => []);
+    const codes = new Set(existing.map(s => s.code));
     let synced = 0;
     for (const v of PurchaseState.vendors) {
+      const code = v.code || `SUP-${v.id}`.slice(0, 30);
+      if (codes.has(code)) continue;
       if (await syncSupplier(v)) synced++;
+      await _sleep(1200);
     }
-    return { synced };
+    return { synced, alreadySynced: existing.length };
   }
 
   // ─── Journal entry sync ─────────────────────────────────────
