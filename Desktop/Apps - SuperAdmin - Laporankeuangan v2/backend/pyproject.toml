@@ -23,6 +23,10 @@ dependencies = [
     "reportlab>=4.0.0",
 ]
 
+[tool.setuptools.packages.find]
+include = ["app*"]
+exclude = ["migrations*", "tests*", "scripts*"]
+
 [dependency-groups]
 dev = [
     "pytest>=8.3.0",
