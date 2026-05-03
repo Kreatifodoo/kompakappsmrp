@@ -1,0 +1,5 @@
+# Runtime files — not committed
+config.json
+data/licenses.json
+__pycache__/
+*.pyc
