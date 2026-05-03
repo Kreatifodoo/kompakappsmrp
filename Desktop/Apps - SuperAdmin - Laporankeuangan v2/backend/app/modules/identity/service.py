@@ -117,6 +117,14 @@ class IdentityService:
                 accepted_at=datetime.now(UTC),
             )
         )
+
+        from app.core.events import publish
+        await publish("tenant.registered", {
+            "tenant_id": str(tenant.id),
+            "tenant_name": tenant.name,
+            "owner_email": user.email,
+            "owner_name": user.full_name,
+        })
         return tenant
 
     # ─── Refresh ────────────────────────────────────────

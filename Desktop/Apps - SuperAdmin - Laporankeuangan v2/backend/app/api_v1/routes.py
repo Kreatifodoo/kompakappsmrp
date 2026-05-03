@@ -7,6 +7,8 @@ from app.modules.audit.api import router as audit_router
 from app.modules.identity.api import router as identity_router
 from app.modules.identity.roles_api import router as roles_router
 from app.modules.inventory.api import router as inventory_router
+from app.modules.notifications import subscribers as _notif_subscribers  # noqa: F401  register
+from app.modules.notifications.api import router as notifications_router
 from app.modules.payments.api import router as payments_router
 from app.modules.periods.api import router as periods_router
 from app.modules.pos.api import router as pos_router
@@ -26,3 +28,4 @@ api_v1_router.include_router(audit_router)
 api_v1_router.include_router(periods_router)
 api_v1_router.include_router(inventory_router)
 api_v1_router.include_router(pos_router)
+api_v1_router.include_router(notifications_router)

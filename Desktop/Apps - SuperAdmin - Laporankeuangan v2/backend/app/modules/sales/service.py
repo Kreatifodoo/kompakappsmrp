@@ -211,6 +211,22 @@ class SalesService:
         invoice.posted_at = datetime.now(UTC)
         await self.session.flush()
 
+        # Publish event for downstream subscribers (email, webhooks, etc.)
+        try:
+            customer = await self.repo.get_customer(invoice.customer_id) if invoice.customer_id else None
+            from app.core.events import publish
+            await publish("sales_invoice.posted", {
+                "tenant_id": str(self.tenant_id),
+                "invoice_id": str(invoice.id),
+                "invoice_no": invoice.invoice_no,
+                "total": float(invoice.total),
+                "due_date": invoice.due_date.isoformat() if invoice.due_date else None,
+                "customer_email": getattr(customer, "email", None) if customer else None,
+                "customer_name": getattr(customer, "name", None) if customer else None,
+            })
+        except Exception:
+            pass  # event publish is fire-and-forget; never fail the invoice post
+
     async def void_invoice(self, invoice_id: UUID, reason: str) -> SalesInvoice:
         invoice = await self.repo.get_invoice(invoice_id)
         if not invoice:

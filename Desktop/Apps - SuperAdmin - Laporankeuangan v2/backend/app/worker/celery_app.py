@@ -35,5 +35,6 @@ celery_app.autodiscover_tasks(
         "app.modules.purchase",
         "app.modules.payments",
         "app.modules.reports",
+        "app.modules.notifications",
     ]
 )

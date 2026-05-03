@@ -46,6 +46,17 @@ class Settings(BaseSettings):
     RATE_LIMIT_ENTERPRISE: int = 6000
     RATE_LIMIT_ANONYMOUS: int = 30  # IP-based limit for unauthenticated routes
 
+    # ── Email / SMTP ────────────────────────────────────────────
+    SMTP_HOST: str = ""
+    SMTP_PORT: int = 587
+    SMTP_USER: str = ""
+    SMTP_PASSWORD: str = ""
+    SMTP_USE_TLS: bool = True
+    SMTP_FROM_EMAIL: str = "noreply@kompakapps.com"
+    SMTP_FROM_NAME: str = "Kompak Accounting"
+    EMAIL_ENABLED: bool = False  # master switch — set True in prod
+    APP_PUBLIC_URL: str = "https://accounting.kompakapps.com"
+
     @property
     def db_replica_url(self) -> str:
         return self.DB_REPLICA_URL or self.DB_PRIMARY_URL

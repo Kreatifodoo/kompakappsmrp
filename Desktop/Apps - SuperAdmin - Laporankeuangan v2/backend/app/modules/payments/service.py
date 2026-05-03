@@ -190,10 +190,17 @@ class PaymentsService:
         payment.posted_by = self.user_id
         payment.posted_at = datetime.now(UTC)
 
-        # Apply to invoices
+        # Apply to invoices + collect customer info for receipt email
+        customer_email = None
+        customer_name = None
         for app in payment.applications:
             if app.sales_invoice_id:
                 inv = await self.sales_repo.get_invoice(app.sales_invoice_id)
+                if inv and inv.customer_id and customer_email is None:
+                    cust = await self.sales_repo.get_customer(inv.customer_id)
+                    if cust:
+                        customer_email = getattr(cust, "email", None)
+                        customer_name = getattr(cust, "name", None)
             else:
                 inv = await self.purchase_repo.get_invoice(app.purchase_invoice_id)
             inv.paid_amount = (inv.paid_amount + app.amount).quantize(CENT)
@@ -201,6 +208,22 @@ class PaymentsService:
                 inv.status = "paid"
 
         await self.session.flush()
+
+        # Fire receipt email event (only for customer receipts)
+        if payment.payment_type == "receipt" and customer_email:
+            try:
+                from app.core.events import publish
+                await publish("payment.received", {
+                    "tenant_id": str(self.tenant_id),
+                    "payment_id": str(payment.id),
+                    "payment_no": payment.payment_no,
+                    "amount": float(payment.amount),
+                    "payment_date": payment.payment_date.isoformat(),
+                    "customer_email": customer_email,
+                    "customer_name": customer_name,
+                })
+            except Exception:
+                pass
 
     async def void_payment(self, payment_id: UUID, reason: str) -> Payment:
         payment = await self.repo.get(payment_id)
