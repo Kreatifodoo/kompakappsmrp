@@ -14,6 +14,7 @@ from app.modules.reports.schemas import (
     BalanceSheet,
     BankReconciliation,
     BankReconciliationRequest,
+    CashFlowStatement,
     PPNReport,
     ProfitLoss,
     Statement,
@@ -171,3 +172,24 @@ async def ppn_report(
 ) -> PPNReport:
     svc = ReportsService(session, current.tenant_id)
     return await svc.ppn_report(year=year, month=month)
+
+
+@router.get(
+    "/cash-flow",
+    response_model=CashFlowStatement,
+    summary=(
+        "Indirect-method Statement of Cash Flows for a date range. "
+        "Accounts must have cf_section set (operating/investing/financing) "
+        "to appear in the report."
+    ),
+)
+async def cash_flow_statement(
+    date_from: date = Query(..., description="Period start (inclusive)"),
+    date_to: date = Query(..., description="Period end (inclusive)"),
+    current: CurrentUser = Depends(require_permission("report.read")),
+    session: AsyncSession = Depends(get_read_session),
+) -> CashFlowStatement:
+    if date_from > date_to:
+        raise ValidationError("date_from must not be after date_to")
+    svc = ReportsService(session, current.tenant_id)
+    return await svc.cash_flow_statement(date_from=date_from, date_to=date_to)

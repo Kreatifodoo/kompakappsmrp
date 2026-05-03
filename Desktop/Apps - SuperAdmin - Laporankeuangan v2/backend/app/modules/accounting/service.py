@@ -50,9 +50,9 @@ class AccountingService:
 
     # System accounts (from the starter COA) are protected against
     # structural edits. Operational toggles (active flag, cash flag) are
-    # always permitted so admins can deactivate unused starter accounts
-    # or flag additional cash/bank accounts for cash-basis reports.
-    _SYSTEM_EDITABLE_FIELDS = frozenset({"is_active", "is_cash"})
+    # always permitted so admins can deactivate unused starter accounts,
+    # flag additional cash/bank accounts, or set the cash-flow section.
+    _SYSTEM_EDITABLE_FIELDS = frozenset({"is_active", "is_cash", "cf_section"})
 
     async def update_account(self, account_id: UUID, payload: AccountUpdate) -> Account:
         account = await self.repo.get_account(account_id)
@@ -119,6 +119,7 @@ class AccountingService:
                     parent_id=parent_id,
                     is_system=True,
                     is_cash=sa.is_cash,
+                    cf_section=sa.cf_section,
                 )
                 self.session.add(acct)
                 await self.session.flush()

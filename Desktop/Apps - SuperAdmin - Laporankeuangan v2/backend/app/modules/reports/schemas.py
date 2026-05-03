@@ -240,3 +240,73 @@ class BankReconciliation(BaseModel):
     book_only_total: Decimal  # sum of unmatched book lines (signed)
     statement_only_total: Decimal  # sum of unmatched statement lines (signed)
     difference: Decimal  # book_period_total - statement_period_total
+
+
+# ─── Cash Flow Statement (indirect method) ────────────────
+class CashFlowLine(BaseModel):
+    """One adjustment line in the cash flow statement.
+
+    For the indirect method each line represents the period change in a
+    non-cash balance-sheet account classified under operating, investing,
+    or financing activities.
+
+    `amount` is already cash-effect signed:
+      positive  = cash inflow (source of cash)
+      negative  = cash outflow (use of cash)
+
+    For assets (normal_side=debit):
+      amount = -(closing_balance - opening_balance)
+      i.e. an asset *increase* consumes cash → negative
+    For liabilities/equity (normal_side=credit):
+      amount = +(closing_balance - opening_balance)
+      i.e. a liability *increase* provides cash → positive
+    """
+
+    account_id: UUID
+    code: str
+    name: str
+    opening_balance: Decimal
+    closing_balance: Decimal
+    amount: Decimal  # cash effect (signed as described above)
+
+
+class CashFlowSection(BaseModel):
+    """One of the three sections (operating / investing / financing)."""
+
+    lines: list[CashFlowLine]
+    subtotal: Decimal
+
+
+class CashFlowStatement(BaseModel):
+    """Indirect-method Statement of Cash Flows for a date range.
+
+    Structure:
+      A. Net income (accrual P&L for the period)
+      B. Operating activities:  working-capital adjustments (cf_section='operating')
+         → net_operating  = net_income + operating.subtotal
+      C. Investing activities   (cf_section='investing')
+      D. Financing activities   (cf_section='financing')
+      Net change in cash = net_operating + investing.subtotal + financing.subtotal
+      Opening cash + net_change = closing cash (reconciliation check)
+    """
+
+    date_from: date
+    date_to: date
+
+    # ── A. Profitability ─────────────────────────────────
+    net_income: Decimal  # accrual net profit for [date_from, date_to]
+
+    # ── B–D. Balance-sheet movements ─────────────────────
+    operating: CashFlowSection   # working-capital adjustments
+    investing: CashFlowSection   # fixed assets / long-term investments
+    financing: CashFlowSection   # equity + long-term debt
+
+    # ── Subtotals ─────────────────────────────────────────
+    net_operating: Decimal       # net_income + operating.subtotal
+    net_change: Decimal          # net_operating + investing + financing
+
+    # ── Reconciliation ────────────────────────────────────
+    opening_cash: Decimal        # sum of is_cash accounts before date_from
+    closing_cash: Decimal        # opening_cash + net_change (reconciling total)
+    book_closing_cash: Decimal   # actual sum of is_cash accounts at date_to
+    reconciled: bool             # |closing_cash - book_closing_cash| < 0.01

@@ -10,6 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 AccountType = Literal["asset", "liability", "equity", "income", "expense"]
 NormalSide = Literal["debit", "credit"]
 EntryStatus = Literal["draft", "posted", "void"]
+CfSection = Literal["operating", "investing", "financing"]
 
 
 # ─── Account / COA ────────────────────────────────────────
@@ -20,6 +21,7 @@ class AccountCreate(BaseModel):
     normal_side: NormalSide
     parent_id: UUID | None = None
     description: str | None = Field(default=None, max_length=500)
+    cf_section: CfSection | None = None
 
 
 class AccountUpdate(BaseModel):
@@ -27,6 +29,7 @@ class AccountUpdate(BaseModel):
     parent_id: UUID | None = None
     is_active: bool | None = None
     is_cash: bool | None = None
+    cf_section: CfSection | None = None
     description: str | None = Field(default=None, max_length=500)
 
 
@@ -42,6 +45,7 @@ class AccountOut(BaseModel):
     is_active: bool
     is_system: bool
     is_cash: bool
+    cf_section: CfSection | None
     description: str | None
 
 

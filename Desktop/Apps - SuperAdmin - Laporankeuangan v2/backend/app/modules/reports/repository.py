@@ -363,3 +363,93 @@ class ReportsRepository:
             .order_by(Supplier.code, PurchaseInvoice.invoice_date)
         )
         return list((await self.session.execute(stmt)).all())
+
+    # ─── Cash Flow Statement ─────────────────────────────
+    async def account_balances_as_of(
+        self,
+        *,
+        as_of: date | None,
+        cf_sections: list[str],
+    ) -> list[tuple[Account, Decimal]]:
+        """Return [(account, signed_balance)] for all accounts tagged with
+        one of `cf_sections`, with balances cumulative through `as_of`
+        (or from inception when as_of is None).
+
+        Balance is signed by normal_side so that:
+          debit-normal accounts → positive = net debit balance
+          credit-normal accounts → positive = net credit balance
+        """
+        je_conds = [
+            JournalEntry.tenant_id == self.tenant_id,
+            JournalEntry.status == "posted",
+        ]
+        if as_of is not None:
+            je_conds.append(JournalEntry.entry_date <= as_of)
+
+        sub = (
+            select(
+                JournalLine.account_id.label("account_id"),
+                func.coalesce(func.sum(JournalLine.debit), 0).label("total_debit"),
+                func.coalesce(func.sum(JournalLine.credit), 0).label("total_credit"),
+            )
+            .join(JournalEntry, JournalEntry.id == JournalLine.entry_id)
+            .where(
+                JournalLine.tenant_id == self.tenant_id,
+                *je_conds,
+            )
+            .group_by(JournalLine.account_id)
+            .subquery()
+        )
+
+        stmt = (
+            select(
+                Account,
+                func.coalesce(sub.c.total_debit, 0).label("total_debit"),
+                func.coalesce(sub.c.total_credit, 0).label("total_credit"),
+            )
+            .outerjoin(sub, sub.c.account_id == Account.id)
+            .where(
+                Account.tenant_id == self.tenant_id,
+                Account.cf_section.in_(cf_sections),
+                Account.is_active.is_(True),
+            )
+            .order_by(Account.code)
+        )
+
+        out: list[tuple[Account, Decimal]] = []
+        for row in (await self.session.execute(stmt)).all():
+            acct: Account = row.Account
+            dr = Decimal(row.total_debit)
+            cr = Decimal(row.total_credit)
+            # Signed balance: positive = on the account's natural side
+            balance = dr - cr if acct.normal_side == "debit" else cr - dr
+            out.append((acct, balance))
+        return out
+
+    async def cash_balance_as_of(self, *, as_of: date | None) -> Decimal:
+        """Sum of all is_cash accounts' signed balances through `as_of`.
+        Used for opening/closing cash reconciliation in the cash-flow statement.
+        """
+        je_conds = [
+            JournalEntry.tenant_id == self.tenant_id,
+            JournalEntry.status == "posted",
+        ]
+        if as_of is not None:
+            je_conds.append(JournalEntry.entry_date <= as_of)
+
+        stmt = (
+            select(
+                func.coalesce(func.sum(JournalLine.debit), 0).label("total_debit"),
+                func.coalesce(func.sum(JournalLine.credit), 0).label("total_credit"),
+            )
+            .join(JournalEntry, JournalEntry.id == JournalLine.entry_id)
+            .join(Account, Account.id == JournalLine.account_id)
+            .where(
+                JournalLine.tenant_id == self.tenant_id,
+                Account.is_cash.is_(True),
+                *je_conds,
+            )
+        )
+        row = (await self.session.execute(stmt)).one()
+        # Cash accounts are debit-normal: positive balance = cash on hand
+        return Decimal(row.total_debit) - Decimal(row.total_credit)

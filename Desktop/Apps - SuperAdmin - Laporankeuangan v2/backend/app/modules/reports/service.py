@@ -19,6 +19,9 @@ from app.modules.reports.schemas import (
     BankReconciliationRequest,
     BookCashLine,
     BSLine,
+    CashFlowLine,
+    CashFlowSection,
+    CashFlowStatement,
     PLLine,
     PPNPurchaseLine,
     PPNReport,
@@ -669,4 +672,123 @@ class ReportsService:
                 input_vat_total=input_vat_total,
                 net_vat_payable=output_vat_total - input_vat_total,
             ),
+        )
+
+    # ─── Cash Flow Statement (indirect method) ─────────────
+    async def cash_flow_statement(
+        self, *, date_from: date, date_to: date
+    ) -> CashFlowStatement:
+        """Build an indirect-method Statement of Cash Flows.
+
+        Indirect method reconciles from net income by adjusting for:
+          • Changes in working-capital accounts (cf_section='operating')
+          • Changes in investing accounts   (cf_section='investing')
+          • Changes in financing accounts   (cf_section='financing')
+
+        Cash-effect sign convention:
+          Asset  (normal=debit):   amount = -(Δbalance)  [increase uses cash]
+          Liab/Equity (normal=credit): amount = +(Δbalance)  [increase provides cash]
+        """
+        from datetime import timedelta
+
+        day_before = date_from - timedelta(days=1)
+
+        # ── Net income for the period ─────────────────────
+        pl = await self.profit_loss(date_from=date_from, date_to=date_to)
+        net_income = pl.net_profit
+
+        # ── Balance-sheet account changes by section ─────
+        sections: dict[str, CashFlowSection] = {}
+        for section_key in ("operating", "investing", "financing"):
+            opening_rows = await self.repo.account_balances_as_of(
+                as_of=day_before, cf_sections=[section_key]
+            )
+            closing_rows = await self.repo.account_balances_as_of(
+                as_of=date_to, cf_sections=[section_key]
+            )
+
+            # Build a single dict keyed by account id, preserving account obj
+            # from whichever side has it (prefer closing since it's current).
+            opening_map: dict = {acct.id: bal for acct, bal in opening_rows}
+            closing_map: dict = {acct.id: (acct, bal) for acct, bal in closing_rows}
+            opening_acct_map: dict = {acct.id: acct for acct, _ in opening_rows}
+
+            all_acct_ids: set = set(opening_map) | set(closing_map)
+            # Sort by account code for stable presentation
+            def _code(aid):  # noqa: E306
+                if aid in closing_map:
+                    return closing_map[aid][0].code
+                return opening_acct_map[aid].code
+
+            lines: list[CashFlowLine] = []
+            subtotal = Decimal("0")
+
+            for acct_id in sorted(all_acct_ids, key=_code):
+                if acct_id in closing_map:
+                    acct, closing_bal = closing_map[acct_id]
+                else:
+                    acct = opening_acct_map[acct_id]
+                    closing_bal = Decimal("0")
+
+                opening_bal = opening_map.get(acct_id, Decimal("0"))
+                delta = closing_bal - opening_bal
+
+                # Cash-effect: flip sign for debit-normal assets
+                if acct.normal_side == "debit":
+                    amount = -delta
+                else:
+                    amount = delta
+
+                amount = amount.quantize(CENT)
+                lines.append(
+                    CashFlowLine(
+                        account_id=acct.id,
+                        code=acct.code,
+                        name=acct.name,
+                        opening_balance=opening_bal.quantize(CENT),
+                        closing_balance=closing_bal.quantize(CENT),
+                        amount=amount,
+                    )
+                )
+                subtotal += amount
+
+            # Remove zero-movement lines unless they had non-zero balances
+            # (keep them if they had a balance — they're still on the shelf)
+            lines = [
+                ln for ln in lines
+                if ln.amount != Decimal("0")
+                or ln.opening_balance != Decimal("0")
+                or ln.closing_balance != Decimal("0")
+            ]
+            sections[section_key] = CashFlowSection(
+                lines=lines,
+                subtotal=subtotal.quantize(CENT),
+            )
+
+        net_operating = (net_income + sections["operating"].subtotal).quantize(CENT)
+        net_change = (
+            net_operating
+            + sections["investing"].subtotal
+            + sections["financing"].subtotal
+        ).quantize(CENT)
+
+        # ── Cash reconciliation ───────────────────────────
+        opening_cash = (await self.repo.cash_balance_as_of(as_of=day_before)).quantize(CENT)
+        closing_cash = (opening_cash + net_change).quantize(CENT)
+        book_closing_cash = (await self.repo.cash_balance_as_of(as_of=date_to)).quantize(CENT)
+        reconciled = abs(closing_cash - book_closing_cash) < Decimal("0.02")
+
+        return CashFlowStatement(
+            date_from=date_from,
+            date_to=date_to,
+            net_income=net_income.quantize(CENT),
+            operating=sections["operating"],
+            investing=sections["investing"],
+            financing=sections["financing"],
+            net_operating=net_operating,
+            net_change=net_change,
+            opening_cash=opening_cash,
+            closing_cash=closing_cash,
+            book_closing_cash=book_closing_cash,
+            reconciled=reconciled,
         )

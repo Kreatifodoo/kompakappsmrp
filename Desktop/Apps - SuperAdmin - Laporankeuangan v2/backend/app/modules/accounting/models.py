@@ -76,6 +76,14 @@ class Account(Base):
     # Marks an account as a cash/bank account — used by cash-basis P&L
     # to identify journals that represent actual cash movement.
     is_cash: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    # Cash-flow statement classification for indirect method.
+    # None (null) = uncategorised (account won't appear in cash-flow report).
+    # 'operating'  → working capital adjustments (AR, AP, inventory, prepaid…)
+    # 'investing'  → fixed assets / long-term investments
+    # 'financing'  → equity + long-term debt
+    # Income and expense accounts are captured via net income, not here.
+    # Cash/bank accounts (is_cash=True) are the reconciling total, not here.
+    cf_section: Mapped[str | None] = mapped_column(String(20), nullable=True)
     description: Mapped[str | None] = mapped_column(String(500))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
