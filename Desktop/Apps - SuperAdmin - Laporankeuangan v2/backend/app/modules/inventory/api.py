@@ -19,7 +19,11 @@ from app.modules.inventory.schemas import (
     ItemCreate,
     ItemOut,
     ItemUpdate,
+    ReorderLine,
+    ReorderReport,
     SetCostingMethodRequest,
+    SlowMovingLine,
+    SlowMovingReport,
     StockBalanceOut,
     StockCardReport,
     StockMovementCreate,
@@ -398,4 +402,136 @@ async def item_stock_card(
         warehouse_id,
         date_from=date_from,
         date_to=date_to,
+    )
+
+
+# ─── Reorder report ──────────────────────────────────────
+@router.get(
+    "/reports/reorder",
+    response_model=ReorderReport,
+    summary=(
+        "Items whose total on-hand quantity is below min_stock. "
+        "Aggregates across all warehouses unless warehouse_id is supplied."
+    ),
+)
+async def reorder_report(
+    warehouse_id: UUID | None = Query(default=None, description="Scope to a single warehouse"),
+    current: CurrentUser = Depends(require_permission("inventory.read")),
+    session: AsyncSession = Depends(get_read_session),
+) -> ReorderReport:
+    from datetime import date as _date
+
+    repo = InventoryRepository(session, current.tenant_id)
+    rows = await repo.reorder_items(warehouse_id=warehouse_id)
+
+    lines: list[ReorderLine] = []
+    total_shortage_value = Decimal("0")
+
+    for item, on_hand_qty, avg_cost in rows:
+        shortage = (item.min_stock - on_hand_qty).quantize(Decimal("0.0001"))
+        shortage_value = (shortage * avg_cost).quantize(Decimal("0.01"))
+        lines.append(
+            ReorderLine(
+                item_id=item.id,
+                sku=item.sku,
+                name=item.name,
+                unit=item.unit,
+                min_stock=item.min_stock,
+                on_hand_qty=on_hand_qty,
+                shortage=shortage,
+                avg_cost=avg_cost,
+                shortage_value=shortage_value,
+            )
+        )
+        total_shortage_value += shortage_value
+
+    return ReorderReport(
+        as_of_today=_date.today(),
+        warehouse_id=warehouse_id,
+        lines=lines,
+        total_shortage_value=total_shortage_value,
+    )
+
+
+# ─── Slow-moving items report ─────────────────────────────
+@router.get(
+    "/reports/slow-moving",
+    response_model=SlowMovingReport,
+    summary=(
+        "Items with no outflow within the lookback window (default 90 days). "
+        "Only rows with on_hand_qty > 0 are included."
+    ),
+)
+async def slow_moving_report(
+    days: int = Query(default=90, ge=1, le=3650, description="Lookback window in days"),
+    warehouse_id: UUID | None = Query(default=None, description="Scope to a single warehouse"),
+    current: CurrentUser = Depends(require_permission("inventory.read")),
+    session: AsyncSession = Depends(get_read_session),
+) -> SlowMovingReport:
+    from datetime import date as _date
+    from datetime import timedelta
+
+    today = _date.today()
+    cutoff = today - timedelta(days=days)
+
+    repo = InventoryRepository(session, current.tenant_id)
+    items = {i.id: i for i in await repo.list_items(active_only=True, type_="stock")}
+    warehouses = {w.id: w for w in await repo.list_warehouses(active_only=False)}
+
+    rows = await repo.slow_moving_items(cutoff_date=cutoff, warehouse_id=warehouse_id)
+
+    lines: list[SlowMovingLine] = []
+    total_value = Decimal("0")
+
+    for bal, last_outflow_date, period_out_qty in rows:
+        item = items.get(bal.item_id)
+        wh = warehouses.get(bal.warehouse_id)
+        if not item or not wh:
+            continue
+
+        # Compute days since last outflow
+        if last_outflow_date is not None:
+            days_since = (today - last_outflow_date).days
+        else:
+            days_since = None
+
+        # Slow-moving = no outflow at all, OR last outflow older than threshold
+        is_slow = last_outflow_date is None or days_since > days  # type: ignore[operator]
+        if not is_slow:
+            continue
+
+        value = (bal.on_hand_qty * bal.avg_cost).quantize(Decimal("0.01"))
+        lines.append(
+            SlowMovingLine(
+                item_id=item.id,
+                sku=item.sku,
+                name=item.name,
+                unit=item.unit,
+                warehouse_id=wh.id,
+                warehouse_code=wh.code,
+                on_hand_qty=bal.on_hand_qty,
+                avg_cost=bal.avg_cost,
+                on_hand_value=value,
+                last_outflow_date=last_outflow_date,
+                days_since_last_outflow=days_since,
+                period_out_qty=period_out_qty,
+            )
+        )
+        total_value += value
+
+    # Sort: never-moved-out first (None), then oldest outflow first, then SKU
+    lines.sort(
+        key=lambda ln: (
+            0 if ln.last_outflow_date is None else 1,
+            -(ln.days_since_last_outflow or 0),
+            ln.sku,
+        )
+    )
+
+    return SlowMovingReport(
+        as_of_today=today,
+        lookback_days=days,
+        warehouse_id=warehouse_id,
+        lines=lines,
+        total_on_hand_value=total_value,
     )

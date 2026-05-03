@@ -326,3 +326,148 @@ class InventoryRepository:
         )
         count = (await self.session.execute(stmt)).scalar_one() or 0
         return f"{prefix}{count + 1:05d}"
+
+    # ── Reorder report ───────────────────────────────────
+    async def reorder_items(
+        self, *, warehouse_id: UUID | None = None
+    ) -> list[tuple[Item, "Decimal", "Decimal"]]:  # noqa: F821
+        """Items whose total on-hand is below min_stock > 0.
+
+        Returns [(item, total_on_hand_qty, weighted_avg_cost)].
+        Aggregates across all warehouses unless warehouse_id is given.
+        Only stock-type, active items with min_stock > 0 are included.
+        """
+        from decimal import Decimal
+
+        conds = [
+            StockBalance.tenant_id == self.tenant_id,
+        ]
+        if warehouse_id:
+            conds.append(StockBalance.warehouse_id == warehouse_id)
+
+        # Sum qty and weighted value per item
+        bal_sub = (
+            select(
+                StockBalance.item_id.label("item_id"),
+                func.coalesce(func.sum(StockBalance.on_hand_qty), 0).label("total_qty"),
+                func.coalesce(
+                    func.sum(StockBalance.on_hand_qty * StockBalance.avg_cost), 0
+                ).label("total_value"),
+            )
+            .where(and_(*conds))
+            .group_by(StockBalance.item_id)
+            .subquery()
+        )
+
+        stmt = (
+            select(
+                Item,
+                func.coalesce(bal_sub.c.total_qty, 0).label("total_qty"),
+                func.coalesce(bal_sub.c.total_value, 0).label("total_value"),
+            )
+            .outerjoin(bal_sub, bal_sub.c.item_id == Item.id)
+            .where(
+                Item.tenant_id == self.tenant_id,
+                Item.type == "stock",
+                Item.is_active.is_(True),
+                Item.min_stock > 0,
+                # on_hand < min_stock  (coalesce handles items with no balance row)
+                func.coalesce(bal_sub.c.total_qty, 0) < Item.min_stock,
+            )
+            .order_by(Item.sku)
+        )
+
+        out = []
+        for row in (await self.session.execute(stmt)).all():
+            qty = Decimal(row.total_qty)
+            value = Decimal(row.total_value)
+            avg = (value / qty) if qty > 0 else Decimal("0")
+            out.append((row.Item, qty, avg))
+        return out
+
+    # ── Slow-moving report ───────────────────────────────
+    async def slow_moving_items(
+        self,
+        *,
+        cutoff_date,   # movements on or after this date count as "recent"
+        warehouse_id: UUID | None = None,
+    ) -> list[tuple[StockBalance, "date | None", "Decimal"]]:  # noqa: F821
+        """Per-(item, warehouse) rows where on_hand_qty > 0 and the item
+        had no outflow (direction='out'|'adjust_out') on or after
+        `cutoff_date`.
+
+        Returns [(balance, last_outflow_date_or_None, period_out_qty)].
+        `period_out_qty` is total outflow qty from cutoff_date onwards
+        (will be 0 for truly slow items, but > 0 is possible if outflow
+        happened just after cutoff and balance is still > 0).
+
+        Actually we return ALL (item,warehouse) pairs with stock > 0,
+        along with their last_outflow_date and period_out_qty, and let
+        the caller apply the threshold filter so it can compute
+        days_since_last_outflow cleanly.
+        """
+        from decimal import Decimal
+
+        bal_conds = [
+            StockBalance.tenant_id == self.tenant_id,
+            StockBalance.on_hand_qty > 0,
+        ]
+        if warehouse_id:
+            bal_conds.append(StockBalance.warehouse_id == warehouse_id)
+
+        # Subquery: per (item, warehouse) — last outflow date + period qty
+        mv_sub = (
+            select(
+                StockMovement.item_id.label("item_id"),
+                StockMovement.warehouse_id.label("warehouse_id"),
+                func.max(
+                    func.case(
+                        (
+                            StockMovement.direction.in_(["out", "adjust_out"]),
+                            StockMovement.movement_date,
+                        ),
+                        else_=None,
+                    )
+                ).label("last_outflow_date"),
+                func.coalesce(
+                    func.sum(
+                        func.case(
+                            (
+                                and_(
+                                    StockMovement.direction.in_(["out", "adjust_out"]),
+                                    StockMovement.movement_date >= cutoff_date,
+                                ),
+                                StockMovement.qty,
+                            ),
+                            else_=0,
+                        )
+                    ),
+                    0,
+                ).label("period_out_qty"),
+            )
+            .where(StockMovement.tenant_id == self.tenant_id)
+            .group_by(StockMovement.item_id, StockMovement.warehouse_id)
+            .subquery()
+        )
+
+        stmt = (
+            select(
+                StockBalance,
+                mv_sub.c.last_outflow_date,
+                func.coalesce(mv_sub.c.period_out_qty, 0).label("period_out_qty"),
+            )
+            .outerjoin(
+                mv_sub,
+                and_(
+                    mv_sub.c.item_id == StockBalance.item_id,
+                    mv_sub.c.warehouse_id == StockBalance.warehouse_id,
+                ),
+            )
+            .where(and_(*bal_conds))
+            .order_by(StockBalance.item_id, StockBalance.warehouse_id)
+        )
+
+        out = []
+        for row in (await self.session.execute(stmt)).all():
+            out.append((row.StockBalance, row.last_outflow_date, Decimal(row.period_out_qty)))
+        return out

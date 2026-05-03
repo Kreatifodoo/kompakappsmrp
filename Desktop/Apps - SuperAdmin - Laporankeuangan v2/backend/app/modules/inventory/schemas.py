@@ -159,6 +159,62 @@ class StockValuationLine(BaseModel):
 StockValuationReport.model_rebuild()
 
 
+# ─── Reorder report ───────────────────────────────────────
+class ReorderLine(BaseModel):
+    """One row in the reorder report — an item whose total on-hand
+    quantity (across warehouses, or in a single warehouse when
+    warehouse_id is supplied) is below its min_stock threshold."""
+
+    item_id: UUID
+    sku: str
+    name: str
+    unit: str
+    min_stock: Decimal
+    on_hand_qty: Decimal          # current total (all or filtered WH)
+    shortage: Decimal             # max(0, min_stock - on_hand_qty)
+    avg_cost: Decimal             # weighted avg across included warehouses
+    shortage_value: Decimal       # shortage × avg_cost
+
+
+class ReorderReport(BaseModel):
+    """All items that need restocking, sorted by SKU."""
+
+    as_of_today: date
+    warehouse_id: UUID | None     # None = all warehouses aggregated
+    lines: list[ReorderLine]
+    total_shortage_value: Decimal
+
+
+# ─── Slow-moving items report ──────────────────────────────
+class SlowMovingLine(BaseModel):
+    """One item–warehouse row flagged as slow-moving because it had no
+    outflow (direction='out' or 'adjust_out') within the lookback window,
+    or its last outflow was longer ago than `days` from today."""
+
+    item_id: UUID
+    sku: str
+    name: str
+    unit: str
+    warehouse_id: UUID
+    warehouse_code: str
+    on_hand_qty: Decimal
+    avg_cost: Decimal
+    on_hand_value: Decimal              # on_hand_qty × avg_cost
+    last_outflow_date: date | None      # None = never moved out
+    days_since_last_outflow: int | None # None = never moved out
+    period_out_qty: Decimal             # outflow qty within lookback window
+
+
+class SlowMovingReport(BaseModel):
+    """Items with no or minimal outflow in the lookback window."""
+
+    as_of_today: date
+    lookback_days: int                  # threshold supplied by caller
+    warehouse_id: UUID | None           # None = all warehouses
+    lines: list[SlowMovingLine]         # sorted by days_since_last_outflow DESC, sku
+    total_on_hand_value: Decimal
+
+
 # ─── Costing method ───────────────────────────────────────
 CostingMethod = Literal["avg", "fifo", "lifo"]
 
