@@ -3,8 +3,11 @@
   "configurations": [
     {
       "name": "Kompak Accounting",
-      "runtimeExecutable": "python3",
-      "runtimeArgs": ["/Users/admin/Desktop/Apps - SuperAdmin - Laporankeuangan v2/app/serve.py"],
+      "runtimeExecutable": "/bin/sh",
+      "runtimeArgs": [
+        "-c",
+        "cd /Users/admin/Desktop/Apps\\ -\\ SuperAdmin\\ -\\ Laporankeuangan\\ v2/app && python3 serve.py"
+      ],
       "port": 8080,
       "autoPort": false
     }

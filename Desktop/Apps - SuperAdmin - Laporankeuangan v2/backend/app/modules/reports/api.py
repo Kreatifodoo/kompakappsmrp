@@ -1,9 +1,13 @@
 """HTTP routes for Reports: trial balance, P&L, balance sheet."""
 
+import base64
 from datetime import date
+from typing import Any, Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import Response
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_read_session
@@ -21,8 +25,100 @@ from app.modules.reports.schemas import (
     TrialBalance,
 )
 from app.modules.reports.service import ReportsService
+from app.modules.reports.tasks import export_report_task, generate_report_task, get_job
 
 router = APIRouter(prefix="/reports", tags=["reports"])
+
+
+# ─── Async job schemas ────────────────────────────────────────
+
+class AsyncReportRequest(BaseModel):
+    params: dict[str, Any] = {}
+    fmt: Literal["json", "excel", "pdf"] = "json"
+
+
+class JobSubmitted(BaseModel):
+    job_id: str
+    status: str = "queued"
+
+
+class JobStatus(BaseModel):
+    job_id: str
+    status: str
+    error: str | None = None
+
+
+# ─── Async job endpoints ──────────────────────────────────────
+
+@router.post(
+    "/{report_type}/async",
+    response_model=JobSubmitted,
+    summary="Submit a report as a background job; poll /jobs/{job_id}/status for completion",
+)
+async def submit_async_report(
+    report_type: str,
+    body: AsyncReportRequest,
+    current: CurrentUser = Depends(require_permission("report.read")),
+) -> JobSubmitted:
+    allowed = {
+        "trial-balance", "profit-loss", "balance-sheet",
+        "aged-receivables", "aged-payables", "cash-flow", "ppn",
+    }
+    if report_type not in allowed:
+        raise HTTPException(status_code=404, detail=f"Unknown report type: {report_type}")
+
+    if body.fmt == "json":
+        task = generate_report_task.delay(report_type, str(current.tenant_id), body.params)
+    else:
+        task = export_report_task.delay(report_type, str(current.tenant_id), body.params, body.fmt)
+
+    return JobSubmitted(job_id=task.id)
+
+
+@router.get("/jobs/{job_id}/status", response_model=JobStatus, summary="Poll async job status")
+async def job_status(
+    job_id: str,
+    current: CurrentUser = Depends(require_permission("report.read")),
+) -> JobStatus:
+    job = get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found or expired")
+    return JobStatus(job_id=job_id, status=job["status"], error=job.get("error"))
+
+
+@router.get("/jobs/{job_id}/result", summary="Retrieve completed job result (JSON)")
+async def job_result(
+    job_id: str,
+    current: CurrentUser = Depends(require_permission("report.read")),
+) -> Any:
+    job = get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found or expired")
+    if job["status"] != "done":
+        raise HTTPException(status_code=409, detail=f"Job status: {job['status']}")
+    return job.get("result")
+
+
+@router.get("/jobs/{job_id}/download", summary="Download completed export as PDF or Excel file")
+async def job_download(
+    job_id: str,
+    format: Literal["pdf", "excel"] = Query(...),  # noqa: A002
+    current: CurrentUser = Depends(require_permission("report.read")),
+) -> Response:
+    job = get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found or expired")
+    if job["status"] != "done":
+        raise HTTPException(status_code=409, detail=f"Job status: {job['status']}")
+    result = job.get("result", {})
+    if "data_b64" not in result:
+        raise HTTPException(status_code=422, detail="Job result is not a file export")
+    content = base64.b64decode(result["data_b64"])
+    return Response(
+        content=content,
+        media_type=result.get("content_type", "application/octet-stream"),
+        headers={"Content-Disposition": f'attachment; filename="{result.get("filename", "report")}"'},
+    )
 
 
 @router.get(

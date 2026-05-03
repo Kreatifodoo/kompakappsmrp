@@ -193,8 +193,57 @@ function requirePermission(action) {
   return true;
 }
 
+// ===== BACKEND AUTH INTEGRATION =====
+// Coba login ke backend FastAPI dulu; jika gagal/tidak tersedia → fallback localStorage.
+const BACKEND_SESSION_KEY = 'kompak_backend_user';
+
+function _saveBackendSession(meData) {
+  sessionStorage.setItem(BACKEND_SESSION_KEY, JSON.stringify(meData));
+}
+
+function getBackendSession() {
+  try {
+    const raw = sessionStorage.getItem(BACKEND_SESSION_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch { return null; }
+}
+
+function clearBackendSession() {
+  sessionStorage.removeItem(BACKEND_SESSION_KEY);
+  if (typeof ApiTokens !== 'undefined') ApiTokens.clear();
+}
+
+async function _tryBackendLogin(emailOrUsername, password) {
+  if (typeof Api === 'undefined') return null;
+  try {
+    await Api.login(emailOrUsername, password);
+    const me = await Api.me();
+    _saveBackendSession(me);
+    return me;
+  } catch {
+    return null;
+  }
+}
+
 // ===== LOGIN / LOGOUT =====
 async function login(username, password) {
+  // Try backend first (username treated as email for multi-tenant users)
+  const backendUser = await _tryBackendLogin(username, password);
+  if (backendUser) {
+    // Build a session-compatible object from backend response
+    const user = {
+      id: backendUser.user?.id || 'backend',
+      username: backendUser.user?.full_name || username,
+      role: backendUser.role || 'Admin',
+      isSuperAdmin: backendUser.user?.is_super_admin || false,
+      isBackendUser: true,
+      permissions: backendUser.permissions || [],
+    };
+    setSession(user);
+    return { success: true };
+  }
+
+  // Fallback: localStorage auth (existing local users)
   const users = getUsers();
   const user = users.find(u => u.username.toLowerCase() === username.toLowerCase());
   if (!user) return { success: false, error: 'Username tidak ditemukan' };
@@ -202,18 +251,42 @@ async function login(username, password) {
   const hash = await hashPassword(password);
   if (hash !== user.passwordHash) return { success: false, error: 'Password salah' };
 
-  // Update last login timestamp
   user.lastLogin = new Date().toISOString();
   saveUsers(users);
-
   setSession(user);
   return { success: true };
 }
 
 function logout() {
   clearSession();
+  clearBackendSession();
   if (idleTimer) clearTimeout(idleTimer);
   showLoginScreen();
+}
+
+// Override hasPermission to also check backend permissions
+const _origHasPermission = hasPermission;
+function hasPermission(action) {
+  const session = getCurrentUser();
+  if (!session) return false;
+  // Backend users: check permissions array from JWT claims
+  if (session.isBackendUser && Array.isArray(session.permissions)) {
+    if (session.isSuperAdmin) return true;
+    // Map legacy frontend permission keys to backend permission strings
+    const permMap = {
+      upload:      'journal.write',
+      editCOA:     'account.write',
+      editJournal: 'journal.write',
+      viewReport:  'report.read',
+      export:      'report.read',
+      manageUsers: 'user.manage',
+      resetData:   'tenant.admin',
+      lock:        'tenant.admin',
+    };
+    const backendPerm = permMap[action] || action;
+    return session.permissions.includes(backendPerm);
+  }
+  return _origHasPermission(action);
 }
 
 // ===== FIRST RUN SETUP =====

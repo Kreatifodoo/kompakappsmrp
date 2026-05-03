@@ -168,6 +168,22 @@ const FLYOUT_GROUPS = {
       { page: 'purchase-report',   icon: 'bar-chart-2', label: 'Laporan Vendor Bill' },
       { page: 'purchase-payments', icon: 'send',        label: 'Payment' },
     ]
+  },
+  inventory: {
+    label: 'Inventory',
+    items: [
+      { page: 'inventory',           icon: 'package',     label: 'Items & Gudang' },
+      { page: 'inventory-movements', icon: 'refresh-cw',  label: 'Pergerakan Stok' },
+      { page: 'inventory-transfers', icon: 'repeat',      label: 'Transfer Stok' },
+    ]
+  },
+  payments: {
+    label: 'Payments',
+    items: [
+      { page: 'payments',        icon: 'dollar-sign',  label: 'Semua Pembayaran' },
+      { page: 'payments-in',     icon: 'arrow-down-circle', label: 'Penerimaan' },
+      { page: 'payments-out',    icon: 'arrow-up-circle',   label: 'Pengeluaran' },
+    ]
   }
 };
 
@@ -285,10 +301,16 @@ function navigateTo(page) {
     'purchase-bills':    'Vendor Bill',
     'purchase-payments': 'Payment',
     'purchase-report':   'Laporan Vendor Bill',
-    'customer-master':   'Master Customer',
-    'customer-invoices': 'Customer Invoice',
-    'customer-payments': 'Penerimaan Customer',
-    'customer-report':   'Laporan Customer Invoice',
+    'customer-master':       'Master Customer',
+    'customer-invoices':     'Customer Invoice',
+    'customer-payments':     'Penerimaan Customer',
+    'customer-report':       'Laporan Customer Invoice',
+    'inventory':             'Inventory',
+    'inventory-movements':   'Pergerakan Stok',
+    'inventory-transfers':   'Transfer Stok',
+    'payments':              'Pembayaran',
+    'payments-in':           'Penerimaan',
+    'payments-out':          'Pengeluaran',
   };
   document.getElementById('pageTitle').textContent = titles[page] || page;
   AppState.currentPage = page;
@@ -307,6 +329,14 @@ function navigateTo(page) {
   if (page === 'purchase-vendors')  { if (typeof renderMasterVendorPage   === 'function') renderMasterVendorPage(); }
   if (page === 'purchase-bills')    { if (typeof renderVendorBillPage      === 'function') renderVendorBillPage(); }
   if (page === 'purchase-payments') { if (typeof renderPaymentPage         === 'function') renderPaymentPage(); }
+  if (page === 'inventory' || page === 'inventory-movements' || page === 'inventory-transfers') {
+    if (page === 'inventory-movements') InventoryState.activeTab = 'movements';
+    else InventoryState.activeTab = 'items';
+    if (typeof renderInventoryPage === 'function') renderInventoryPage();
+  }
+  if (page === 'payments' || page === 'payments-in' || page === 'payments-out') {
+    if (typeof renderPaymentsPage === 'function') renderPaymentsPage();
+  }
   if (page === 'purchase-report')   { if (typeof renderPurchaseReportPage  === 'function') renderPurchaseReportPage(); }
   if (page === 'customer-master')   { if (typeof renderMasterCustomerPage  === 'function') renderMasterCustomerPage(); }
   if (page === 'customer-invoices') { if (typeof renderCustomerInvoicePage === 'function') renderCustomerInvoicePage(); }

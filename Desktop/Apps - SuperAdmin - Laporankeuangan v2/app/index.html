@@ -246,6 +246,12 @@
     <button class="nav-group-btn" data-group="purchase" data-tooltip="Purchase">
       <span class="nav-icon"><i data-feather="truck"></i></span>
     </button>
+    <button class="nav-group-btn" data-group="inventory" data-tooltip="Inventory">
+      <span class="nav-icon"><i data-feather="package"></i></span>
+    </button>
+    <button class="nav-group-btn" data-group="payments" data-tooltip="Payments">
+      <span class="nav-icon"><i data-feather="credit-card"></i></span>
+    </button>
   </nav>
 
   <div class="sidebar-footer">
@@ -1495,6 +1501,50 @@
       </div>
     </section>
 
+    <!-- ===== PAGE: INVENTORY ===== -->
+    <section class="page" id="page-inventory">
+      <div class="page-header">
+        <h2>Inventory</h2>
+        <div class="page-actions">
+          <button class="btn btn-primary" id="invAddBtn" onclick="
+            if(InventoryState.activeTab==='items') showItemModal(null);
+            else if(InventoryState.activeTab==='warehouses') showWarehouseModal(null);
+          ">
+            <i data-feather="plus"></i> Tambah
+          </button>
+        </div>
+      </div>
+      <div class="tab-bar" style="margin-bottom:16px;display:flex;gap:8px;border-bottom:1px solid var(--border);padding-bottom:0">
+        <button class="inv-tab-btn btn btn-sm active" data-tab="items"      onclick="switchInventoryTab('items')">Items</button>
+        <button class="inv-tab-btn btn btn-sm"         data-tab="warehouses" onclick="switchInventoryTab('warehouses')">Gudang</button>
+        <button class="inv-tab-btn btn btn-sm"         data-tab="movements"  onclick="switchInventoryTab('movements')">Pergerakan Stok</button>
+      </div>
+      <div class="inv-tab-panel table-card" data-tab="items">
+        <div id="invItemsWrap"><!-- Rendered by JS --></div>
+      </div>
+      <div class="inv-tab-panel table-card" data-tab="warehouses" style="display:none">
+        <div id="invWarehouseWrap"><!-- Rendered by JS --></div>
+      </div>
+      <div class="inv-tab-panel table-card" data-tab="movements" style="display:none">
+        <div id="invMovementsWrap"><!-- Rendered by JS --></div>
+      </div>
+    </section>
+
+    <!-- ===== PAGE: PAYMENTS ===== -->
+    <section class="page" id="page-payments">
+      <div class="page-header">
+        <h2>Pembayaran</h2>
+        <div class="page-actions">
+          <button class="btn btn-primary" onclick="showPaymentModal(null)">
+            <i data-feather="plus"></i> Buat Pembayaran
+          </button>
+        </div>
+      </div>
+      <div class="table-card">
+        <div id="paymentsTableWrap"><!-- Rendered by JS --></div>
+      </div>
+    </section>
+
   </main>
 </div>
 
@@ -2482,9 +2532,10 @@
 <div id="sidebar-tooltip"></div>
 
 <!-- Scripts -->
+<script src="js/api.js?v=1"></script>
 <script src="js/storage.js?v=2"></script>
 <script src="js/license.js?v=2"></script>
-<script src="js/auth.js?v=5"></script>
+<script src="js/auth.js?v=6"></script>
 <script src="js/users.js?v=1"></script>
 <script src="js/coa.js?v=7"></script>
 <script src="js/parser.js?v=7"></script>
@@ -2494,7 +2545,9 @@
 <script src="js/pos.js?v=9"></script>
 <script src="js/purchase.js?v=8"></script>
 <script src="js/sales.js?v=2"></script>
-<script src="js/app.js?v=22"></script>
+<script src="js/inventory.js?v=1"></script>
+<script src="js/payments.js?v=1"></script>
+<script src="js/app.js?v=23"></script>
 <!-- Feather Icons -->
 <script src="https://cdn.jsdelivr.net/npm/feather-icons/dist/feather.min.js"></script>
 <script>
