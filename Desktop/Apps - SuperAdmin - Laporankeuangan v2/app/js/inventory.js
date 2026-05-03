@@ -45,16 +45,16 @@ function renderItemsTable() {
   wrap.innerHTML = `
     <table class="data-table">
       <thead><tr>
-        <th>Kode</th><th>Nama</th><th>Satuan</th><th>Metode Biaya</th><th>Harga Beli</th><th>Harga Jual</th><th>Aksi</th>
+        <th>SKU</th><th>Nama</th><th>Tipe</th><th>Satuan</th><th>Harga Jual</th><th>Harga Beli</th><th>Aksi</th>
       </tr></thead>
       <tbody>
         ${items.map(it => `<tr>
-          <td>${_escInv(it.code)}</td>
+          <td>${_escInv(it.sku)}</td>
           <td>${_escInv(it.name)}</td>
+          <td><span class="badge">${_escInv(it.type || 'stock')}</span></td>
           <td>${_escInv(it.unit || '-')}</td>
-          <td><span class="badge">${_escInv(it.costing_method || 'weighted_avg')}</span></td>
-          <td class="text-right">${_fmtInv(it.purchase_price)}</td>
-          <td class="text-right">${_fmtInv(it.sale_price)}</td>
+          <td class="text-right">${_fmtInv(it.default_unit_price)}</td>
+          <td class="text-right">${_fmtInv(it.default_unit_cost)}</td>
           <td><button class="btn btn-sm btn-outline" onclick="showItemModal('${it.id}')">Edit</button></td>
         </tr>`).join('')}
       </tbody>
@@ -72,12 +72,13 @@ function renderWarehousesTable() {
   }
   wrap.innerHTML = `
     <table class="data-table">
-      <thead><tr><th>Kode</th><th>Nama</th><th>Lokasi</th><th>Aksi</th></tr></thead>
+      <thead><tr><th>Kode</th><th>Nama</th><th>Default</th><th>Status</th><th>Aksi</th></tr></thead>
       <tbody>
         ${whs.map(w => `<tr>
           <td>${_escInv(w.code)}</td>
           <td>${_escInv(w.name)}</td>
-          <td>${_escInv(w.location || '-')}</td>
+          <td>${w.is_default ? '<span class="badge badge-success">✓ Default</span>' : '-'}</td>
+          <td>${w.is_active ? '<span class="badge">Aktif</span>' : '<span class="badge badge-danger">Nonaktif</span>'}</td>
           <td><button class="btn btn-sm btn-outline" onclick="showWarehouseModal('${w.id}')">Edit</button></td>
         </tr>`).join('')}
       </tbody>
@@ -146,23 +147,22 @@ async function showItemModal(id) {
           <button class="modal-close" onclick="closeItemModal()">×</button>
         </div>
         <div class="modal-body">
-          <div class="form-group"><label>Kode *</label>
-            <input class="form-control" id="iCode" value="${_escInv(item?.code)}" placeholder="ITM-001"></div>
+          <div class="form-group"><label>SKU *</label>
+            <input class="form-control" id="iCode" value="${_escInv(item?.sku)}" placeholder="ITM-001" ${id?'disabled':''}></div>
           <div class="form-group"><label>Nama *</label>
             <input class="form-control" id="iName" value="${_escInv(item?.name)}" placeholder="Nama item"></div>
           <div class="form-group"><label>Satuan</label>
-            <input class="form-control" id="iUnit" value="${_escInv(item?.unit)}" placeholder="pcs / kg / box"></div>
-          <div class="form-group"><label>Metode Biaya</label>
-            <select class="form-control" id="iCosting">
-              <option value="weighted_avg" ${item?.costing_method==='weighted_avg'?'selected':''}>Weighted Average</option>
-              <option value="fifo" ${item?.costing_method==='fifo'?'selected':''}>FIFO</option>
-              <option value="lifo" ${item?.costing_method==='lifo'?'selected':''}>LIFO</option>
+            <input class="form-control" id="iUnit" value="${_escInv(item?.unit||'pcs')}" placeholder="pcs / kg / box"></div>
+          <div class="form-group"><label>Tipe</label>
+            <select class="form-control" id="iType" ${id?'disabled':''}>
+              <option value="stock"   ${item?.type==='stock'  ?'selected':''}>Stok (kelola persediaan)</option>
+              <option value="service" ${item?.type==='service'?'selected':''}>Jasa / Service</option>
             </select></div>
           <div class="form-row">
-            <div class="form-group"><label>Harga Beli</label>
-              <input class="form-control" id="iPurchasePrice" type="number" value="${item?.purchase_price||0}"></div>
-            <div class="form-group"><label>Harga Jual</label>
-              <input class="form-control" id="iSalePrice" type="number" value="${item?.sale_price||0}"></div>
+            <div class="form-group"><label>Harga Beli (default)</label>
+              <input class="form-control" id="iPurchasePrice" type="number" min="0" step="0.01" value="${item?.default_unit_cost||0}"></div>
+            <div class="form-group"><label>Harga Jual (default)</label>
+              <input class="form-control" id="iSalePrice" type="number" min="0" step="0.01" value="${item?.default_unit_price||0}"></div>
           </div>
           <div id="iErr" class="form-error" style="display:none"></div>
         </div>
@@ -181,22 +181,31 @@ function closeItemModal() {
 }
 
 async function saveItem(id) {
-  const code  = document.getElementById('iCode').value.trim();
+  const sku   = document.getElementById('iCode').value.trim();
   const name  = document.getElementById('iName').value.trim();
   const errEl = document.getElementById('iErr');
-  if (!code || !name) { errEl.textContent='Kode dan Nama wajib diisi'; errEl.style.display='block'; return; }
+  if (!sku || !name) { errEl.textContent='SKU dan Nama wajib diisi'; errEl.style.display='block'; return; }
 
-  const body = {
-    code, name,
-    unit:            document.getElementById('iUnit').value.trim() || null,
-    costing_method:  document.getElementById('iCosting').value,
-    purchase_price:  parseFloat(document.getElementById('iPurchasePrice').value) || 0,
-    sale_price:      parseFloat(document.getElementById('iSalePrice').value) || 0,
-  };
+  const unit  = document.getElementById('iUnit').value.trim() || 'pcs';
+  const cost  = parseFloat(document.getElementById('iPurchasePrice').value) || 0;
+  const price = parseFloat(document.getElementById('iSalePrice').value) || 0;
 
   try {
-    if (id) { await Api.items.update(id, body); }
-    else    { await Api.items.create(body); }
+    if (id) {
+      // Update: partial body (sku & type cannot change)
+      await Api.items.update(id, {
+        name, unit,
+        default_unit_price: price,
+        default_unit_cost:  cost,
+      });
+    } else {
+      const type = document.getElementById('iType').value || 'stock';
+      await Api.items.create({
+        sku, name, type, unit,
+        default_unit_price: price,
+        default_unit_cost:  cost,
+      });
+    }
     showToast('Item berhasil disimpan', 'success');
     closeItemModal();
     await renderInventoryPage();
@@ -221,11 +230,12 @@ async function showWarehouseModal(id) {
         </div>
         <div class="modal-body">
           <div class="form-group"><label>Kode *</label>
-            <input class="form-control" id="whCode" value="${_escInv(wh?.code)}" placeholder="WH-01"></div>
+            <input class="form-control" id="whCode" value="${_escInv(wh?.code)}" placeholder="WH-01" ${id?'disabled':''}></div>
           <div class="form-group"><label>Nama *</label>
             <input class="form-control" id="whName" value="${_escInv(wh?.name)}" placeholder="Gudang Utama"></div>
-          <div class="form-group"><label>Lokasi</label>
-            <input class="form-control" id="whLocation" value="${_escInv(wh?.location)}" placeholder="Jl. ..."></div>
+          <div class="form-group">
+            <label><input type="checkbox" id="whDefault" ${wh?.is_default?'checked':''}> Set sebagai gudang default</label>
+          </div>
           <div id="whErr" class="form-error" style="display:none"></div>
         </div>
         <div class="modal-footer">
@@ -243,15 +253,19 @@ function closeWhModal() {
 }
 
 async function saveWarehouse(id) {
-  const code  = document.getElementById('whCode').value.trim();
-  const name  = document.getElementById('whName').value.trim();
-  const errEl = document.getElementById('whErr');
+  const code   = document.getElementById('whCode').value.trim();
+  const name   = document.getElementById('whName').value.trim();
+  const isDflt = document.getElementById('whDefault')?.checked || false;
+  const errEl  = document.getElementById('whErr');
   if (!code || !name) { errEl.textContent='Kode dan Nama wajib diisi'; errEl.style.display='block'; return; }
 
-  const body = { code, name, location: document.getElementById('whLocation').value.trim() || null };
   try {
-    if (id) { await Api.warehouses.update(id, body); }
-    else    { await Api.warehouses.create(body); }
+    if (id) {
+      // Update: name + is_default only (code immutable)
+      await Api.warehouses.update(id, { name, is_default: isDflt });
+    } else {
+      await Api.warehouses.create({ code, name, is_default: isDflt });
+    }
     showToast('Gudang berhasil disimpan', 'success');
     closeWhModal();
     await renderInventoryPage();
