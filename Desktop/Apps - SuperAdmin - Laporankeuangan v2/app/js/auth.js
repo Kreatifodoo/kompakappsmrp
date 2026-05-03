@@ -258,6 +258,10 @@ async function login(username, password) {
     if (typeof BackendSync !== 'undefined') {
       setTimeout(() => BackendSync.syncCOA(), 2000);
     }
+    // Open real-time WebSocket — multi-user updates without page refresh.
+    if (typeof Realtime !== 'undefined') {
+      try { Realtime.connect(); } catch (e) { console.warn('[Auth] Realtime connect failed:', e?.message); }
+    }
     return { success: true };
   }
 
@@ -278,6 +282,9 @@ async function login(username, password) {
 function logout() {
   clearSession();
   clearBackendSession();
+  if (typeof Realtime !== 'undefined') {
+    try { Realtime.disconnect(); } catch {}
+  }
   if (idleTimer) clearTimeout(idleTimer);
   showLoginScreen();
 }

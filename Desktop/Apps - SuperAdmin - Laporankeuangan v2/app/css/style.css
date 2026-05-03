@@ -3293,3 +3293,42 @@ body.has-license-banner .page-content {
   .date-range-group { flex-wrap: wrap; gap: 4px; }
   .report-filter-bar { gap: 6px; }
 }
+
+/* ===== Realtime Indicator (sidebar) ===== */
+.rt-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 8px 0 0 0;
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: 999px;
+  letter-spacing: 0.3px;
+  background: #f3f4f6;
+  color: #6b7280;
+  user-select: none;
+  transition: background 0.2s, color 0.2s;
+}
+.rt-indicator.rt-on {
+  background: #dcfce7;
+  color: #15803d;
+}
+.rt-indicator.rt-off {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+.rt-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  display: inline-block;
+  background: #9ca3af;
+}
+.rt-dot-on    { background: #22c55e; box-shadow: 0 0 0 0 rgba(34,197,94,.7); animation: rt-pulse 1.6s infinite; }
+.rt-dot-off   { background: #ef4444; }
+.rt-dot-pulse { background: #f59e0b; animation: rt-pulse 1.2s infinite; }
+
+@keyframes rt-pulse {
+  0%   { box-shadow: 0 0 0 0 rgba(34,197,94,.6); }
+  70%  { box-shadow: 0 0 0 6px rgba(34,197,94,0); }
+  100% { box-shadow: 0 0 0 0 rgba(34,197,94,0); }
+}
