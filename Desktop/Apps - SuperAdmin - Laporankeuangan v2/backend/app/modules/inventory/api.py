@@ -316,7 +316,9 @@ async def create_transfer(
 ) -> StockTransferOut:
     svc = InventoryService(session, current.tenant_id, current.user_id)
     tr = await svc.create_transfer(payload)
-    return StockTransferOut.model_validate(tr)
+    # Refresh with eager-loaded lines so pydantic serialization doesn't trigger lazy load
+    refreshed = await svc.repo.get_transfer(tr.id)
+    return StockTransferOut.model_validate(refreshed or tr)
 
 
 @router.post("/stock-transfers/{transfer_id}/void", response_model=StockTransferOut)
