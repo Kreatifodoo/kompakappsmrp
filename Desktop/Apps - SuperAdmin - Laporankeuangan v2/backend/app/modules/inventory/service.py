@@ -197,13 +197,14 @@ class InventoryService:
         """
         acct_svc, acct_repo = self._get_acct()
 
-        # Inventory account from tenant mappings
-        inventory_acc = await acct_repo.get_mapping("inventory")
-        if inventory_acc is None:
+        # Inventory account from tenant mappings (returns AccountMapping, not Account)
+        inventory_mapping = await acct_repo.get_mapping("inventory")
+        if inventory_mapping is None:
             raise ValidationError(
                 "Account mapping 'inventory' not set. Configure it under "
                 "Account Mappings before posting stock movements with journals."
             )
+        inventory_account_id = inventory_mapping.account_id
 
         # Validate contra account belongs to this tenant
         contra = await acct_repo.get_account(contra_account_id)
@@ -216,13 +217,13 @@ class InventoryService:
 
         if movement.direction in ("in", "adjust_in"):
             lines = [
-                (inventory_acc.id, amount, Decimal("0")),  # Dr Inventory
-                (contra.id, Decimal("0"), amount),         # Cr Contra
+                (inventory_account_id, amount, Decimal("0")),  # Dr Inventory
+                (contra.id,             Decimal("0"), amount), # Cr Contra
             ]
         else:  # out / adjust_out
             lines = [
-                (contra.id, amount, Decimal("0")),         # Dr Contra (Expense / AP / etc.)
-                (inventory_acc.id, Decimal("0"), amount),  # Cr Inventory
+                (contra.id,             amount, Decimal("0")), # Dr Contra (Expense / AP / etc.)
+                (inventory_account_id,  Decimal("0"), amount), # Cr Inventory
             ]
 
         entry = await acct_svc.post_system_journal(
