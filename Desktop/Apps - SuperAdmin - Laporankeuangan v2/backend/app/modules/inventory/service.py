@@ -128,7 +128,7 @@ class InventoryService:
         if not warehouse.is_active:
             raise ValidationError("Cannot move stock through an inactive warehouse")
 
-        return await self._post_movement_inner(
+        movement = await self._post_movement_inner(
             item=item,
             warehouse=warehouse,
             movement_date=payload.movement_date,
@@ -139,6 +139,27 @@ class InventoryService:
             source=source,
             source_id=source_id,
         )
+
+        # Publish realtime event (skip for invoice-driven movements — those
+        # already fire sales_invoice.posted / purchase_invoice.posted).
+        if source in ("adjustment", "stock_transfer"):
+            try:
+                from app.core.events import publish
+                await publish("stock_movement.posted", {
+                    "tenant_id":    str(self.tenant_id),
+                    "movement_id":  str(movement.id),
+                    "item_id":      str(movement.item_id),
+                    "item_sku":     item.sku,
+                    "warehouse_id": str(movement.warehouse_id),
+                    "warehouse_code": warehouse.code,
+                    "direction":    movement.direction,
+                    "qty":          float(movement.qty),
+                    "qty_after":    float(movement.qty_after),
+                    "source":       source,
+                })
+            except Exception:
+                pass
+        return movement
 
     async def _get_costing_method(self) -> str:
         """Cached fetch of the tenant's costing_method per service instance."""
@@ -410,6 +431,21 @@ class InventoryService:
             )
 
         await self.session.flush()
+
+        # Publish realtime event so all tenant tabs refresh transfer list
+        try:
+            from app.core.events import publish
+            await publish("stock_transfer.posted", {
+                "tenant_id":               str(self.tenant_id),
+                "transfer_id":             str(transfer.id),
+                "transfer_no":             transfer.transfer_no,
+                "transfer_date":           transfer.transfer_date.isoformat(),
+                "source_warehouse_code":   src.code,
+                "destination_warehouse_code": dst.code,
+                "line_count":              len(payload.lines),
+            })
+        except Exception:
+            pass
         return transfer
 
     async def void_transfer(self, transfer_id: UUID, reason: str) -> StockTransfer:
@@ -451,6 +487,17 @@ class InventoryService:
         transfer.voided_at = _datetime.now(UTC)
         transfer.void_reason = reason
         await self.session.flush()
+
+        try:
+            from app.core.events import publish
+            await publish("stock_transfer.voided", {
+                "tenant_id":   str(self.tenant_id),
+                "transfer_id": str(transfer.id),
+                "transfer_no": transfer.transfer_no,
+                "reason":      reason,
+            })
+        except Exception:
+            pass
         return transfer
 
     # ── Stock card report ────────────────────────────────

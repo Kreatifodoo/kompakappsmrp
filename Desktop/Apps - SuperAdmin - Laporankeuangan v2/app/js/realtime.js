@@ -99,6 +99,24 @@ const Realtime = (() => {
       _refreshCurrentPage(['journal']);
     });
 
+    // Inventory events → re-render whichever inventory page is active
+    on('stock_movement.posted', (d) => {
+      _refreshCurrentPage([
+        'inventory', 'inventory-movements', 'inventory-transfers',
+        'inv-onhand', 'inv-valuation', 'inv-stockcard',
+        'inv-reorder', 'inv-slowmoving',
+      ]);
+      _showToast(`📦 Stock ${d.direction || ''} ${d.qty || ''} ${d.item_sku || ''}`, 'info');
+    });
+    on('stock_transfer.posted', (d) => {
+      _refreshCurrentPage(['inventory-transfers', 'inv-onhand', 'inv-valuation', 'inventory-movements']);
+      _showToast(`🔁 Transfer ${d.transfer_no || ''} dipost`, 'info');
+    });
+    on('stock_transfer.voided', (d) => {
+      _refreshCurrentPage(['inventory-transfers', 'inv-onhand', 'inv-valuation', 'inventory-movements']);
+      _showToast(`↩️ Transfer ${d.transfer_no || ''} di-void`, 'warning');
+    });
+
     // Async report ready → toast with download link
     on('report.ready', (d) => {
       _showToast(`✅ Laporan ${d.report_type || ''} siap`, 'success');

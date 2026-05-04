@@ -193,24 +193,41 @@ const Api = {
 
   // ── Inventory ─────────────────────────────────────────────
   items: {
-    list:   (params) => Api.get('/items' + _qs(params)),
-    get:    (id)     => Api.get(`/items/${id}`),
-    create: (body)   => Api.post('/items', body),
-    update: (id, b)  => Api.put(`/items/${id}`, b),
+    list:        (params) => Api.get('/items' + _qs(params)),
+    get:         (id)     => Api.get(`/items/${id}`),
+    create:      (body)   => Api.post('/items', body),
+    update:      (id, b)  => Api.patch(`/items/${id}`, b),
+    stockCard:   (id, p)  => Api.get(`/items/${id}/stock-card` + _qs(p)),
+    costLayers:  (id, p)  => Api.get(`/items/${id}/cost-layers` + _qs(p)),
   },
   warehouses: {
     list:   ()       => Api.get('/warehouses'),
     get:    (id)     => Api.get(`/warehouses/${id}`),
     create: (body)   => Api.post('/warehouses', body),
-    update: (id, b)  => Api.put(`/warehouses/${id}`, b),
+    update: (id, b)  => Api.patch(`/warehouses/${id}`, b),
   },
   stockMovements: {
     list:   (params) => Api.get('/stock-movements' + _qs(params)),
     create: (body)   => Api.post('/stock-movements', body),
   },
+  stockBalances: {
+    list:   (params) => Api.get('/stock-balances' + _qs(params)),
+  },
   stockTransfers: {
     list:   (params) => Api.get('/stock-transfers' + _qs(params)),
+    get:    (id)     => Api.get(`/stock-transfers/${id}`),
     create: (body)   => Api.post('/stock-transfers', body),
+    void:   (id, b)  => Api.post(`/stock-transfers/${id}/void`, b),
+  },
+  costingMethod: {
+    get:    ()       => Api.get('/costing-method'),
+    set:    (body)   => Api.put('/costing-method', body),
+  },
+  inventoryReports: {
+    stockOnHand:   (params) => Api.get('/reports/stock-on-hand' + _qs(params)),
+    stockValuation:(params) => Api.get('/reports/stock-valuation' + _qs(params)),
+    reorder:       (params) => Api.get('/reports/reorder' + _qs(params)),
+    slowMoving:    (params) => Api.get('/reports/slow-moving' + _qs(params)),
   },
 
   // ── POS ───────────────────────────────────────────────────

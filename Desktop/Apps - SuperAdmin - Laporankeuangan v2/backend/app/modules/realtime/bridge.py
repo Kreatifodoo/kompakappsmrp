@@ -27,6 +27,10 @@ _TENANT_EVENTS = {
     "journal.posted",
     "journal.voided",
     "report.ready",
+    # Inventory
+    "stock_movement.posted",
+    "stock_transfer.posted",
+    "stock_transfer.voided",
 }
 
 

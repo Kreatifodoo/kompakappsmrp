@@ -110,25 +110,143 @@ async function renderMovementsTable() {
   const wrap = document.getElementById('invMovementsWrap');
   if (!wrap) return;
   try {
-    const data = await Api.stockMovements.list({ limit: 50 });
-    const moves = data.items || data || [];
-    if (!moves.length) { wrap.innerHTML = '<div class="empty-state"><p>Belum ada pergerakan stok.</p></div>'; return; }
-    wrap.innerHTML = `
+    const moves = await Api.stockMovements.list({ limit: 100 });
+    // Resolve item + warehouse display names from already-loaded InventoryState
+    const itemMap = Object.fromEntries((InventoryState.items || []).map(i => [i.id, `${i.sku} — ${i.name}`]));
+    const whMap   = Object.fromEntries((InventoryState.warehouses || []).map(w => [w.id, `${w.code} — ${w.name}`]));
+
+    const headerHtml = `
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+        <p class="page-subtitle" style="margin:0">Pergerakan stok terbaru. Yang dari invoice/transfer otomatis muncul; klik tombol untuk movement manual (opening, adjustment).</p>
+        <button class="btn btn-primary btn-sm" onclick="showMovementModal()">+ Movement Manual</button>
+      </div>`;
+
+    if (!moves.length) {
+      wrap.innerHTML = headerHtml + `<div class="empty-state"><p>Belum ada pergerakan stok.</p></div>`;
+      return;
+    }
+
+    wrap.innerHTML = headerHtml + `
       <table class="data-table">
-        <thead><tr><th>Tanggal</th><th>Item</th><th>Gudang</th><th>Tipe</th><th class="text-right">Qty</th><th class="text-right">Biaya/Unit</th></tr></thead>
+        <thead><tr>
+          <th>Tanggal</th><th>Item</th><th>Gudang</th><th>Direction</th>
+          <th class="text-right">Qty</th><th class="text-right">Unit Cost</th>
+          <th class="text-right">Qty After</th><th class="text-right">Avg After</th>
+          <th>Source</th><th>Notes</th>
+        </tr></thead>
         <tbody>
           ${moves.map(m => `<tr>
-            <td>${m.movement_date || m.created_at?.slice(0,10) || '-'}</td>
-            <td>${_escInv(m.item_name || m.item_id)}</td>
-            <td>${_escInv(m.warehouse_name || m.warehouse_id)}</td>
-            <td><span class="badge badge-${m.movement_type === 'in' ? 'success' : 'danger'}">${_escInv(m.movement_type)}</span></td>
+            <td>${m.movement_date || (m.created_at||'').slice(0,10) || '-'}</td>
+            <td>${_escInv(itemMap[m.item_id] || m.item_id)}</td>
+            <td>${_escInv(whMap[m.warehouse_id] || m.warehouse_id)}</td>
+            <td><span class="badge badge-${(m.direction||'').includes('in') ? 'success' : 'danger'}">${_escInv(m.direction)}</span></td>
             <td class="text-right">${_fmtInv(m.qty)}</td>
             <td class="text-right">${_fmtInv(m.unit_cost)}</td>
+            <td class="text-right">${_fmtInv(m.qty_after)}</td>
+            <td class="text-right">${_fmtInv(m.avg_cost_after)}</td>
+            <td><span class="badge">${_escInv(m.source||'-')}</span></td>
+            <td>${_escInv(m.notes || '')}</td>
           </tr>`).join('')}
         </tbody>
       </table>`;
   } catch (e) {
     wrap.innerHTML = `<div class="empty-state error">Gagal memuat: ${e.message}</div>`;
+  }
+}
+
+// ─── Modal: Stock Movement Manual ─────────────────────────────
+async function showMovementModal() {
+  // Ensure masters loaded
+  if (!InventoryState.items?.length || !InventoryState.warehouses?.length) {
+    try {
+      const [items, whs] = await Promise.all([Api.items.list({active_only: true}), Api.warehouses.list()]);
+      InventoryState.items = items;
+      InventoryState.warehouses = whs;
+    } catch (e) { showToast('Gagal load master: '+e.message, 'error'); return; }
+  }
+
+  const today = new Date().toISOString().slice(0, 10);
+  const itemOpts = InventoryState.items
+    .filter(i => i.type === 'stock')
+    .map(i => `<option value="${i.id}">${_escInv(i.sku)} — ${_escInv(i.name)}</option>`).join('');
+  const whOpts = InventoryState.warehouses
+    .map(w => `<option value="${w.id}">${_escInv(w.code)} — ${_escInv(w.name)}</option>`).join('');
+
+  const html = `
+    <div class="modal-backdrop" id="movModal" onclick="if(event.target===this)closeMovementModal()">
+      <div class="modal-dialog" style="max-width:520px">
+        <div class="modal-header">
+          <h3>Movement Manual</h3>
+          <button class="modal-close" onclick="closeMovementModal()">×</button>
+        </div>
+        <div class="modal-body">
+          <div class="form-group"><label>Item *</label>
+            <select class="form-control" id="mvItem"><option value="">— Pilih item (stock-type) —</option>${itemOpts}</select></div>
+          <div class="form-group"><label>Gudang *</label>
+            <select class="form-control" id="mvWh"><option value="">— Pilih gudang —</option>${whOpts}</select></div>
+          <div class="form-row">
+            <div class="form-group"><label>Tanggal *</label>
+              <input class="form-control" type="date" id="mvDate" value="${today}"></div>
+            <div class="form-group"><label>Direction *</label>
+              <select class="form-control" id="mvDir">
+                <option value="in">In (terima barang / opening)</option>
+                <option value="out">Out (keluar non-invoice)</option>
+                <option value="adjust_in">Adjust In (cycle count surplus)</option>
+                <option value="adjust_out">Adjust Out (cycle count loss)</option>
+              </select></div>
+          </div>
+          <div class="form-row">
+            <div class="form-group"><label>Qty *</label>
+              <input class="form-control" type="number" min="0.001" step="0.001" id="mvQty" value="1"></div>
+            <div class="form-group"><label>Unit Cost</label>
+              <input class="form-control" type="number" min="0" step="0.01" id="mvCost" value="0">
+              <small style="color:#6b7280">Hanya dipakai untuk in/adjust_in. Out pakai avg_cost otomatis.</small>
+            </div>
+          </div>
+          <div class="form-group"><label>Catatan</label>
+            <input class="form-control" id="mvNotes" placeholder="opsional"></div>
+          <div id="mvErr" class="form-error" style="display:none"></div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-outline" onclick="closeMovementModal()">Batal</button>
+          <button class="btn btn-primary" onclick="saveMovement()">Simpan & Post</button>
+        </div>
+      </div>
+    </div>`;
+  document.body.insertAdjacentHTML('beforeend', html);
+}
+
+function closeMovementModal() { document.getElementById('movModal')?.remove(); }
+
+async function saveMovement() {
+  const errEl = document.getElementById('mvErr');
+  errEl.style.display = 'none';
+  const itemId = document.getElementById('mvItem').value;
+  const whId   = document.getElementById('mvWh').value;
+  const date   = document.getElementById('mvDate').value;
+  const dir    = document.getElementById('mvDir').value;
+  const qty    = parseFloat(document.getElementById('mvQty').value);
+  const cost   = parseFloat(document.getElementById('mvCost').value) || 0;
+  const notes  = document.getElementById('mvNotes').value.trim();
+
+  if (!itemId || !whId || !date || !qty || qty <= 0) {
+    errEl.textContent = 'Item, Gudang, Tanggal, dan Qty > 0 wajib diisi'; errEl.style.display='block'; return;
+  }
+  try {
+    await Api.stockMovements.create({
+      item_id: itemId,
+      warehouse_id: whId,
+      movement_date: date,
+      direction: dir,
+      qty,
+      unit_cost: cost,
+      notes: notes || null,
+    });
+    showToast('Movement berhasil di-post', 'success');
+    closeMovementModal();
+    await renderMovementsTable();
+  } catch (e) {
+    errEl.textContent = e.message; errEl.style.display = 'block';
   }
 }
 

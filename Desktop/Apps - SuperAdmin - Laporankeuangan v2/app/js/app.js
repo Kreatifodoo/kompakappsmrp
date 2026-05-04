@@ -159,9 +159,15 @@ const FLYOUT_GROUPS = {
   inventory: {
     label: 'Inventory',
     items: [
-      { page: 'inventory',           icon: 'package',     label: 'Items & Gudang' },
-      { page: 'inventory-movements', icon: 'refresh-cw',  label: 'Pergerakan Stok' },
-      { page: 'inventory-transfers', icon: 'repeat',      label: 'Transfer Stok' },
+      { page: 'inventory',            icon: 'package',         label: 'Items & Gudang' },
+      { page: 'inventory-movements',  icon: 'refresh-cw',      label: 'Pergerakan Stok' },
+      { page: 'inventory-transfers',  icon: 'repeat',          label: 'Transfer Stok' },
+      { page: 'inv-onhand',           icon: 'archive',         label: 'Stock On-Hand' },
+      { page: 'inv-valuation',        icon: 'dollar-sign',     label: 'Stock Valuation' },
+      { page: 'inv-stockcard',        icon: 'file-text',       label: 'Kartu Stok' },
+      { page: 'inv-reorder',          icon: 'alert-circle',    label: 'Reorder Report' },
+      { page: 'inv-slowmoving',       icon: 'clock',           label: 'Slow-Moving' },
+      { page: 'inv-costing',          icon: 'layers',          label: 'Costing Method' },
     ]
   },
   payments: {
@@ -295,6 +301,12 @@ function navigateTo(page) {
     'inventory':             'Inventory',
     'inventory-movements':   'Pergerakan Stok',
     'inventory-transfers':   'Transfer Stok',
+    'inv-onhand':            'Stock On-Hand',
+    'inv-valuation':         'Stock Valuation',
+    'inv-stockcard':         'Kartu Stok',
+    'inv-reorder':           'Reorder Report',
+    'inv-slowmoving':        'Slow-Moving Items',
+    'inv-costing':           'Costing Method',
     'payments':              'Pembayaran',
     'payments-in':           'Penerimaan',
     'payments-out':          'Pengeluaran',
@@ -316,11 +328,18 @@ function navigateTo(page) {
   if (page === 'purchase-vendors')  { if (typeof renderMasterVendorPage   === 'function') renderMasterVendorPage(); }
   if (page === 'purchase-bills')    { if (typeof renderVendorBillPage      === 'function') renderVendorBillPage(); }
   if (page === 'purchase-payments') { if (typeof renderPaymentPage         === 'function') renderPaymentPage(); }
-  if (page === 'inventory' || page === 'inventory-movements' || page === 'inventory-transfers') {
+  if (page === 'inventory' || page === 'inventory-movements') {
     if (page === 'inventory-movements') InventoryState.activeTab = 'movements';
     else InventoryState.activeTab = 'items';
     if (typeof renderInventoryPage === 'function') renderInventoryPage();
   }
+  if (page === 'inventory-transfers') { if (typeof renderTransfersPage     === 'function') renderTransfersPage(); }
+  if (page === 'inv-onhand')         { if (typeof renderStockOnHandPage   === 'function') renderStockOnHandPage(); }
+  if (page === 'inv-valuation')      { if (typeof renderStockValuationPage=== 'function') renderStockValuationPage(); }
+  if (page === 'inv-stockcard')      { if (typeof renderStockCardPage     === 'function') renderStockCardPage(); }
+  if (page === 'inv-reorder')        { if (typeof renderReorderPage       === 'function') renderReorderPage(); }
+  if (page === 'inv-slowmoving')     { if (typeof renderSlowMovingPage    === 'function') renderSlowMovingPage(); }
+  if (page === 'inv-costing')        { if (typeof renderCostingMethodPage === 'function') renderCostingMethodPage(); }
   if (page === 'payments' || page === 'payments-in' || page === 'payments-out') {
     if (typeof renderPaymentsPage === 'function') renderPaymentsPage();
   }
