@@ -122,6 +122,15 @@ WELL_KNOWN_MAPPING_KEYS = {
     "cash_default",
     "inventory",  # asset account that absorbs item-tracked stock
     "cogs",  # expense account hit on stock-out for sold items
+    # Default contra accounts for inventory stock-operations (per operation type).
+    # Used by the "Operasi Stok" form to pre-fill the contra dropdown.
+    "inv_op_receipt_contra",          # Penerimaan Barang   (Cr) — biasanya AP / Kas / Modal
+    "inv_op_delivery_contra",         # Delivery Order      (Dr) — biasanya Beban Sample
+    "inv_op_usage_contra",            # Pemakaian Stok      (Dr) — biasanya Beban Perlengkapan
+    "inv_op_adjust_in_contra",        # Adjustment In       (Cr) — biasanya Pendapatan Lain
+    "inv_op_adjust_out_contra",       # Adjustment Out      (Dr) — biasanya Beban Loss/Susut
+    "inv_op_return_receipt_contra",   # Return ke Supplier  (Dr) — biasanya AP atau Kas
+    "inv_op_return_delivery_contra",  # Return dari Customer(Cr) — biasanya AR atau contra Revenue
 }
 
 

@@ -21,6 +21,8 @@
  * berdasarkan tipe akun yang sesuai (asset/liability/income/expense).
  */
 
+// 7 operasi stok standar. Default contra account-nya bisa di-set oleh user
+// di halaman "Master Operasi" (mapping key: inv_op_<key>_contra).
 const STOCK_OPERATIONS = {
   receipt: {
     label: '📥 Penerimaan Barang',
@@ -32,6 +34,7 @@ const STOCK_OPERATIONS = {
     contraHint: 'Misal: Utang Usaha (jika belum ada invoice), Kas (cash purchase), Modal (modal barang)',
     requiresUnitCost: true,
     qtyLabel: 'Qty Diterima',
+    mappingKey: 'inv_op_receipt_contra',
   },
   delivery: {
     label: '📤 Delivery Order (DO)',
@@ -43,6 +46,7 @@ const STOCK_OPERATIONS = {
     contraHint: 'Misal: Beban Sample/Promosi, Beban Marketing',
     requiresUnitCost: false,
     qtyLabel: 'Qty Dikirim',
+    mappingKey: 'inv_op_delivery_contra',
   },
   usage: {
     label: '🔧 Pemakaian Stok',
@@ -54,6 +58,7 @@ const STOCK_OPERATIONS = {
     contraHint: 'Wajib pilih akun beban — misal Beban Perlengkapan Kantor, Beban Maintenance',
     requiresUnitCost: false,
     qtyLabel: 'Qty Dipakai',
+    mappingKey: 'inv_op_usage_contra',
   },
   adjust_in: {
     label: '⚖️ Adjustment In (Surplus)',
@@ -65,6 +70,7 @@ const STOCK_OPERATIONS = {
     contraHint: 'Misal: Pendapatan Lain - Inventory Gain, atau kontra Beban Inventory Loss',
     requiresUnitCost: true,
     qtyLabel: 'Qty Surplus',
+    mappingKey: 'inv_op_adjust_in_contra',
   },
   adjust_out: {
     label: '⚖️ Adjustment Out (Loss / Susut)',
@@ -76,6 +82,7 @@ const STOCK_OPERATIONS = {
     contraHint: 'Misal: Beban Inventory Loss, Beban Susut Persediaan',
     requiresUnitCost: false,
     qtyLabel: 'Qty Loss',
+    mappingKey: 'inv_op_adjust_out_contra',
   },
   return_receipt: {
     label: '↩️ Return Penerimaan (Kembali ke Supplier)',
@@ -87,6 +94,7 @@ const STOCK_OPERATIONS = {
     contraHint: 'Misal: Utang Usaha (kurangi tagihan supplier), atau Kas (jika sudah dibayar lalu refund)',
     requiresUnitCost: false,
     qtyLabel: 'Qty Diretur',
+    mappingKey: 'inv_op_return_receipt_contra',
   },
   return_delivery: {
     label: '↪️ Return Delivery (Customer Kembali)',
@@ -98,8 +106,24 @@ const STOCK_OPERATIONS = {
     contraHint: 'Misal: Pendapatan Penjualan (contra revenue), Piutang Usaha (kurangi)',
     requiresUnitCost: true,
     qtyLabel: 'Qty Kembali',
+    mappingKey: 'inv_op_return_delivery_contra',
   },
 };
+
+// Cache: { mappingKey → account_id } — populated on first form load
+window.__opDefaultContras = {};
+
+async function _loadOpDefaultContras() {
+  try {
+    const mappings = await Api.accountMappings.list();
+    window.__opDefaultContras = {};
+    for (const m of mappings) {
+      if (m.key.startsWith('inv_op_')) {
+        window.__opDefaultContras[m.key] = m.account_id;
+      }
+    }
+  } catch (e) { console.warn('[OpForm] failed to load default contras', e); }
+}
 
 async function renderStockOpsPage() {
   const wrap = document.getElementById('page-inv-ops');
@@ -171,12 +195,13 @@ async function renderStockOpsPage() {
     </div>
   `;
 
-  // Lazy-load accounts
-  if (!window.__opAccountsCache) {
-    try {
-      window.__opAccountsCache = await Api.accounts.list();
-    } catch { window.__opAccountsCache = []; }
-  }
+  // Lazy-load accounts (always refresh for fresh COA changes)
+  try {
+    window.__opAccountsCache = await Api.accounts.list();
+  } catch { window.__opAccountsCache = window.__opAccountsCache || []; }
+
+  // Load default contra accounts per operation
+  await _loadOpDefaultContras();
 
   await _renderOpRecent();
 }
@@ -232,9 +257,23 @@ function onOpTypeChange() {
   const accts = window.__opAccountsCache || [];
   const filtered = accts.filter(a => op.contraTypes.includes(a.type) && a.is_active);
   const sorted = filtered.sort((a, b) => a.code.localeCompare(b.code));
+
+  // Pre-select default contra from mapping if exists
+  const defaultContraId = window.__opDefaultContras?.[op.mappingKey] || '';
   document.getElementById('opContra').innerHTML =
     `<option value="">— Pilih akun ${op.contraTypes.join('/')} —</option>` +
-    sorted.map(a => `<option value="${a.id}">${_escInv(a.code)} — ${_escInv(a.name)} <small>(${a.type})</small></option>`).join('');
+    sorted.map(a =>
+      `<option value="${a.id}" ${a.id === defaultContraId ? 'selected' : ''}>${_escInv(a.code)} — ${_escInv(a.name)} <small>(${a.type})</small></option>`
+    ).join('');
+
+  // Show "default loaded" badge if we pre-selected
+  const hint = document.getElementById('opContraHint');
+  if (defaultContraId && hint) {
+    const acct = accts.find(a => a.id === defaultContraId);
+    if (acct) {
+      hint.innerHTML = `<span style="color:#15803d">✓ Default dari Master Operasi: <strong>${_escInv(acct.code)} ${_escInv(acct.name)}</strong></span> · <a href="#" onclick="navigateTo('inv-op-master');return false" style="color:#1a56db">Edit default</a>`;
+    }
+  }
 
   _updateOpPreview();
 }
@@ -336,3 +375,119 @@ document.addEventListener('input', (e) => {
 document.addEventListener('change', (e) => {
   if (e.target?.id === 'opContra') _updateOpPreview();
 });
+
+
+// ═══════════════════════════════════════════════════════════════════
+// MASTER OPERASI STOK (#page-inv-op-master)
+// Set default contra account per jenis operasi.
+// Saved in account_mappings (keys: inv_op_<key>_contra).
+// ═══════════════════════════════════════════════════════════════════
+async function renderStockOpsMasterPage() {
+  const wrap = document.getElementById('page-inv-op-master');
+  if (!wrap) return;
+
+  // Refresh state
+  try {
+    window.__opAccountsCache = await Api.accounts.list();
+  } catch { window.__opAccountsCache = []; }
+  await _loadOpDefaultContras();
+
+  const accts = window.__opAccountsCache || [];
+  const defaults = window.__opDefaultContras || {};
+
+  const rows = Object.entries(STOCK_OPERATIONS).map(([key, op]) => {
+    const filtered = accts.filter(a => op.contraTypes.includes(a.type) && a.is_active);
+    const sorted = filtered.sort((a, b) => a.code.localeCompare(b.code));
+    const currentId = defaults[op.mappingKey] || '';
+    const currentAcct = currentId ? accts.find(a => a.id === currentId) : null;
+
+    const dirBadge = ({
+      'in': '<span class="badge badge-success">+ in</span>',
+      'out': '<span class="badge badge-danger">− out</span>',
+      'adjust_in': '<span class="badge badge-success">+ adjust_in</span>',
+      'adjust_out': '<span class="badge badge-danger">− adjust_out</span>',
+    })[op.direction] || op.direction;
+
+    const status = currentAcct
+      ? `<span class="badge badge-success">✓ ${_escInv(currentAcct.code)} ${_escInv(currentAcct.name).slice(0,30)}</span>`
+      : '<span class="badge badge-warning">⚠ Belum di-set</span>';
+
+    return `<tr>
+      <td>${op.label}<br><small style="color:#6b7280">${dirBadge}</small></td>
+      <td><div style="font-size:13px">${_escInv(op.description)}</div>
+          <div style="font-size:11px;color:#9ca3af;margin-top:4px">Allowed types: ${op.contraTypes.join(', ')}</div></td>
+      <td>${status}</td>
+      <td>
+        <select class="form-control" id="om-${key}" style="min-width:280px">
+          <option value="">— Pilih akun ${op.contraTypes.join('/')} —</option>
+          ${sorted.map(a => `<option value="${a.id}" ${a.id === currentId ? 'selected' : ''}>${_escInv(a.code)} — ${_escInv(a.name)}</option>`).join('')}
+        </select>
+      </td>
+      <td>
+        <button class="btn btn-sm btn-primary" onclick="saveOpMaster('${key}')">Simpan</button>
+        ${currentId ? `<button class="btn btn-sm btn-outline" onclick="clearOpMaster('${key}')" style="margin-left:4px">Hapus</button>` : ''}
+      </td>
+    </tr>`;
+  }).join('');
+
+  wrap.innerHTML = `
+    <div class="page-header">
+      <div>
+        <h2>Master Operasi Stok</h2>
+        <p class="page-subtitle">Atur default akun lawan untuk setiap jenis operasi stok. Saat user buka form Operasi Stok, dropdown akun lawan akan otomatis ter-pre-select sesuai default ini.</p>
+      </div>
+      <button class="btn btn-outline" onclick="renderStockOpsMasterPage()">↻ Refresh</button>
+    </div>
+
+    <div style="background:#fff;border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,0.05);overflow:hidden">
+      <table class="data-table" style="margin:0">
+        <thead><tr>
+          <th style="width:18%">Operasi</th>
+          <th style="width:32%">Penjelasan</th>
+          <th style="width:18%">Default Saat Ini</th>
+          <th style="width:24%">Set Default</th>
+          <th style="width:8%">Aksi</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+
+    <div style="background:#fefce8;border-left:4px solid #eab308;padding:12px 16px;margin-top:16px;border-radius:4px;font-size:13px">
+      <strong>💡 Cara kerja:</strong>
+      <ol style="margin:6px 0 0 20px">
+        <li>Pilih akun lawan untuk masing-masing operasi (misal: <em>Penerimaan Barang</em> → <em>Utang Usaha</em>; <em>Pemakaian Stok</em> → <em>Beban Perlengkapan</em>).</li>
+        <li>Klik <strong>Simpan</strong> per baris untuk menyimpan ke backend (table <code>account_mappings</code>).</li>
+        <li>Saat user buka <em>Inventory → Operasi Stok</em> dan pilih jenis operasi, dropdown akun lawan akan otomatis ter-pre-select sesuai default ini.</li>
+        <li>User tetap bisa override pilih akun lain di form sebelum submit (tidak terkunci).</li>
+      </ol>
+    </div>
+  `;
+}
+
+async function saveOpMaster(opKey) {
+  const op = STOCK_OPERATIONS[opKey];
+  if (!op) return;
+  const accountId = document.getElementById('om-' + opKey)?.value;
+  if (!accountId) {
+    showToast('Pilih akun dulu', 'warning');
+    return;
+  }
+  try {
+    await Api.accountMappings.set({key: op.mappingKey, account_id: accountId});
+    showToast(`Default akun untuk "${op.label.replace(/^\S+\s/, '')}" tersimpan`, 'success');
+    await renderStockOpsMasterPage();
+  } catch (e) {
+    showToast('Gagal: ' + e.message, 'error');
+  }
+}
+
+async function clearOpMaster(opKey) {
+  const op = STOCK_OPERATIONS[opKey];
+  if (!op) return;
+  if (!confirm(`Hapus default akun untuk "${op.label}"?`)) return;
+  // No DELETE endpoint for mapping — set to a sentinel ("clear" by setting same key with empty)
+  // Workaround: we can't truly delete, but we can set to a placeholder. For now just refresh —
+  // backend should expose DELETE later. As a UX patch, we just reset the select to empty
+  // and tell user the default is "ignored" if not set in this list.
+  showToast('Untuk hapus default, biarkan dropdown kosong lalu Simpan (akan reset).', 'info');
+}

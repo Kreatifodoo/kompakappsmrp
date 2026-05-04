@@ -163,6 +163,7 @@ const FLYOUT_GROUPS = {
     items: [
       { page: 'inventory',            icon: 'package',         label: 'Items & Gudang' },
       { page: 'inv-ops',               icon: 'truck',          label: 'Operasi Stok' },
+      { page: 'inv-op-master',         icon: 'sliders',        label: 'Master Operasi' },
       { page: 'inventory-movements',  icon: 'refresh-cw',      label: 'Pergerakan Stok' },
       { page: 'inventory-transfers',  icon: 'repeat',          label: 'Transfer Stok' },
       { page: 'inv-onhand',           icon: 'archive',         label: 'Stock On-Hand' },
@@ -307,6 +308,7 @@ function navigateTo(page) {
     'inventory-movements':   'Pergerakan Stok',
     'inventory-transfers':   'Transfer Stok',
     'inv-ops':               'Operasi Stok',
+    'inv-op-master':         'Master Operasi Stok',
     'inv-onhand':            'Stock On-Hand',
     'inv-valuation':         'Stock Valuation',
     'inv-stockcard':         'Kartu Stok',
@@ -347,6 +349,7 @@ function navigateTo(page) {
   if (page === 'inv-slowmoving')     { if (typeof renderSlowMovingPage    === 'function') renderSlowMovingPage(); }
   if (page === 'inv-costing')        { if (typeof renderCostingMethodPage === 'function') renderCostingMethodPage(); }
   if (page === 'inv-ops')            { if (typeof renderStockOpsPage === 'function') renderStockOpsPage(); }
+  if (page === 'inv-op-master')      { if (typeof renderStockOpsMasterPage === 'function') renderStockOpsMasterPage(); }
   if (page === 'account-mappings')   { if (typeof renderAccountMappingsPage === 'function') renderAccountMappingsPage(); }
   if (page === 'periods')            { if (typeof renderPeriodsPage === 'function') renderPeriodsPage(); }
   if (page === 'payments' || page === 'payments-in' || page === 'payments-out') {
