@@ -152,7 +152,7 @@ const Api = {
     list:   (params) => Api.get('/customers' + _qs(params)),
     get:    (id)     => Api.get(`/customers/${id}`),
     create: (body)   => Api.post('/customers', body),
-    update: (id, b)  => Api.put(`/customers/${id}`, b),
+    update: (id, b)  => Api.patch(`/customers/${id}`, b),
   },
 
   // ── Sales Invoices ────────────────────────────────────────
@@ -160,9 +160,9 @@ const Api = {
     list:   (params) => Api.get('/sales-invoices' + _qs(params)),
     get:    (id)     => Api.get(`/sales-invoices/${id}`),
     create: (body)   => Api.post('/sales-invoices', body),
-    update: (id, b)  => Api.put(`/sales-invoices/${id}`, b),
+    update: (id, b)  => Api.patch(`/sales-invoices/${id}`, b),
     post:   (id)     => Api.post(`/sales-invoices/${id}/post`),
-    void:   (id)     => Api.post(`/sales-invoices/${id}/void`),
+    void:   (id, b)  => Api.post(`/sales-invoices/${id}/void`, b || {reason: 'Voided from UI'}),
   },
 
   // ── Suppliers ─────────────────────────────────────────────
@@ -170,7 +170,7 @@ const Api = {
     list:   (params) => Api.get('/suppliers' + _qs(params)),
     get:    (id)     => Api.get(`/suppliers/${id}`),
     create: (body)   => Api.post('/suppliers', body),
-    update: (id, b)  => Api.put(`/suppliers/${id}`, b),
+    update: (id, b)  => Api.patch(`/suppliers/${id}`, b),
   },
 
   // ── Purchase Invoices ─────────────────────────────────────
@@ -178,9 +178,9 @@ const Api = {
     list:   (params) => Api.get('/purchase-invoices' + _qs(params)),
     get:    (id)     => Api.get(`/purchase-invoices/${id}`),
     create: (body)   => Api.post('/purchase-invoices', body),
-    update: (id, b)  => Api.put(`/purchase-invoices/${id}`, b),
+    update: (id, b)  => Api.patch(`/purchase-invoices/${id}`, b),
     post:   (id)     => Api.post(`/purchase-invoices/${id}/post`),
-    void:   (id)     => Api.post(`/purchase-invoices/${id}/void`),
+    void:   (id, b)  => Api.post(`/purchase-invoices/${id}/void`, b || {reason: 'Voided from UI'}),
   },
 
   // ── Payments ──────────────────────────────────────────────
@@ -260,11 +260,19 @@ const Api = {
     downloadUrl:     (id, fmt) => `${API_BASE}/reports/jobs/${id}/download?format=${fmt}&token=${ApiTokens.access}`,
   },
 
+  // ── Account Mappings (well-known keys: ar, ap, sales_revenue, …) ─
+  accountMappings: {
+    list:   () => Api.get('/account-mappings'),
+    set:    (body) => Api.put('/account-mappings', body),  // {key, account_id}
+  },
+  seedStarterCOA: (overwrite) => Api.post(`/accounts/seed-starter-coa${overwrite?'?overwrite_mappings=true':''}`),
+
   // ── Periods ───────────────────────────────────────────────
   periods: {
     status: () => Api.get('/periods/status'),
     close:  (b) => Api.post('/periods/close', b),
     reopen: (b) => Api.post('/periods/reopen', b),
+    events: (params) => Api.get('/periods/events' + _qs(params)),
   },
 
   // ── Audit ─────────────────────────────────────────────────

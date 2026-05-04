@@ -748,10 +748,10 @@ function confirmBill(billId) {
   savePurchaseData();
   _rebuildAfterPurchase();
 
-  // Background sync to backend (no-op if not logged into backend)
+  // Sync + POST ke backend (creates + posts so backend reports + AP balance accurate)
   if (typeof BackendSync !== 'undefined') {
     const vendor = PurchaseState.vendors.find(v => v.id === bill.vendorId);
-    BackendSync.syncPurchaseInvoice({
+    BackendSync.syncAndPostPurchaseInvoice({
       billNo:           bill.id,
       date:             bill.date,
       dueDate:          bill.dueDate || null,
@@ -762,7 +762,11 @@ function confirmBill(billId) {
         qty:         it.qty,
         unitPrice:   it.unitPrice,
       })),
-    }, vendor);
+    }, vendor).then(result => {
+      if (result.error && !/already/i.test(result.error)) {
+        showToast('Backend post gagal: ' + result.error, 'warning');
+      }
+    });
   }
 
   closeBillModal();
@@ -823,6 +827,12 @@ function cancelBill(billId) {
   // 4. Save & rebuild (journals auto-cleaned by _restorePurchaseJournalsToState)
   savePurchaseData();
   _restorePurchaseJournalsToState();
+
+  // Void on backend too — keeps backend AP and stock balance consistent
+  if (typeof BackendSync !== 'undefined') {
+    BackendSync.voidPurchaseInvoiceByNo(billId, 'Cancelled from UI');
+  }
+
   closeBillModal();
   renderVendorBillPage();
   showToast(`Bill ${billId} dibatalkan → Draft`, 'success');

@@ -738,10 +738,10 @@ function confirmInvoice(invoiceId) {
   saveCustomerData();
   _rebuildAfterCustomer();
 
-  // Background sync to backend (no-op if not logged into backend)
+  // Sync + POST to backend (creates invoice + posts so backend reports see it)
   if (typeof BackendSync !== 'undefined') {
     const customer = CustomerState.customers.find(c => c.id === inv.customerId);
-    BackendSync.syncSalesInvoice({
+    BackendSync.syncAndPostSalesInvoice({
       invoiceNo:  inv.id,
       date:       inv.date,
       dueDate:    inv.dueDate || null,
@@ -751,7 +751,13 @@ function confirmInvoice(invoiceId) {
         qty:         it.qty,
         unitPrice:   it.unitPrice,
       })),
-    }, customer);
+    }, customer).then(result => {
+      if (result.posted) {
+        console.log('[Sales] backend post OK', result.backend_id);
+      } else if (result.error && !/already/i.test(result.error)) {
+        showToast('Backend post gagal: ' + result.error, 'warning');
+      }
+    });
   }
 
   closeInvoiceModal();
@@ -801,6 +807,12 @@ function cancelInvoice(invoiceId) {
 
   saveCustomerData();
   _restoreCustomerJournalsToState();
+
+  // Void on backend too — keeps backend reports in sync
+  if (typeof BackendSync !== 'undefined') {
+    BackendSync.voidSalesInvoiceByNo(invoiceId, 'Cancelled from UI');
+  }
+
   closeInvoiceModal();
   renderCustomerInvoicePage();
   showToast(`Invoice ${invoiceId} dibatalkan → Draft`, 'success');

@@ -122,6 +122,19 @@ const BackendSync = (() => {
   // ─── Customer sync ──────────────────────────────────────────
   async function syncCustomer(localCust) {
     if (!_isLoggedIn() || !localCust) return null;
+    // If local customer has a backend UUID id (loaded from BackendLoader), update
+    const isBackendId = typeof localCust.id === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}/.test(localCust.id);
+    if (isBackendId) {
+      const body = {
+        name:    localCust.name || 'Unnamed Customer',
+        email:   localCust.email || null,
+        phone:   localCust.phone || null,
+        address: localCust.address || null,
+        tax_id:  localCust.taxId || localCust.npwp || null,
+      };
+      return _silent(Api.customers.update(localCust.id, body), `Customer-update ${localCust.code}`);
+    }
+    // Otherwise create
     const body = {
       code:    localCust.code || `CUST-${localCust.id}`.slice(0, 30),
       name:    localCust.name || 'Unnamed Customer',
@@ -130,7 +143,7 @@ const BackendSync = (() => {
       address: localCust.address || null,
       tax_id:  localCust.taxId || localCust.npwp || null,
     };
-    return _silent(Api.customers.create(body), `Customer ${body.code}`);
+    return _silent(Api.customers.create(body), `Customer-create ${body.code}`);
   }
 
   async function syncAllCustomers() {
@@ -152,6 +165,17 @@ const BackendSync = (() => {
   // ─── Supplier sync ──────────────────────────────────────────
   async function syncSupplier(localSupp) {
     if (!_isLoggedIn() || !localSupp) return null;
+    const isBackendId = typeof localSupp.id === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}/.test(localSupp.id);
+    if (isBackendId) {
+      const body = {
+        name:    localSupp.name || 'Unnamed Supplier',
+        email:   localSupp.email || null,
+        phone:   localSupp.phone || null,
+        address: localSupp.address || null,
+        tax_id:  localSupp.taxId || localSupp.npwp || null,
+      };
+      return _silent(Api.suppliers.update(localSupp.id, body), `Supplier-update ${localSupp.code}`);
+    }
     const body = {
       code:    localSupp.code || `SUP-${localSupp.id}`.slice(0, 30),
       name:    localSupp.name || 'Unnamed Supplier',
@@ -160,7 +184,7 @@ const BackendSync = (() => {
       address: localSupp.address || null,
       tax_id:  localSupp.taxId || localSupp.npwp || null,
     };
-    return _silent(Api.suppliers.create(body), `Supplier ${body.code}`);
+    return _silent(Api.suppliers.create(body), `Supplier-create ${body.code}`);
   }
 
   async function syncAllSuppliers() {
@@ -211,6 +235,18 @@ const BackendSync = (() => {
     return _silent(Api.journals.create(body), `Journal ${body.reference}`);
   }
 
+  // ─── Find existing backend invoice by invoice_no (for post/void on second action) ─
+  async function _findBackendSalesInvoice(invoiceNo) {
+    if (!invoiceNo) return null;
+    const list = await Api.salesInvoices.list().catch(() => []);
+    return list.find(i => i.invoice_no === invoiceNo) || null;
+  }
+  async function _findBackendPurchaseInvoice(invoiceNo) {
+    if (!invoiceNo) return null;
+    const list = await Api.purchaseInvoices.list().catch(() => []);
+    return list.find(i => i.invoice_no === invoiceNo) || null;
+  }
+
   // ─── Sales invoice sync ─────────────────────────────────────
   // We only sync the header; lines need item_id mapping which the legacy
   // schema doesn't have. Backend will compute totals from lines.
@@ -247,6 +283,37 @@ const BackendSync = (() => {
     return _silent(Api.salesInvoices.create(body), `SalesInv ${body.invoice_no}`);
   }
 
+  // Sync header, then immediately post on backend so it appears on backend
+  // reports. Resilient: if backend already has the invoice (409), find it
+  // and post that one. Returns {posted, backend_id, error?}.
+  async function syncAndPostSalesInvoice(localInv, localCustomer) {
+    if (!_isLoggedIn() || !localInv) return {posted: false, error: 'not-logged-in'};
+    let backendInv = await syncSalesInvoice(localInv, localCustomer);
+    // syncSalesInvoice may return null on conflict — fetch by invoice_no
+    if (!backendInv) {
+      const invoiceNo = localInv.invoiceNo || localInv.no;
+      backendInv = await _findBackendSalesInvoice(invoiceNo);
+    }
+    if (!backendInv) return {posted: false, error: 'create-failed'};
+    if (backendInv.status === 'posted' || backendInv.status === 'paid') {
+      return {posted: true, backend_id: backendInv.id, already: true};
+    }
+    try {
+      await Api.salesInvoices.post(backendInv.id);
+      return {posted: true, backend_id: backendInv.id};
+    } catch (e) {
+      console.warn('[BackendSync] Post sales invoice failed:', e?.message);
+      return {posted: false, backend_id: backendInv.id, error: e?.message};
+    }
+  }
+
+  async function voidSalesInvoiceByNo(invoiceNo, reason) {
+    if (!_isLoggedIn() || !invoiceNo) return null;
+    const inv = await _findBackendSalesInvoice(invoiceNo);
+    if (!inv || inv.status === 'void') return null;
+    return _silent(Api.salesInvoices.void(inv.id, {reason: reason || 'Voided from UI'}), `Void Sales ${invoiceNo}`);
+  }
+
   // ─── Purchase invoice sync ──────────────────────────────────
   async function syncPurchaseInvoice(localBill, localVendor) {
     if (!_isLoggedIn() || !localBill) return null;
@@ -280,6 +347,33 @@ const BackendSync = (() => {
     return _silent(Api.purchaseInvoices.create(body), `PurchInv ${body.invoice_no}`);
   }
 
+  async function syncAndPostPurchaseInvoice(localBill, localVendor) {
+    if (!_isLoggedIn() || !localBill) return {posted: false, error: 'not-logged-in'};
+    let backendBill = await syncPurchaseInvoice(localBill, localVendor);
+    if (!backendBill) {
+      const invoiceNo = localBill.billNo || localBill.no;
+      backendBill = await _findBackendPurchaseInvoice(invoiceNo);
+    }
+    if (!backendBill) return {posted: false, error: 'create-failed'};
+    if (backendBill.status === 'posted' || backendBill.status === 'paid') {
+      return {posted: true, backend_id: backendBill.id, already: true};
+    }
+    try {
+      await Api.purchaseInvoices.post(backendBill.id);
+      return {posted: true, backend_id: backendBill.id};
+    } catch (e) {
+      console.warn('[BackendSync] Post purchase invoice failed:', e?.message);
+      return {posted: false, backend_id: backendBill.id, error: e?.message};
+    }
+  }
+
+  async function voidPurchaseInvoiceByNo(invoiceNo, reason) {
+    if (!_isLoggedIn() || !invoiceNo) return null;
+    const inv = await _findBackendPurchaseInvoice(invoiceNo);
+    if (!inv || inv.status === 'void') return null;
+    return _silent(Api.purchaseInvoices.void(inv.id, {reason: reason || 'Voided from UI'}), `Void Purch ${invoiceNo}`);
+  }
+
   // ─── Bootstrap: full sync on login ─────────────────────────
   async function syncAll() {
     if (!_isLoggedIn()) return { skipped: 'not-logged-in' };
@@ -303,7 +397,11 @@ const BackendSync = (() => {
     syncAllSuppliers,
     syncJournal,
     syncSalesInvoice,
+    syncAndPostSalesInvoice,
+    voidSalesInvoiceByNo,
     syncPurchaseInvoice,
+    syncAndPostPurchaseInvoice,
+    voidPurchaseInvoiceByNo,
     syncAll,
     refreshAccountCache: _refreshAccountCache,
   };

@@ -124,11 +124,13 @@ const FLYOUT_GROUPS = {
       { page: 'upload',       icon: 'upload-cloud', label: 'Upload Statement' },
       { page: 'transactions', icon: 'list',         label: 'Transaksi' },
       { page: 'journal',      icon: 'book-open',    label: 'Jurnal Entri' },
-      { page: 'coa',          icon: 'grid',         label: 'Chart of Accounts' },
-      { page: 'income',       icon: 'trending-up',  label: 'Laba Rugi' },
-      { page: 'balance',      icon: 'bar-chart-2',  label: 'Neraca' },
-      { page: 'cashflow',     icon: 'activity',     label: 'Arus Kas' },
-      { page: 'users',        icon: 'users',        label: 'Manajemen User' },
+      { page: 'coa',                  icon: 'grid',         label: 'Chart of Accounts' },
+      { page: 'account-mappings',     icon: 'link-2',       label: 'Account Mappings' },
+      { page: 'periods',              icon: 'lock',         label: 'Tutup Periode' },
+      { page: 'income',               icon: 'trending-up',  label: 'Laba Rugi' },
+      { page: 'balance',              icon: 'bar-chart-2',  label: 'Neraca' },
+      { page: 'cashflow',             icon: 'activity',     label: 'Arus Kas' },
+      { page: 'users',                icon: 'users',        label: 'Manajemen User' },
     ]
   },
   sales: {
@@ -298,6 +300,8 @@ function navigateTo(page) {
     'customer-invoices':     'Customer Invoice',
     'customer-payments':     'Penerimaan Customer',
     'customer-report':       'Laporan Customer Invoice',
+    'account-mappings':      'Account Mappings',
+    'periods':               'Tutup Periode',
     'inventory':             'Inventory',
     'inventory-movements':   'Pergerakan Stok',
     'inventory-transfers':   'Transfer Stok',
@@ -340,6 +344,8 @@ function navigateTo(page) {
   if (page === 'inv-reorder')        { if (typeof renderReorderPage       === 'function') renderReorderPage(); }
   if (page === 'inv-slowmoving')     { if (typeof renderSlowMovingPage    === 'function') renderSlowMovingPage(); }
   if (page === 'inv-costing')        { if (typeof renderCostingMethodPage === 'function') renderCostingMethodPage(); }
+  if (page === 'account-mappings')   { if (typeof renderAccountMappingsPage === 'function') renderAccountMappingsPage(); }
+  if (page === 'periods')            { if (typeof renderPeriodsPage === 'function') renderPeriodsPage(); }
   if (page === 'payments' || page === 'payments-in' || page === 'payments-out') {
     if (typeof renderPaymentsPage === 'function') renderPaymentsPage();
   }
