@@ -471,3 +471,40 @@ class InventoryRepository:
         for row in (await self.session.execute(stmt)).all():
             out.append((row.StockBalance, row.last_outflow_date, Decimal(row.period_out_qty)))
         return out
+
+
+    # ═══════════════════════════════════════════════════════════════════
+    # Custom Inventory Operations
+    # ═══════════════════════════════════════════════════════════════════
+
+    async def list_custom_ops(self, *, active_only: bool = False) -> list:
+        from app.modules.inventory.models import CustomInventoryOperation
+        stmt = select(CustomInventoryOperation).where(
+            CustomInventoryOperation.tenant_id == self.tenant_id
+        )
+        if active_only:
+            stmt = stmt.where(CustomInventoryOperation.is_active.is_(True))
+        stmt = stmt.order_by(CustomInventoryOperation.display_order, CustomInventoryOperation.label)
+        return list((await self.session.execute(stmt)).scalars().all())
+
+    async def get_custom_op(self, op_id):
+        from app.modules.inventory.models import CustomInventoryOperation
+        stmt = select(CustomInventoryOperation).where(
+            CustomInventoryOperation.id == op_id,
+            CustomInventoryOperation.tenant_id == self.tenant_id,
+        )
+        return (await self.session.execute(stmt)).scalar_one_or_none()
+
+    async def get_custom_op_by_key(self, key: str):
+        from app.modules.inventory.models import CustomInventoryOperation
+        stmt = select(CustomInventoryOperation).where(
+            CustomInventoryOperation.tenant_id == self.tenant_id,
+            CustomInventoryOperation.key == key,
+        )
+        return (await self.session.execute(stmt)).scalar_one_or_none()
+
+    async def add_custom_op(self, op):
+        self.session.add(op)
+        await self.session.flush()
+        await self.session.refresh(op)
+        return op

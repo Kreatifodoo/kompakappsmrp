@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_read_session, get_write_session
-from app.core.exceptions import NotFoundError
+from app.core.exceptions import ConflictError, NotFoundError, ValidationError
 from app.deps import CurrentUser, require_permission
 from app.modules.inventory.repository import InventoryRepository
 from app.modules.inventory.schemas import (
@@ -537,3 +537,104 @@ async def slow_moving_report(
         lines=lines,
         total_on_hand_value=total_value,
     )
+
+
+# ═══════════════════════════════════════════════════════════════════
+# CUSTOM INVENTORY OPERATIONS
+# CRUD for user-defined operation types (extends 7 built-in defaults).
+# ═══════════════════════════════════════════════════════════════════
+
+from app.modules.inventory.models import CustomInventoryOperation
+from app.modules.inventory.schemas import CustomInvOpCreate, CustomInvOpOut, CustomInvOpUpdate
+
+
+@router.get(
+    "/custom-inventory-operations",
+    response_model=list[CustomInvOpOut],
+    summary="List user-defined inventory operations (custom op types)",
+)
+async def list_custom_inv_ops(
+    active_only: bool = Query(default=False),
+    current: CurrentUser = Depends(require_permission("inventory.read")),
+    session: AsyncSession = Depends(get_read_session),
+) -> list[CustomInvOpOut]:
+    repo = InventoryRepository(session, current.tenant_id)
+    rows = await repo.list_custom_ops(active_only=active_only)
+    return [CustomInvOpOut.model_validate(r) for r in rows]
+
+
+@router.post(
+    "/custom-inventory-operations",
+    response_model=CustomInvOpOut,
+    status_code=201,
+    summary="Create a new custom inventory operation",
+)
+async def create_custom_inv_op(
+    payload: CustomInvOpCreate,
+    current: CurrentUser = Depends(require_permission("inventory.write")),
+    session: AsyncSession = Depends(get_write_session),
+) -> CustomInvOpOut:
+    repo = InventoryRepository(session, current.tenant_id)
+    if await repo.get_custom_op_by_key(payload.key):
+        raise ConflictError(f"Custom operation key '{payload.key}' already exists")
+    if payload.default_contra_account_id:
+        from app.modules.accounting.repository import AccountingRepository
+        acct = await AccountingRepository(session, current.tenant_id).get_account(
+            payload.default_contra_account_id
+        )
+        if not acct:
+            raise ValidationError("default_contra_account_id not found in this tenant")
+
+    op = CustomInventoryOperation(
+        tenant_id=current.tenant_id,
+        **payload.model_dump(),
+    )
+    op = await repo.add_custom_op(op)
+    return CustomInvOpOut.model_validate(op)
+
+
+@router.patch(
+    "/custom-inventory-operations/{op_id}",
+    response_model=CustomInvOpOut,
+    summary="Update a custom inventory operation",
+)
+async def update_custom_inv_op(
+    op_id: UUID,
+    payload: CustomInvOpUpdate,
+    current: CurrentUser = Depends(require_permission("inventory.write")),
+    session: AsyncSession = Depends(get_write_session),
+) -> CustomInvOpOut:
+    repo = InventoryRepository(session, current.tenant_id)
+    op = await repo.get_custom_op(op_id)
+    if not op:
+        raise NotFoundError("Custom operation not found")
+    if payload.default_contra_account_id is not None:
+        from app.modules.accounting.repository import AccountingRepository
+        acct = await AccountingRepository(session, current.tenant_id).get_account(
+            payload.default_contra_account_id
+        )
+        if not acct:
+            raise ValidationError("default_contra_account_id not found in this tenant")
+    for k, v in payload.model_dump(exclude_unset=True).items():
+        setattr(op, k, v)
+    await session.flush()
+    await session.refresh(op)
+    return CustomInvOpOut.model_validate(op)
+
+
+@router.delete(
+    "/custom-inventory-operations/{op_id}",
+    status_code=204,
+    summary="Soft-delete a custom inventory operation (sets is_active=false)",
+)
+async def delete_custom_inv_op(
+    op_id: UUID,
+    current: CurrentUser = Depends(require_permission("inventory.write")),
+    session: AsyncSession = Depends(get_write_session),
+) -> None:
+    repo = InventoryRepository(session, current.tenant_id)
+    op = await repo.get_custom_op(op_id)
+    if not op:
+        raise NotFoundError("Custom operation not found")
+    op.is_active = False
+    await session.flush()

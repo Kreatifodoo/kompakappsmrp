@@ -223,6 +223,12 @@ const Api = {
     get:    ()       => Api.get('/costing-method'),
     set:    (body)   => Api.put('/costing-method', body),
   },
+  customInvOps: {
+    list:   (params) => Api.get('/custom-inventory-operations' + _qs(params)),
+    create: (body)   => Api.post('/custom-inventory-operations', body),
+    update: (id, b)  => Api.patch(`/custom-inventory-operations/${id}`, b),
+    delete: (id)     => Api.delete(`/custom-inventory-operations/${id}`),
+  },
   inventoryReports: {
     stockOnHand:   (params) => Api.get('/reports/stock-on-hand' + _qs(params)),
     stockValuation:(params) => Api.get('/reports/stock-valuation' + _qs(params)),

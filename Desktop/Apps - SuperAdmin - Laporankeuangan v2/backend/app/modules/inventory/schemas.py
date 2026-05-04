@@ -366,3 +366,56 @@ class StockCardReport(BaseModel):
     period_out_qty: Decimal  # sum of qty for out + adjust_out
     period_in_value: Decimal  # sum of total_cost for in + adjust_in
     period_out_value: Decimal  # sum of total_cost for out + adjust_out
+
+
+# ═══════════════════════════════════════════════════════════════════
+# Custom Inventory Operations
+# ═══════════════════════════════════════════════════════════════════
+ContraAccountType = Literal["asset", "liability", "equity", "income", "expense"]
+
+
+class CustomInvOpCreate(BaseModel):
+    key: str = Field(min_length=1, max_length=50, pattern=r"^[a-z0-9_]+$",
+                     description="Lowercase slug, alphanumeric + underscore (e.g. 'production_consumption')")
+    label: str = Field(min_length=1, max_length=100)
+    description: str | None = Field(default=None, max_length=500)
+    direction: MovementDirection
+    contra_account_types: list[ContraAccountType] = Field(min_length=1)
+    default_contra_account_id: UUID | None = None
+    requires_unit_cost: bool = False
+    qty_label: str | None = Field(default=None, max_length=50)
+    icon: str | None = Field(default=None, max_length=20)
+    display_order: int = Field(default=100, ge=0, le=999)
+    is_active: bool = True
+
+
+class CustomInvOpUpdate(BaseModel):
+    label: str | None = Field(default=None, min_length=1, max_length=100)
+    description: str | None = Field(default=None, max_length=500)
+    direction: MovementDirection | None = None
+    contra_account_types: list[ContraAccountType] | None = Field(default=None, min_length=1)
+    default_contra_account_id: UUID | None = None
+    requires_unit_cost: bool | None = None
+    qty_label: str | None = Field(default=None, max_length=50)
+    icon: str | None = Field(default=None, max_length=20)
+    display_order: int | None = Field(default=None, ge=0, le=999)
+    is_active: bool | None = None
+
+
+class CustomInvOpOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    key: str
+    label: str
+    description: str | None
+    direction: MovementDirection
+    contra_account_types: list[str]
+    default_contra_account_id: UUID | None
+    requires_unit_cost: bool
+    qty_label: str | None
+    icon: str | None
+    display_order: int
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime

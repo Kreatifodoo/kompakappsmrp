@@ -8,7 +8,7 @@ Money columns stay NUMERIC(18, 2).
 """
 
 import uuid
-from datetime import date, datetime
+from datetime import date, datetime, UTC
 from decimal import Decimal
 
 from sqlalchemy import (
@@ -22,10 +22,11 @@ from sqlalchemy import (
     Numeric,
     PrimaryKeyConstraint,
     String,
+    Text,
     UniqueConstraint,
     func,
 )
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import ARRAY, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -315,3 +316,41 @@ class StockTransferLine(Base):
     notes: Mapped[str | None] = mapped_column(String(500))
 
     transfer: Mapped[StockTransfer] = relationship(back_populates="lines")
+
+
+class CustomInventoryOperation(Base):
+    """User-defined stock operation type (extends 7 built-in operations).
+
+    Each row defines one custom operation that appears in the Operasi Stok form
+    alongside the built-in receipt/delivery/usage/adjust_*/return_* operations.
+    The frontend merges these dynamically; backend stays generic — the existing
+    `/stock-movements` endpoint handles posting (with contra_account_id from
+    `default_contra_account_id`).
+    """
+
+    __tablename__ = "custom_inventory_operations"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "key", name="uq_custom_inv_op_tenant_key"),
+        Index("ix_custom_inv_op_tenant_active", "tenant_id", "is_active"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+    )
+    key: Mapped[str] = mapped_column(String(50), nullable=False)
+    label: Mapped[str] = mapped_column(String(100), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text)
+    direction: Mapped[str] = mapped_column(String(20), nullable=False)  # in/out/adjust_in/adjust_out
+    contra_account_types: Mapped[list[str]] = mapped_column(ARRAY(String(20)), nullable=False, default=list)
+    default_contra_account_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("accounts.id", ondelete="SET NULL")
+    )
+    requires_unit_cost: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    qty_label: Mapped[str | None] = mapped_column(String(50))
+    icon: Mapped[str | None] = mapped_column(String(20))
+    display_order: Mapped[int] = mapped_column(Integer, nullable=False, default=100)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_at: Mapped[datetime] = mapped_column(nullable=False, default=lambda: datetime.now(UTC))
+    updated_at: Mapped[datetime] = mapped_column(nullable=False, default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC))
+
