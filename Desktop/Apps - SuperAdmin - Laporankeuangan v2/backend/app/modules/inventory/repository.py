@@ -2,7 +2,7 @@
 
 from uuid import UUID
 
-from sqlalchemy import and_, func, select
+from sqlalchemy import and_, case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -421,7 +421,7 @@ class InventoryRepository:
                 StockMovement.item_id.label("item_id"),
                 StockMovement.warehouse_id.label("warehouse_id"),
                 func.max(
-                    func.case(
+                    case(
                         (
                             StockMovement.direction.in_(["out", "adjust_out"]),
                             StockMovement.movement_date,
@@ -431,7 +431,7 @@ class InventoryRepository:
                 ).label("last_outflow_date"),
                 func.coalesce(
                     func.sum(
-                        func.case(
+                        case(
                             (
                                 and_(
                                     StockMovement.direction.in_(["out", "adjust_out"]),
