@@ -60,6 +60,18 @@ class InventoryService:
         self.tenant_id = tenant_id
         self.user_id = user_id
         self.repo = InventoryRepository(session, tenant_id)
+        # Lazy-initialised on first journal post
+        self._acct_svc = None
+        self._acct_repo = None
+
+    def _get_acct(self):
+        """Lazy-load AccountingService + Repo to avoid circular imports."""
+        if self._acct_svc is None:
+            from app.modules.accounting.repository import AccountingRepository
+            from app.modules.accounting.service import AccountingService
+            self._acct_svc = AccountingService(self.session, self.tenant_id, self.user_id)
+            self._acct_repo = AccountingRepository(self.session, self.tenant_id)
+        return self._acct_svc, self._acct_repo
 
     # ─── Warehouses ─────────────────────────────────────
     async def create_warehouse(self, payload: WarehouseCreate) -> Warehouse:
@@ -140,6 +152,15 @@ class InventoryService:
             source_id=source_id,
         )
 
+        # Post balanced journal entry if contra_account_id provided
+        if payload.contra_account_id is not None:
+            await self._post_movement_journal(
+                movement=movement,
+                item=item,
+                contra_account_id=payload.contra_account_id,
+                operation=payload.operation or f"manual_{payload.direction}",
+            )
+
         # Publish realtime event (skip for invoice-driven movements — those
         # already fire sales_invoice.posted / purchase_invoice.posted).
         if source in ("adjustment", "stock_transfer"):
@@ -160,6 +181,64 @@ class InventoryService:
             except Exception:
                 pass
         return movement
+
+    async def _post_movement_journal(
+        self,
+        *,
+        movement: StockMovement,
+        item: Item,
+        contra_account_id: UUID,
+        operation: str,
+    ) -> None:
+        """Post a balanced journal entry alongside a stock movement.
+
+        Inflows  (in / adjust_in)  → Dr Inventory / Cr ContraAccount  at qty × unit_cost
+        Outflows (out / adjust_out) → Dr ContraAccount / Cr Inventory  at qty × current avg_cost
+        """
+        acct_svc, acct_repo = self._get_acct()
+
+        # Inventory account from tenant mappings
+        inventory_acc = await acct_repo.get_mapping("inventory")
+        if inventory_acc is None:
+            raise ValidationError(
+                "Account mapping 'inventory' not set. Configure it under "
+                "Account Mappings before posting stock movements with journals."
+            )
+
+        # Validate contra account belongs to this tenant
+        contra = await acct_repo.get_account(contra_account_id)
+        if contra is None:
+            raise ValidationError("Contra account not found in this tenant")
+
+        amount = (movement.qty * movement.unit_cost).quantize(MONEY_ROUNDING)
+        if amount <= 0:
+            return  # zero-cost movement (e.g. receiving free samples) — no journal
+
+        if movement.direction in ("in", "adjust_in"):
+            lines = [
+                (inventory_acc.id, amount, Decimal("0")),  # Dr Inventory
+                (contra.id, Decimal("0"), amount),         # Cr Contra
+            ]
+        else:  # out / adjust_out
+            lines = [
+                (contra.id, amount, Decimal("0")),         # Dr Contra (Expense / AP / etc.)
+                (inventory_acc.id, Decimal("0"), amount),  # Cr Inventory
+            ]
+
+        entry = await acct_svc.post_system_journal(
+            entry_date=movement.movement_date,
+            description=f"{operation}: {item.sku} qty {movement.qty}",
+            lines=lines,
+            source=operation,
+            source_id=movement.id,
+        )
+        # Link journal to the movement (best-effort — schema has no FK column,
+        # but we include the entry_no in notes for traceability)
+        if movement.notes:
+            movement.notes = f"{movement.notes} [JE: {entry.entry_no}]"
+        else:
+            movement.notes = f"[JE: {entry.entry_no}]"
+        await self.session.flush()
 
     async def _get_costing_method(self) -> str:
         """Cached fetch of the tenant's costing_method per service instance."""

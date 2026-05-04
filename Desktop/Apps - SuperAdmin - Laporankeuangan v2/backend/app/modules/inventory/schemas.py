@@ -73,9 +73,17 @@ class ItemOut(BaseModel):
 
 # ─── Stock movement ───────────────────────────────────────
 class StockMovementCreate(BaseModel):
-    """Manual movement: opening balance, cycle-count adjustment, or
-    movements not tied to an invoice. Sales/purchase invoice posting
-    creates these automatically (Phase 2)."""
+    """Manual movement: opening balance, cycle-count adjustment, goods
+    receipt, delivery, stock usage, return, etc. Sales/purchase invoice
+    posting creates these automatically (Phase 2).
+
+    When `contra_account_id` is provided, a balanced journal entry is
+    posted alongside the movement using `account_mappings.inventory` as
+    the inventory side and the supplied account_id as the contra side.
+    For 'in'/'adjust_in' the journal is Dr Inventory / Cr Contra at
+    (qty × unit_cost). For 'out'/'adjust_out' it's Dr Contra / Cr
+    Inventory at (qty × current avg_cost).
+    """
 
     item_id: UUID
     warehouse_id: UUID
@@ -88,6 +96,14 @@ class StockMovementCreate(BaseModel):
     # non-negative value or 0.
     unit_cost: Decimal = Field(default=Decimal("0"), ge=0)
     notes: str | None = Field(default=None, max_length=500)
+    # Optional: post a journal entry alongside the movement. The contra
+    # account must belong to this tenant. Inventory account taken from
+    # account_mappings 'inventory' key (must be set first).
+    contra_account_id: UUID | None = None
+    # Free-form label used in the auto-journal description (e.g.
+    # "manual_receipt", "stock_usage", "return_delivery"). Defaults to
+    # "manual_{direction}" when journal is posted.
+    operation: str | None = Field(default=None, max_length=50)
 
 
 class StockMovementOut(BaseModel):
