@@ -46,9 +46,9 @@ SyslogIdentifier=kompak-superadmin
 WantedBy=multi-user.target
 EOF
 
-# Pastikan www-data bisa write data/ dan config.json
-chown -R www-data:www-data "$SUPERADMIN_DIR/data" 2>/dev/null || true
-[ -f "$SUPERADMIN_DIR/config.json" ] && chown www-data:www-data "$SUPERADMIN_DIR/config.json"
+# www-data harus bisa write seluruh superadmin/ — config.json dan data/licenses.json
+# di-create on-the-fly oleh server.py saat first-run, jadi parent dir wajib writable.
+chown -R www-data:www-data "$SUPERADMIN_DIR"
 
 systemctl daemon-reload
 systemctl enable ${SERVICE_NAME}
