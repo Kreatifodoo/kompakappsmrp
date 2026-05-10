@@ -381,3 +381,65 @@ function categorizeForCashflow(journals) {
 
   return categories;
 }
+
+
+// ═══════════════════════════════════════════════════════════════════
+// Backend journal actions — Post / Void
+// Tombol di renderJournalTable group view (app.js) panggil fungsi ini.
+// Backend menyediakan POST /journals/{id}/post dan POST /journals/{id}/void.
+// ═══════════════════════════════════════════════════════════════════
+
+async function postBackendJournal(backendId, entryNo) {
+  if (!backendId) return;
+  if (!confirm(`Post journal ${entryNo} ke backend? (status draft → posted)`)) return;
+  try {
+    await Api.journals.post(backendId);
+    showToast(`Journal ${entryNo} berhasil di-post`, 'success');
+    if (typeof BackendLoader !== 'undefined') {
+      await BackendLoader.loadJournals();
+      AppState.journals = (AppState.journals || []).filter(j => !j.id?.startsWith?.('JE-MAN'));
+      if (typeof _mergeManualJournalsInto === 'function') _mergeManualJournalsInto(AppState.journals);
+      AppState.journalRows = (typeof flattenJournalForTable === 'function')
+        ? flattenJournalForTable(AppState.journals) : [];
+      AppState.ledger = (typeof buildLedger === 'function') ? buildLedger(AppState.journals) : {};
+    }
+    renderJournalTable();
+  } catch (e) {
+    showToast('Gagal post: ' + e.message, 'error');
+  }
+}
+
+async function voidBackendJournal(backendId, entryNo) {
+  if (!backendId) return;
+  const reason = prompt(`Alasan void journal ${entryNo}? (wajib diisi)`);
+  if (!reason || !reason.trim()) return;
+  try {
+    await Api.post(`/journals/${backendId}/void`, {reason: reason.trim()});
+    showToast(`Journal ${entryNo} di-void`, 'success');
+    if (typeof BackendLoader !== 'undefined') {
+      await BackendLoader.loadJournals();
+      AppState.journals = (AppState.journals || []).filter(j => !j.id?.startsWith?.('JE-MAN'));
+      if (typeof _mergeManualJournalsInto === 'function') _mergeManualJournalsInto(AppState.journals);
+      AppState.journalRows = (typeof flattenJournalForTable === 'function')
+        ? flattenJournalForTable(AppState.journals) : [];
+      AppState.ledger = (typeof buildLedger === 'function') ? buildLedger(AppState.journals) : {};
+    }
+    renderJournalTable();
+  } catch (e) {
+    showToast('Gagal void: ' + e.message, 'error');
+  }
+}
+
+// Auto-refresh journal list saat backend kirim event journal.posted via WebSocket
+if (typeof Realtime !== 'undefined') {
+  Realtime.on('journal.posted', async () => {
+    if (typeof BackendLoader === 'undefined') return;
+    if (AppState.currentPage !== 'journal') return;
+    await BackendLoader.loadJournals();
+    AppState.journals = (AppState.journals || []).filter(j => !j.id?.startsWith?.('JE-MAN'));
+    if (typeof _mergeManualJournalsInto === 'function') _mergeManualJournalsInto(AppState.journals);
+    if (typeof flattenJournalForTable === 'function') AppState.journalRows = flattenJournalForTable(AppState.journals);
+    if (typeof buildLedger === 'function') AppState.ledger = buildLedger(AppState.journals);
+    if (typeof renderJournalTable === 'function') renderJournalTable();
+  });
+}

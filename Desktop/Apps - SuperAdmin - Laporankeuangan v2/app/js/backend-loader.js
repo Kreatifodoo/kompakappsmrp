@@ -137,6 +137,10 @@ const BackendLoader = (() => {
         date:        j.entry_date,
         description: j.description,
         isManual:    true,
+        // Backend status + UUID — used by journal UI for post/void buttons
+        status:      j.status || 'posted',
+        backendId:   j.id,
+        source:      j.source || null,
         entries: (j.lines || []).map(l => ({
           accountCode: getCodeFromId(l.account_id) || '',
           accountName: '',

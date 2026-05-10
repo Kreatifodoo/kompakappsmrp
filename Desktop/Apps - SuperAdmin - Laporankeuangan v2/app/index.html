@@ -560,6 +560,12 @@
           <option value="Pendapatan">Pendapatan</option>
           <option value="Beban">Beban</option>
         </select>
+        <select id="jStatusFilter" class="j-select" onchange="renderJournalTable()" title="Filter status backend">
+          <option value="all">Semua Status</option>
+          <option value="posted">Posted</option>
+          <option value="draft">Draft</option>
+          <option value="void">Void</option>
+        </select>
         <div class="j-view-toggle">
           <button id="jViewFlat"  class="j-view-btn active" onclick="setJournalView('flat')">Flat</button>
           <button id="jViewGroup" class="j-view-btn"        onclick="setJournalView('group')">Grup</button>
@@ -2566,17 +2572,17 @@
 <div id="sidebar-tooltip"></div>
 
 <!-- Scripts -->
-<script src="js/api.js?v=5"></script>
+<script src="js/api.js?v=6"></script>
 <script src="js/backend-sync.js?v=3"></script>
-<script src="js/backend-loader.js?v=1"></script>
+<script src="js/backend-loader.js?v=2"></script>
 <script src="js/realtime.js?v=2"></script>
 <script src="js/storage.js?v=3"></script>
 <script src="js/license.js?v=2"></script>
 <script src="js/auth.js?v=9"></script>
 <script src="js/users.js?v=1"></script>
-<script src="js/coa.js?v=7"></script>
+<script src="js/coa.js?v=8"></script>
 <script src="js/parser.js?v=7"></script>
-<script src="js/journal.js?v=7"></script>
+<script src="js/journal.js?v=8"></script>
 <script src="js/reports.js?v=7"></script>
 <script src="js/export.js?v=6"></script>
 <script src="js/pos.js?v=10"></script>
@@ -2584,9 +2590,9 @@
 <script src="js/sales.js?v=4"></script>
 <script src="js/inventory.js?v=2"></script>
 <script src="js/inventory-extras.js?v=1"></script>
-<script src="js/inventory-operations.js?v=3"></script>
-<script src="js/accounting-extras.js?v=1"></script>
-<script src="js/payments.js?v=1"></script>
+<script src="js/inventory-operations.js?v=4"></script>
+<script src="js/accounting-extras.js?v=2"></script>
+<script src="js/payments.js?v=2"></script>
 <script src="js/app.js?v=28"></script>
 <!-- Feather Icons -->
 <script src="https://cdn.jsdelivr.net/npm/feather-icons/dist/feather.min.js"></script>

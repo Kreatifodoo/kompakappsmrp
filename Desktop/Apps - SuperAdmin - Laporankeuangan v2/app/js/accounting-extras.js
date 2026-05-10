@@ -71,7 +71,10 @@ async function _loadAccountMappings() {
             <option value="">— Pilih akun —</option>${options}
           </select>
         </td>
-        <td><button class="btn btn-sm btn-primary" onclick="setMapping('${spec.key}')">Simpan</button></td>
+        <td>
+          <button class="btn btn-sm btn-primary" onclick="setMapping('${spec.key}')">Simpan</button>
+          ${current ? `<button class="btn btn-sm btn-outline" onclick="clearMapping('${spec.key}')" style="margin-left:4px">Hapus</button>` : ''}
+        </td>
       </tr>`;
     }).join('');
 
@@ -102,6 +105,15 @@ async function setMapping(key) {
   try {
     await Api.accountMappings.set({key, account_id: accountId});
     showToast(`Mapping "${key}" berhasil di-set`, 'success');
+    await _loadAccountMappings();
+  } catch (e) { showToast('Gagal: ' + e.message, 'error'); }
+}
+
+async function clearMapping(key) {
+  if (!confirm(`Hapus mapping "${key}"? Workflow yang depend pada mapping ini akan return error sampai di-set ulang.`)) return;
+  try {
+    await Api.accountMappings.delete(key);
+    showToast(`Mapping "${key}" dihapus`, 'success');
     await _loadAccountMappings();
   } catch (e) { showToast('Gagal: ' + e.message, 'error'); }
 }

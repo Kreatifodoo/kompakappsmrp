@@ -1197,9 +1197,11 @@ function renderJournalTable() {
   const dateFrom = document.getElementById('jDateFrom')?.value  || '';
   const dateTo   = document.getElementById('jDateTo')?.value    || '';
   const acctType = document.getElementById('jAcctType')?.value  || 'all';
+  const statusF  = document.getElementById('jStatusFilter')?.value || 'all';
 
   // Filter journals
   let filtered = AppState.journals;
+  if (statusF !== 'all') filtered = filtered.filter(j => (j.status || 'posted') === statusF);
   if (dateFrom) filtered = filtered.filter(j => j.date >= dateFrom);
   if (dateTo)   filtered = filtered.filter(j => j.date <= dateTo);
   if (acctType !== 'all') {
@@ -1239,17 +1241,35 @@ function renderJournalTable() {
           <td class="text-right ${(e.kredit || 0) > 0 ? 'amount-cr' : ''}">${(e.kredit || 0) > 0 ? formatRupiah(e.kredit) : ''}</td>
           <td></td>
         </tr>`).join('');
-      const isManualJ = j.id?.startsWith('JE-MAN');
-      const groupRowBg = isManualJ ? 'background:#f0fdf4' : '';
+      const isManualJ = j.id?.startsWith('JE-MAN') || j.id?.startsWith('JV-');
+      const status = j.status || 'posted';
+      const isBackend = !!j.backendId;
+      const groupRowBg = isManualJ ? 'background:#f0fdf4' :
+                         status === 'void' ? 'background:#fee2e2' :
+                         status === 'draft' ? 'background:#fef3c7' : '';
+      const statusBadge = ({
+        posted: '<span style="background:#dcfce7;color:#15803d;padding:1px 6px;border-radius:3px;font-size:10px;font-weight:600">POSTED</span>',
+        draft:  '<span style="background:#fef3c7;color:#92400e;padding:1px 6px;border-radius:3px;font-size:10px;font-weight:600">DRAFT</span>',
+        void:   '<span style="background:#fee2e2;color:#991b1b;padding:1px 6px;border-radius:3px;font-size:10px;font-weight:600">VOID</span>',
+      })[status] || '';
       const noHtml = isManualJ
-        ? `<span style="font-size:11px;color:#16a34a;white-space:nowrap">${j.no || ''} <span class="badge-manual">manual</span></span>`
-        : `<span style="font-size:11px;color:#6b7280;white-space:nowrap">${j.no || ''}</span>`;
+        ? `<span style="font-size:11px;color:#16a34a;white-space:nowrap">${j.no || ''} ${statusBadge}</span>`
+        : `<span style="font-size:11px;color:#6b7280;white-space:nowrap">${j.no || ''} ${statusBadge}</span>`;
+      // Backend post/void buttons
+      const backendActions = isBackend ? (
+        status === 'draft'
+          ? `<button class="btn-split-acct" style="color:#15803d" onclick="event.stopPropagation();postBackendJournal('${j.backendId}','${j.no}')" title="Post ke backend">${fIcon('check',12)}</button>`
+          : status === 'posted'
+          ? `<button class="btn-split-acct btn-danger-sm" onclick="event.stopPropagation();voidBackendJournal('${j.backendId}','${j.no}')" title="Void">${fIcon('x',12)}</button>`
+          : ''
+      ) : '';
       const groupAksi = isManualJ
         ? `<td style="display:flex;gap:4px;align-items:center;justify-content:center">
-             <button class="btn-split-acct" onclick="event.stopPropagation();openCreateJournalModal('${j.id}')" title="Edit">${fIcon('edit-2',12)}</button>
-             <button class="btn-split-acct btn-danger-sm" onclick="event.stopPropagation();deleteManualJournal('${j.id}')" title="Hapus">${fIcon('trash-2',12)}</button>
+             <button class="btn-split-acct" onclick="event.stopPropagation();openCreateJournalModal('${j.id}')" title="Edit local">${fIcon('edit-2',12)}</button>
+             ${backendActions}
+             <button class="btn-split-acct btn-danger-sm" onclick="event.stopPropagation();deleteManualJournal('${j.id}')" title="Hapus local">${fIcon('trash-2',12)}</button>
            </td>`
-        : `<td style="text-align:center"><span id="jg-icon-${j.id}" style="color:#6b7280;font-size:10px">▶</span></td>`;
+        : `<td style="text-align:center;display:flex;gap:4px;align-items:center;justify-content:center">${backendActions || `<span id="jg-icon-${j.id}" style="color:#6b7280;font-size:10px">▶</span>`}</td>`;
       return `
         <tr class="journal-group-header" style="${groupRowBg}" onclick="toggleJournalGroup('${j.id}')">
           <td>${idx + 1}</td>

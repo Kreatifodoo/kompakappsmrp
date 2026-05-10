@@ -11,6 +11,7 @@ from app.modules.accounting.models import (
     Account,
     AccountMapping,
     JournalEntry,
+    JournalLine,
 )
 
 
@@ -118,6 +119,25 @@ class AccountingRepository:
     async def list_mappings(self) -> list[AccountMapping]:
         stmt = select(AccountMapping).where(AccountMapping.tenant_id == self.tenant_id)
         return list((await self.session.execute(stmt)).scalars().all())
+
+    async def delete_mapping(self, key: str) -> bool:
+        """Remove an account mapping. Returns True if deleted, False if not found."""
+        from sqlalchemy import delete as sa_delete
+        stmt = sa_delete(AccountMapping).where(
+            AccountMapping.tenant_id == self.tenant_id,
+            AccountMapping.key == key,
+        )
+        result = await self.session.execute(stmt)
+        return result.rowcount > 0
+
+    async def account_has_journal_lines(self, account_id: UUID) -> bool:
+        """True if any journal line references this account in this tenant."""
+        stmt = select(func.count(JournalLine.id)).where(
+            JournalLine.tenant_id == self.tenant_id,
+            JournalLine.account_id == account_id,
+        )
+        count = (await self.session.execute(stmt)).scalar_one() or 0
+        return count > 0
 
     async def next_entry_no(self, year: int) -> str:
         """Generate next sequential journal number per tenant per year (JV-YYYY-#####)."""

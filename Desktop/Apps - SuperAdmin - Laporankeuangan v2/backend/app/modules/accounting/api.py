@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_write_session
-from app.core.exceptions import AuthorizationError, NotFoundError, ValidationError
+from app.core.exceptions import AuthorizationError, ConflictError, NotFoundError, ValidationError
 from app.deps import CurrentUser, require_permission
 from app.modules.accounting.repository import AccountingRepository
 from app.modules.accounting.schemas import (
@@ -76,6 +76,29 @@ async def update_account(
     svc = AccountingService(session, current.tenant_id, current.user_id)
     account = await svc.update_account(account_id, payload)
     return AccountOut.model_validate(account)
+
+
+@router.delete(
+    "/accounts/{account_id}",
+    status_code=204,
+    summary="Soft-delete account (set is_active=false). Reject if account has journal lines.",
+)
+async def delete_account(
+    account_id: UUID,
+    current: CurrentUser = Depends(require_permission("coa.write")),
+    session: AsyncSession = Depends(get_write_session),
+) -> None:
+    repo = AccountingRepository(session, current.tenant_id)
+    account = await repo.get_account(account_id)
+    if not account:
+        raise NotFoundError("Account not found")
+    # Reject delete if account is referenced by journal lines or mappings
+    if await repo.account_has_journal_lines(account_id):
+        raise ConflictError(
+            "Cannot delete account with existing journal entries. Use deactivate instead."
+        )
+    account.is_active = False
+    await session.flush()
 
 
 # ─── Journal Entries ────────────────────────────────────
@@ -166,6 +189,22 @@ async def set_mapping(
         raise NotFoundError("Account not found")
     mapping = await repo.set_mapping(payload.key, payload.account_id)
     return AccountMappingOut.model_validate(mapping)
+
+
+@router.delete(
+    "/account-mappings/{key}",
+    status_code=204,
+    summary="Clear (delete) an account mapping for this tenant",
+)
+async def delete_mapping(
+    key: str,
+    current: CurrentUser = Depends(require_permission("coa.write")),
+    session: AsyncSession = Depends(get_write_session),
+) -> None:
+    repo = AccountingRepository(session, current.tenant_id)
+    deleted = await repo.delete_mapping(key)
+    if not deleted:
+        raise NotFoundError(f"Mapping '{key}' not found")
 
 
 @router.post("/journals/{entry_id}/void", response_model=JournalEntryOut)

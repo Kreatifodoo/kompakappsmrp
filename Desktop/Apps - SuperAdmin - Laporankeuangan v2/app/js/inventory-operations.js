@@ -732,9 +732,11 @@ async function clearOpMaster(opKey) {
   const op = STOCK_OPERATIONS[opKey];
   if (!op) return;
   if (!confirm(`Hapus default akun untuk "${op.label}"?`)) return;
-  // No DELETE endpoint for mapping — set to a sentinel ("clear" by setting same key with empty)
-  // Workaround: we can't truly delete, but we can set to a placeholder. For now just refresh —
-  // backend should expose DELETE later. As a UX patch, we just reset the select to empty
-  // and tell user the default is "ignored" if not set in this list.
-  showToast('Untuk hapus default, biarkan dropdown kosong lalu Simpan (akan reset).', 'info');
+  try {
+    await Api.accountMappings.delete(op.mappingKey);
+    showToast(`Default akun "${op.label.replace(/^\S+\s/, '')}" dihapus`, 'success');
+    await renderStockOpsMasterPage();
+  } catch (e) {
+    showToast('Gagal hapus: ' + e.message, 'error');
+  }
 }

@@ -134,7 +134,7 @@ const Api = {
     list:   ()       => Api.get('/accounts'),
     get:    (id)     => Api.get(`/accounts/${id}`),
     create: (body)   => Api.post('/accounts', body),
-    update: (id, b)  => Api.put(`/accounts/${id}`, b),
+    update: (id, b)  => Api.patch(`/accounts/${id}`, b),
     delete: (id)     => Api.delete(`/accounts/${id}`),
   },
 
@@ -187,8 +187,8 @@ const Api = {
   payments: {
     list:   (params) => Api.get('/payments' + _qs(params)),
     get:    (id)     => Api.get(`/payments/${id}`),
-    create: (body)   => Api.post('/payments', body),
-    void:   (id)     => Api.post(`/payments/${id}/void`),
+    create: (body, opts) => Api.post('/payments' + _qs(opts), body),  // opts.post_now=true|false
+    void:   (id, b)  => Api.post(`/payments/${id}/void`, b || {reason: 'Voided from UI'}),
   },
 
   // ── Inventory ─────────────────────────────────────────────
@@ -270,6 +270,7 @@ const Api = {
   accountMappings: {
     list:   () => Api.get('/account-mappings'),
     set:    (body) => Api.put('/account-mappings', body),  // {key, account_id}
+    delete: (key) => Api.delete(`/account-mappings/${encodeURIComponent(key)}`),
   },
   seedStarterCOA: (overwrite) => Api.post(`/accounts/seed-starter-coa${overwrite?'?overwrite_mappings=true':''}`),
 
