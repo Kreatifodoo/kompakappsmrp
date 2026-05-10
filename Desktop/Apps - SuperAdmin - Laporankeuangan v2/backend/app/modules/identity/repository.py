@@ -163,3 +163,18 @@ class IdentityRepository:
     async def revoke_refresh_token(self, rt: RefreshToken) -> None:
         rt.revoked_at = datetime.now(UTC)
         await self.session.flush()
+
+    async def revoke_all_refresh_tokens_for_user(self, user_id: UUID) -> int:
+        """Revoke all active refresh tokens for a user. Used after password change.
+        Returns count revoked."""
+        from sqlalchemy import update as sa_update
+        stmt = (
+            sa_update(RefreshToken)
+            .where(
+                RefreshToken.user_id == user_id,
+                RefreshToken.revoked_at.is_(None),
+            )
+            .values(revoked_at=datetime.now(UTC))
+        )
+        result = await self.session.execute(stmt)
+        return result.rowcount or 0

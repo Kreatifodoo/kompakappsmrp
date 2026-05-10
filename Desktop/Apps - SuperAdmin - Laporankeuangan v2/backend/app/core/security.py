@@ -61,3 +61,27 @@ def hash_refresh_token(raw: str) -> str:
 
 def decode_access_token(token: str) -> dict[str, Any]:
     return jwt.decode(token, settings.JWT_SECRET, algorithms=[settings.JWT_ALGORITHM])
+
+
+def create_password_reset_token(user_id: str) -> tuple[str, datetime]:
+    """Issue a short-lived JWT for password reset (30 min expiry).
+    Returns (token, expires_at). Stateless — verified on reset by decoding JWT.
+    """
+    now = datetime.now(UTC)
+    expires_at = now + timedelta(minutes=30)
+    payload: dict[str, Any] = {
+        "sub": str(user_id),
+        "iat": int(now.timestamp()),
+        "exp": int(expires_at.timestamp()),
+        "type": "password_reset",
+    }
+    return jwt.encode(payload, settings.JWT_SECRET, algorithm=settings.JWT_ALGORITHM), expires_at
+
+
+def decode_password_reset_token(token: str) -> dict[str, Any]:
+    """Decode + validate a password reset token. Raises JWTError if invalid/expired."""
+    payload = jwt.decode(token, settings.JWT_SECRET, algorithms=[settings.JWT_ALGORITHM])
+    if payload.get("type") != "password_reset":
+        from jose import JWTError
+        raise JWTError("Wrong token type")
+    return payload

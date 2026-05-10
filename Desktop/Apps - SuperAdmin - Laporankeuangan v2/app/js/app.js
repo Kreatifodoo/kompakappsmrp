@@ -130,7 +130,15 @@ const FLYOUT_GROUPS = {
       { page: 'income',               icon: 'trending-up',  label: 'Laba Rugi' },
       { page: 'balance',              icon: 'bar-chart-2',  label: 'Neraca' },
       { page: 'cashflow',             icon: 'activity',     label: 'Arus Kas' },
+      { page: 'rep-aged-ar',          icon: 'clock',        label: 'Aged AR' },
+      { page: 'rep-aged-ap',          icon: 'clock',        label: 'Aged AP' },
+      { page: 'rep-cust-stmt',        icon: 'file-text',    label: 'Customer Statement' },
+      { page: 'rep-supp-stmt',        icon: 'file-text',    label: 'Supplier Statement' },
+      { page: 'rep-bank-rec',         icon: 'check-square', label: 'Bank Reconciliation' },
+      { page: 'rep-ppn',              icon: 'percent',      label: 'Laporan PPN' },
       { page: 'users',                icon: 'users',        label: 'Manajemen User' },
+      { page: 'roles',                icon: 'shield',       label: 'Roles & Permissions' },
+      { page: 'audit-log',            icon: 'list',         label: 'Audit Log' },
     ]
   },
   sales: {
@@ -304,6 +312,14 @@ function navigateTo(page) {
     'customer-report':       'Laporan Customer Invoice',
     'account-mappings':      'Account Mappings',
     'periods':               'Tutup Periode',
+    'rep-aged-ar':           'Aged Receivables',
+    'rep-aged-ap':           'Aged Payables',
+    'rep-cust-stmt':         'Customer Statement',
+    'rep-supp-stmt':         'Supplier Statement',
+    'rep-bank-rec':          'Bank Reconciliation',
+    'rep-ppn':               'Laporan PPN',
+    'roles':                 'Roles & Permissions',
+    'audit-log':             'Audit Log',
     'inventory':             'Inventory',
     'inventory-movements':   'Pergerakan Stok',
     'inventory-transfers':   'Transfer Stok',
@@ -352,6 +368,14 @@ function navigateTo(page) {
   if (page === 'inv-op-master')      { if (typeof renderStockOpsMasterPage === 'function') renderStockOpsMasterPage(); }
   if (page === 'account-mappings')   { if (typeof renderAccountMappingsPage === 'function') renderAccountMappingsPage(); }
   if (page === 'periods')            { if (typeof renderPeriodsPage === 'function') renderPeriodsPage(); }
+  if (page === 'rep-aged-ar')        { if (typeof renderAgedARPage === 'function') renderAgedARPage(); }
+  if (page === 'rep-aged-ap')        { if (typeof renderAgedAPPage === 'function') renderAgedAPPage(); }
+  if (page === 'rep-cust-stmt')      { if (typeof renderCustomerStatementPage === 'function') renderCustomerStatementPage(); }
+  if (page === 'rep-supp-stmt')      { if (typeof renderSupplierStatementPage === 'function') renderSupplierStatementPage(); }
+  if (page === 'rep-bank-rec')       { if (typeof renderBankReconciliationPage === 'function') renderBankReconciliationPage(); }
+  if (page === 'rep-ppn')            { if (typeof renderPPNReportPage === 'function') renderPPNReportPage(); }
+  if (page === 'roles')              { if (typeof renderRolesPage === 'function') renderRolesPage(); }
+  if (page === 'audit-log')          { if (typeof renderAuditLogPage === 'function') renderAuditLogPage(); }
   if (page === 'payments' || page === 'payments-in' || page === 'payments-out') {
     if (typeof renderPaymentsPage === 'function') renderPaymentsPage();
   }

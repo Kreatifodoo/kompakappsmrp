@@ -7,10 +7,13 @@ from app.core.database import get_write_session
 from app.deps import CurrentUser, get_current_user
 from app.modules.identity.repository import IdentityRepository
 from app.modules.identity.schemas import (
+    ChangePasswordRequest,
+    ForgotPasswordRequest,
     LoginRequest,
     MeResponse,
     RefreshRequest,
     RegisterTenantRequest,
+    ResetPasswordRequest,
     TenantOut,
     TokenPair,
     UserOut,
@@ -64,3 +67,36 @@ async def me(
         role=current.role,
         permissions=current.permissions,
     )
+
+
+# ─── Password reset / change flow ────────────────────────
+@router.post("/forgot-password", status_code=202, summary="Request password reset email (always returns success)")
+async def forgot_password(
+    payload: ForgotPasswordRequest,
+    session: AsyncSession = Depends(get_write_session),
+) -> dict:
+    """Issue reset token + queue email. Always returns 202 (no email enumeration)."""
+    svc = IdentityService(session)
+    await svc.forgot_password(payload.email)
+    return {"detail": "Jika email terdaftar, link reset password sudah dikirim."}
+
+
+@router.post("/reset-password", status_code=200, summary="Reset password using JWT token from email")
+async def reset_password(
+    payload: ResetPasswordRequest,
+    session: AsyncSession = Depends(get_write_session),
+) -> dict:
+    svc = IdentityService(session)
+    await svc.reset_password(payload.token, payload.new_password)
+    return {"detail": "Password berhasil direset. Silakan login ulang."}
+
+
+@router.post("/change-password", status_code=200, summary="Change password (requires old password)")
+async def change_password(
+    payload: ChangePasswordRequest,
+    current: CurrentUser = Depends(get_current_user),
+    session: AsyncSession = Depends(get_write_session),
+) -> dict:
+    svc = IdentityService(session)
+    await svc.change_password(current.user_id, payload.old_password, payload.new_password)
+    return {"detail": "Password berhasil diubah. Login pada device lain ter-revoke."}

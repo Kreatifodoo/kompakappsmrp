@@ -180,3 +180,73 @@ class IdentityService:
             refresh_token=raw_refresh,
             expires_in=app_settings.JWT_ACCESS_TOKEN_EXPIRE_MINUTES * 60,
         )
+
+    # ─── Password reset / change flow ─────────────────────
+    async def forgot_password(self, email: str) -> str | None:
+        """Issue a password reset token for the user with this email.
+        Returns the reset link (or None if email doesn't exist — but we
+        always return success to prevent email enumeration). Email is
+        sent via Celery; this method just issues the token.
+        """
+        from app.config import settings
+        from app.core.security import create_password_reset_token
+
+        user = await self.repo.get_user_by_email(email)
+        if not user:
+            return None  # Silent — no email enumeration
+
+        token, expires_at = create_password_reset_token(str(user.id))
+        reset_url = f"{settings.APP_PUBLIC_URL}/reset-password?token={token}"
+
+        # Fire email via notifications Celery task (silently swallow if SMTP off)
+        try:
+            from app.modules.notifications.tasks import send_password_reset_task
+            send_password_reset_task.delay(
+                to_email=user.email,
+                user_name=user.full_name or user.email,
+                reset_url=reset_url,
+            )
+        except Exception:
+            pass
+        return reset_url
+
+    async def reset_password(self, token: str, new_password: str) -> bool:
+        """Verify reset token + set new password. Revokes all refresh tokens."""
+        from jose import JWTError
+        from app.core.security import decode_password_reset_token, hash_password
+
+        try:
+            payload = decode_password_reset_token(token)
+        except JWTError:
+            raise AuthenticationError("Invalid or expired reset token")
+
+        user_id_str = payload.get("sub")
+        if not user_id_str:
+            raise AuthenticationError("Invalid token payload")
+
+        from uuid import UUID as _UUID
+        user = await self.repo.get_user(_UUID(user_id_str))
+        if not user or not user.is_active:
+            raise AuthenticationError("User not found or inactive")
+
+        user.password_hash = hash_password(new_password)
+        # Revoke all refresh tokens for this user (force re-login on all devices)
+        await self.repo.revoke_all_refresh_tokens_for_user(user.id)
+        await self.session.flush()
+        return True
+
+    async def change_password(self, user_id, old_password: str, new_password: str) -> bool:
+        """Change password for current user — requires old password verification."""
+        from app.core.security import hash_password, verify_password
+
+        user = await self.repo.get_user(user_id)
+        if not user:
+            raise AuthenticationError("User not found")
+        if not verify_password(old_password, user.password_hash):
+            raise AuthenticationError("Password lama tidak cocok")
+
+        user.password_hash = hash_password(new_password)
+        # Revoke all refresh tokens (force re-login on other devices)
+        await self.repo.revoke_all_refresh_tokens_for_user(user.id)
+        await self.session.flush()
+        return True

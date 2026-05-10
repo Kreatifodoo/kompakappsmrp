@@ -259,6 +259,9 @@ const Api = {
     agedPayables:    (p) => Api.get('/reports/aged-payables' + _qs(p)),
     cashFlow:        (p) => Api.get('/reports/cash-flow' + _qs(p)),
     ppn:             (p) => Api.get('/reports/ppn' + _qs(p)),
+    customerStatement: (id, p) => Api.get(`/reports/customer-statement/${id}` + _qs(p)),
+    supplierStatement: (id, p) => Api.get(`/reports/supplier-statement/${id}` + _qs(p)),
+    bankReconciliation: (body) => Api.post('/reports/bank-reconciliation', body),
     // Async job endpoints
     submitAsync:     (type, p) => Api.post(`/reports/${type}/async`, p),
     jobStatus:       (id) => Api.get(`/reports/jobs/${id}/status`),
@@ -285,7 +288,26 @@ const Api = {
   // ── Audit ─────────────────────────────────────────────────
   audit: {
     list: (params) => Api.get('/audit/logs' + _qs(params)),
-    get:  (id)     => Api.get(`/audit/logs/${id}/history`),
+    history: (rowId) => Api.get(`/audit/logs/${rowId}/history`),
+  },
+
+  // ── Roles & Permissions ───────────────────────────────────
+  roles: {
+    list:   () => Api.get('/roles'),
+    get:    (id) => Api.get(`/roles/${id}`),
+    create: (body) => Api.post('/roles', body),
+    update: (id, body) => Api.patch(`/roles/${id}`, body),
+    delete: (id) => Api.delete(`/roles/${id}`),
+  },
+  permissions: {
+    list: () => Api.get('/permissions'),
+  },
+
+  // ── Password reset (forgot/reset flow) ────────────────────
+  authPassword: {
+    forgot: (email) => Api.post('/auth/forgot-password', {email}),
+    reset:  (token, new_password) => Api.post('/auth/reset-password', {token, new_password}),
+    change: (old_password, new_password) => Api.post('/auth/change-password', {old_password, new_password}),
   },
 };
 
