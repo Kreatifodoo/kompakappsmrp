@@ -67,7 +67,9 @@ async def create_payment(
         raise AuthorizationError("Missing permission: payment.post")
     svc = PaymentsService(session, current.tenant_id, current.user_id)
     payment = await svc.create_payment(payload, post_now=post_now)
-    return PaymentOut.model_validate(payment)
+    # Re-fetch with eager-loaded applications to avoid async lazy-load on serialize
+    refreshed = await svc.repo.get(payment.id)
+    return PaymentOut.model_validate(refreshed or payment)
 
 
 @router.post("/payments/{payment_id}/void", response_model=PaymentOut)
