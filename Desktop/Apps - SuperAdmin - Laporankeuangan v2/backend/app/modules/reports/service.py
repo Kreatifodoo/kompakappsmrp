@@ -390,7 +390,7 @@ class ReportsService:
             date_from=date_from,
             date_to=date_to,
             # Both lists are pre-built tuples to keep the helper symmetric
-            invoice_rows=[(inv.invoice_date, inv.invoice_no, inv.description, inv.total) for inv in invoices],
+            invoice_rows=[(inv.invoice_date, inv.invoice_no, inv.notes, inv.total) for inv in invoices],
             payment_rows=[
                 (p.payment_date, p.payment_no, p.reference, applied_amount) for p, applied_amount in payments
             ],
