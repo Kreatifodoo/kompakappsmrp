@@ -87,12 +87,50 @@ function _vendorOptions(selectedId) {
 // Status badge using existing badge classes
 function _billStatusBadge(status) {
   const map = {
-    draft:       '<span class="badge badge-neutral">Draft</span>',
-    outstanding: '<span class="badge badge-red">Outstanding</span>',
-    partial:     '<span class="badge badge-blue">Partial</span>',
-    paid:        '<span class="badge badge-green">Paid</span>',
+    draft:       '<span class="badge" style="background:#fef3c7;color:#92400e">Draft</span>',
+    posted:      '<span class="badge" style="background:#dcfce7;color:#15803d">Posted</span>',
+    outstanding: '<span class="badge" style="background:#fee2e2;color:#991b1b">Outstanding</span>',
+    partial:     '<span class="badge" style="background:#dbeafe;color:#1e40af">Partial</span>',
+    paid:        '<span class="badge" style="background:#dcfce7;color:#15803d">Paid</span>',
+    cancelled:   '<span class="badge" style="background:#f3f4f6;color:#6b7280;text-decoration:line-through">Cancelled</span>',
+    void:        '<span class="badge" style="background:#f3f4f6;color:#6b7280;text-decoration:line-through">Void</span>',
   };
   return map[status] || `<span class="badge badge-neutral">${_escPurchase(status)}</span>`;
+}
+
+// Refresh purchase state dari backend + re-render
+async function refreshPurchaseFromBackend() {
+  if (typeof BackendLoader === 'undefined') return;
+  showToast('🔄 Sync dari backend...', 'info');
+  try {
+    await Promise.all([
+      BackendLoader.loadSuppliers(),
+      BackendLoader.loadPurchaseBills(),
+      BackendLoader.loadPayments(),
+    ]);
+    if (typeof renderVendorBillPage === 'function') renderVendorBillPage();
+    if (typeof renderMasterVendorPage === 'function') renderMasterVendorPage();
+    showToast('✓ Purchase data sync', 'success');
+  } catch (e) {
+    showToast('Sync gagal: ' + e.message, 'error');
+  }
+}
+
+// Subscribe Realtime untuk auto-refresh saat backend changes
+if (typeof Realtime !== 'undefined') {
+  const _refreshIfOnPurchasePage = async () => {
+    if (typeof AppState === 'undefined') return;
+    const pp = ['purchase-bills', 'purchase-payments', 'purchase-vendors', 'purchase-report'];
+    if (!pp.includes(AppState.currentPage)) return;
+    if (typeof BackendLoader !== 'undefined') {
+      await BackendLoader.loadPurchaseBills();
+      await BackendLoader.loadPayments();
+    }
+    if (typeof renderVendorBillPage === 'function' && AppState.currentPage === 'purchase-bills') renderVendorBillPage();
+  };
+  Realtime.on('purchase_invoice.posted', _refreshIfOnPurchasePage);
+  Realtime.on('purchase_invoice.voided', _refreshIfOnPurchasePage);
+  Realtime.on('payment.disbursed', _refreshIfOnPurchasePage);
 }
 
 // ===== STORAGE =====

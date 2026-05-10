@@ -88,12 +88,50 @@ function _customerOptions(selectedId) {
 // Status badge
 function _invStatusBadge(status) {
   const map = {
-    draft:       '<span class="badge badge-neutral">Draft</span>',
-    outstanding: '<span class="badge badge-red">Outstanding</span>',
-    partial:     '<span class="badge badge-blue">Partial</span>',
-    paid:        '<span class="badge badge-green">Paid</span>',
+    draft:       '<span class="badge" style="background:#fef3c7;color:#92400e">Draft</span>',
+    posted:      '<span class="badge" style="background:#dcfce7;color:#15803d">Posted</span>',
+    outstanding: '<span class="badge" style="background:#fee2e2;color:#991b1b">Outstanding</span>',
+    partial:     '<span class="badge" style="background:#dbeafe;color:#1e40af">Partial</span>',
+    paid:        '<span class="badge" style="background:#dcfce7;color:#15803d">Paid</span>',
+    cancelled:   '<span class="badge" style="background:#f3f4f6;color:#6b7280;text-decoration:line-through">Cancelled</span>',
+    void:        '<span class="badge" style="background:#f3f4f6;color:#6b7280;text-decoration:line-through">Void</span>',
   };
   return map[status] || `<span class="badge badge-neutral">${_escSales(status)}</span>`;
+}
+
+// Refresh sales state dari backend + re-render
+async function refreshSalesFromBackend() {
+  if (typeof BackendLoader === 'undefined') return;
+  showToast('🔄 Sync dari backend...', 'info');
+  try {
+    await Promise.all([
+      BackendLoader.loadCustomers(),
+      BackendLoader.loadSalesInvoices(),
+      BackendLoader.loadPayments(),
+    ]);
+    if (typeof renderCustomerInvoicePage === 'function') renderCustomerInvoicePage();
+    if (typeof renderMasterCustomerPage === 'function') renderMasterCustomerPage();
+    showToast('✓ Sales data sync', 'success');
+  } catch (e) {
+    showToast('Sync gagal: ' + e.message, 'error');
+  }
+}
+
+// Subscribe Realtime untuk auto-refresh saat backend changes
+if (typeof Realtime !== 'undefined') {
+  const _refreshIfOnSalesPage = async () => {
+    if (typeof AppState === 'undefined') return;
+    const sp = ['customer-invoices', 'customer-payments', 'customer-master', 'customer-report'];
+    if (!sp.includes(AppState.currentPage)) return;
+    if (typeof BackendLoader !== 'undefined') {
+      await BackendLoader.loadSalesInvoices();
+      await BackendLoader.loadPayments();
+    }
+    if (typeof renderCustomerInvoicePage === 'function' && AppState.currentPage === 'customer-invoices') renderCustomerInvoicePage();
+  };
+  Realtime.on('sales_invoice.posted', _refreshIfOnSalesPage);
+  Realtime.on('sales_invoice.voided', _refreshIfOnSalesPage);
+  Realtime.on('payment.received', _refreshIfOnSalesPage);
 }
 
 // ===== STORAGE =====

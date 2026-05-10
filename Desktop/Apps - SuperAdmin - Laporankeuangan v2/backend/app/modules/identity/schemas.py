@@ -105,3 +105,49 @@ class ResetPasswordRequest(BaseModel):
 class ChangePasswordRequest(BaseModel):
     old_password: str = Field(min_length=1, max_length=128)
     new_password: str = Field(min_length=8, max_length=128)
+
+
+# ─── Tenant Users (CRUD per tenant) ───────────────────────
+class TenantUserListItem(BaseModel):
+    """One row in the tenant's user list — User + role + active status."""
+    model_config = ConfigDict(from_attributes=True)
+
+    user_id: UUID
+    email: str
+    full_name: str
+    is_active: bool                  # User.is_active (global)
+    is_owner: bool                   # TenantUser.is_owner
+    role_id: UUID
+    role_name: str
+    invited_at: datetime
+    accepted_at: datetime | None
+    last_login_at: datetime | None
+
+
+class TenantUserInvite(BaseModel):
+    """Invite a new user to the current tenant. If email exists globally,
+    add membership; otherwise create User + membership.
+
+    `temp_password` defaults to a random 12-char string returned once
+    in the response. The owner can then SMS/share it; user changes
+    on first login. (Email-link flow can be added later via password
+    reset endpoint.)
+    """
+    email: EmailStr
+    full_name: str = Field(min_length=2, max_length=200)
+    role_id: UUID
+    temp_password: str | None = Field(default=None, min_length=8, max_length=128)
+
+
+class TenantUserInviteResponse(BaseModel):
+    user_id: UUID
+    email: str
+    full_name: str
+    role_name: str
+    temp_password: str | None  # Returned only when newly created — for owner to share
+
+
+class TenantUserUpdate(BaseModel):
+    full_name: str | None = Field(default=None, min_length=2, max_length=200)
+    role_id: UUID | None = None
+    is_active: bool | None = None

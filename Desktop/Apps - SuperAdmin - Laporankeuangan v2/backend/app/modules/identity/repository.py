@@ -178,3 +178,35 @@ class IdentityRepository:
         )
         result = await self.session.execute(stmt)
         return result.rowcount or 0
+
+
+    # ═══════════════════════════════════════════════════════════════
+    # Tenant Users CRUD (scoped to a specific tenant)
+    # ═══════════════════════════════════════════════════════════════
+
+    async def list_tenant_users(self, tenant_id: UUID) -> list[tuple]:
+        """Return (User, TenantUser, Role) tuples for all members of this tenant."""
+        from sqlalchemy.orm import joinedload
+        from app.modules.identity.models import Role
+
+        stmt = (
+            select(TenantUser, User, Role)
+            .join(User, TenantUser.user_id == User.id)
+            .join(Role, TenantUser.role_id == Role.id)
+            .where(TenantUser.tenant_id == tenant_id)
+            .order_by(User.email)
+        )
+        result = await self.session.execute(stmt)
+        return [(row[1], row[0], row[2]) for row in result.all()]
+
+    async def get_tenant_membership(self, tenant_id: UUID, user_id: UUID) -> TenantUser | None:
+        stmt = select(TenantUser).where(
+            TenantUser.tenant_id == tenant_id,
+            TenantUser.user_id == user_id,
+        )
+        return (await self.session.execute(stmt)).scalar_one_or_none()
+
+    async def get_role_by_id(self, role_id: UUID) -> "Role | None":  # noqa: F821
+        from app.modules.identity.models import Role
+        stmt = select(Role).where(Role.id == role_id)
+        return (await self.session.execute(stmt)).scalar_one_or_none()

@@ -342,7 +342,14 @@ function navigateTo(page) {
   updateGroupActiveState(page);
 
   // Render page-specific content
-  if (page === 'users') renderUsersPage();
+  if (page === 'users') {
+    // Prefer backend-driven version when logged into backend; fallback to legacy localStorage
+    if (typeof Api !== 'undefined' && Api.isLoggedIn && Api.isLoggedIn() && typeof renderBackendUsersPage === 'function') {
+      renderBackendUsersPage();
+    } else if (typeof renderUsersPage === 'function') {
+      renderUsersPage();
+    }
+  }
   if (page === 'journal')              renderJournalTable();
   if (page === 'pos')                  renderPOSPage();
   if (page === 'pos-products')         { if (typeof renderMasterProductPage  === 'function') renderMasterProductPage(); }

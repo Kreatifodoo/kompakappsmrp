@@ -291,6 +291,14 @@ const Api = {
     history: (rowId) => Api.get(`/audit/logs/${rowId}/history`),
   },
 
+  // ── Users (tenant-scoped) ─────────────────────────────────
+  users: {
+    list:      () => Api.get('/users'),
+    invite:    (body) => Api.post('/users', body),
+    update:    (id, body) => Api.patch(`/users/${id}`, body),
+    deactivate:(id) => Api.delete(`/users/${id}`),
+  },
+
   // ── Roles & Permissions ───────────────────────────────────
   roles: {
     list:   () => Api.get('/roles'),

@@ -429,3 +429,256 @@ async function submitForgotPassword() {
     closeFpwModal();
   }
 }
+
+
+// ═══════════════════════════════════════════════════════════════════
+// TENANT USERS CRUD (re-uses existing #page-users HTML table)
+// Replaces legacy localStorage-based renderUsersPage when backend logged in.
+// ═══════════════════════════════════════════════════════════════════
+async function renderBackendUsersPage() {
+  // Hide the legacy localStorage settings section + use existing roles table render
+  const appSettings = document.getElementById('appSettingsSection');
+  if (appSettings) appSettings.style.display = 'none';
+
+  // Render roles section using backend (re-use existing rolesTableBody)
+  await _renderBackendRolesTable();
+
+  // Render users section using backend (re-use existing usersTableBody)
+  await _renderBackendUsersTable();
+}
+
+async function _renderBackendRolesTable() {
+  const tbody = document.getElementById('rolesTableBody');
+  if (!tbody) return;
+  try {
+    const roles = await Api.roles.list();
+    const perms = await Api.permissions.list().catch(() => []);
+    window.__rolesCache = { roles, permissions: perms };
+    if (!roles.length) { tbody.innerHTML = '<tr><td colspan="4" class="empty-row">Belum ada role</td></tr>'; return; }
+    tbody.innerHTML = roles.map(r => `
+      <tr>
+        <td><strong>${_escId(r.name)}</strong>
+            ${r.is_system ? '<span style="background:#fef3c7;color:#92400e;padding:1px 6px;border-radius:3px;font-size:10px;font-weight:600;margin-left:4px">SYSTEM</span>' : ''}</td>
+        <td>${_escId(r.description || '')}</td>
+        <td>${(r.permissions||[]).length} permissions</td>
+        <td>
+          <button class="btn-icon" onclick="showRoleModal('${r.id}')" title="${r.is_system?'Lihat':'Edit'}">${r.is_system?'👁':'✏️'}</button>
+          ${r.is_system ? '' : `<button class="btn-icon btn-icon-danger" onclick="deleteRole('${r.id}','${_escId(r.name)}')" title="Hapus">🗑</button>`}
+        </td>
+      </tr>`).join('');
+  } catch (e) { tbody.innerHTML = `<tr><td colspan="4" class="empty-row" style="color:#b91c1c">Gagal: ${_escId(e.message)}</td></tr>`; }
+}
+
+async function _renderBackendUsersTable() {
+  const tbody = document.getElementById('usersTableBody');
+  if (!tbody) return;
+  tbody.innerHTML = '<tr><td colspan="5" class="empty-row">Memuat dari backend...</td></tr>';
+  try {
+    const users = await Api.users.list();
+    if (!users.length) { tbody.innerHTML = '<tr><td colspan="5" class="empty-row">Belum ada pengguna di tenant ini</td></tr>'; return; }
+    const me = (typeof getCurrentUser === 'function') ? getCurrentUser() : null;
+    tbody.innerHTML = users.map(u => {
+      const initial = (u.full_name || u.email).charAt(0).toUpperCase();
+      const isMe = u.user_id === me?.userId;
+      const lastLogin = u.last_login_at ? new Date(u.last_login_at).toLocaleString('id-ID') : 'Belum pernah';
+      const ownerBadge = u.is_owner ? '<span class="badge-superadmin" style="font-size:10px;padding:1px 6px;margin-left:4px">Owner</span>' : '';
+      const inactiveBadge = !u.is_active ? '<span class="badge" style="font-size:10px;padding:1px 6px;margin-left:4px;background:#fee2e2;color:#991b1b">Nonaktif</span>' : '';
+      const meBadge = isMe ? '<span class="badge badge-neutral" style="font-size:10px;padding:2px 6px;margin-left:2px">Anda</span>' : '';
+      const canDeactivate = !isMe && !u.is_owner && u.is_active;
+      const canReactivate = !u.is_active;
+      return `
+        <tr ${!u.is_active?'style="opacity:0.6"':''}>
+          <td>
+            <div class="user-cell">
+              <div class="user-avatar-sm">${_escId(initial)}</div>
+              <div>
+                <div><strong>${_escId(u.full_name || u.email)}</strong> ${ownerBadge}${inactiveBadge}${meBadge}</div>
+                <small style="color:#6b7280">${_escId(u.email)}</small>
+              </div>
+            </div>
+          </td>
+          <td><span class="role-badge role-${_escId(u.role_name.toLowerCase())}">${_escId(u.role_name)}</span></td>
+          <td>${u.invited_at ? new Date(u.invited_at).toLocaleDateString('id-ID') : '-'}</td>
+          <td>${lastLogin}</td>
+          <td class="action-cell">
+            <button class="btn-icon" onclick="showEditUserModal('${u.user_id}')" title="Edit user">✏️</button>
+            ${canDeactivate ? `<button class="btn-icon btn-icon-danger" onclick="deactivateUser('${u.user_id}','${_escId(u.full_name || u.email)}')" title="Nonaktifkan">🚫</button>` : ''}
+            ${canReactivate ? `<button class="btn-icon" onclick="reactivateUser('${u.user_id}','${_escId(u.full_name || u.email)}')" title="Aktifkan kembali">✓</button>` : ''}
+          </td>
+        </tr>`;
+    }).join('');
+  } catch (e) {
+    tbody.innerHTML = `<tr><td colspan="5" class="empty-row" style="color:#b91c1c">Gagal: ${_escId(e.message)}</td></tr>`;
+  }
+}
+
+// ─── Invite (Tambah Pengguna) ─────────────────────────────────
+async function showInviteUserModal() {
+  const roles = (window.__rolesCache?.roles) || (await Api.roles.list().catch(() => []));
+  const roleOpts = roles.map(r => `<option value="${r.id}">${_escId(r.name)}${r.is_system?' (system)':''}</option>`).join('');
+  const html = `
+    <div class="modal-backdrop" id="inviteUserModal" onclick="if(event.target===this)closeInviteUserModal()">
+      <div class="modal-dialog" style="max-width:480px">
+        <div class="modal-header">
+          <h3>Tambah Pengguna Baru</h3>
+          <button class="modal-close" onclick="closeInviteUserModal()">×</button>
+        </div>
+        <div class="modal-body">
+          <div class="form-group"><label>Nama Lengkap *</label>
+            <input class="form-control" id="iuName" placeholder="Misal: Andi Setiawan"></div>
+          <div class="form-group"><label>Email *</label>
+            <input class="form-control" id="iuEmail" type="email" placeholder="email@example.com"></div>
+          <div class="form-group"><label>Role *</label>
+            <select class="form-control" id="iuRole"><option value="">— Pilih role —</option>${roleOpts}</select></div>
+          <div class="form-group">
+            <label><input type="checkbox" id="iuAutoPwd" checked> Auto-generate password (akan ditampilkan setelah simpan)</label>
+          </div>
+          <div class="form-group" id="iuPwdWrap" style="display:none"><label>Password Awal *</label>
+            <input class="form-control" type="text" id="iuPwd" placeholder="min 8 karakter">
+            <small style="color:#6b7280">Bisa di-share via WhatsApp/SMS. User wajib ganti pada login pertama.</small></div>
+          <div id="iuErr" class="form-error" style="display:none"></div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-outline" onclick="closeInviteUserModal()">Batal</button>
+          <button class="btn btn-primary" onclick="submitInviteUser()">Simpan & Buat</button>
+        </div>
+      </div>
+    </div>`;
+  document.body.insertAdjacentHTML('beforeend', html);
+  document.getElementById('iuAutoPwd').addEventListener('change', (e) => {
+    document.getElementById('iuPwdWrap').style.display = e.target.checked ? 'none' : '';
+  });
+}
+
+function closeInviteUserModal() { document.getElementById('inviteUserModal')?.remove(); }
+
+async function submitInviteUser() {
+  const errEl = document.getElementById('iuErr');
+  errEl.style.display = 'none';
+  const name = document.getElementById('iuName').value.trim();
+  const email = document.getElementById('iuEmail').value.trim();
+  const roleId = document.getElementById('iuRole').value;
+  const autoPwd = document.getElementById('iuAutoPwd').checked;
+  const pwd = document.getElementById('iuPwd').value;
+
+  if (!name || !email || !roleId) { errEl.textContent = 'Nama, email, role wajib'; errEl.style.display='block'; return; }
+  if (!autoPwd && (!pwd || pwd.length < 8)) { errEl.textContent = 'Password min 8 karakter'; errEl.style.display='block'; return; }
+
+  const body = { full_name: name, email, role_id: roleId };
+  if (!autoPwd) body.temp_password = pwd;
+
+  try {
+    const result = await Api.users.invite(body);
+    closeInviteUserModal();
+    if (result.temp_password) {
+      // Show modal with temp password (one-time display)
+      const html = `
+        <div class="modal-backdrop" id="iuPwdShow" onclick="if(event.target===this)document.getElementById('iuPwdShow').remove()">
+          <div class="modal-dialog" style="max-width:440px">
+            <div class="modal-header">
+              <h3>✓ User Dibuat</h3>
+              <button class="modal-close" onclick="document.getElementById('iuPwdShow').remove()">×</button>
+            </div>
+            <div class="modal-body">
+              <p><strong>${_escId(result.full_name)}</strong> (${_escId(result.email)}) sudah dibuat dengan role <strong>${_escId(result.role_name)}</strong>.</p>
+              <div style="background:#fef3c7;border-left:4px solid #eab308;padding:12px 16px;margin:12px 0;border-radius:4px">
+                <strong>⚠ Password Awal (sekali tampil):</strong>
+                <div style="font-family:monospace;font-size:18px;font-weight:600;background:#fff;padding:8px;border-radius:4px;margin-top:8px;text-align:center;letter-spacing:1px">${_escId(result.temp_password)}</div>
+                <small style="display:block;margin-top:8px;color:#92400e">Salin sekarang & share ke user (WhatsApp/SMS). User wajib ganti password pada login pertama. Setelah modal ini ditutup, password tidak bisa ditampilkan lagi.</small>
+                <button class="btn btn-sm btn-outline" onclick="navigator.clipboard.writeText('${_escId(result.temp_password)}').then(()=>showToast('Password disalin','success'))" style="margin-top:8px">📋 Salin Password</button>
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button class="btn btn-primary" onclick="document.getElementById('iuPwdShow').remove()">OK</button>
+            </div>
+          </div>
+        </div>`;
+      document.body.insertAdjacentHTML('beforeend', html);
+    } else {
+      showToast(`User ${result.email} berhasil ditambahkan`, 'success');
+    }
+    await _renderBackendUsersTable();
+  } catch (e) {
+    errEl.textContent = e.message; errEl.style.display = 'block';
+  }
+}
+
+// ─── Edit User (full_name + role + active) ─────────────────────
+async function showEditUserModal(userId) {
+  const users = await Api.users.list().catch(() => []);
+  const u = users.find(x => x.user_id === userId);
+  if (!u) { showToast('User tidak ditemukan', 'error'); return; }
+  const roles = (window.__rolesCache?.roles) || (await Api.roles.list().catch(() => []));
+  const roleOpts = roles.map(r => `<option value="${r.id}" ${r.id===u.role_id?'selected':''}>${_escId(r.name)}${r.is_system?' (system)':''}</option>`).join('');
+
+  const html = `
+    <div class="modal-backdrop" id="editUserModal" onclick="if(event.target===this)closeEditUserModal()">
+      <div class="modal-dialog" style="max-width:480px">
+        <div class="modal-header">
+          <h3>Edit Pengguna</h3>
+          <button class="modal-close" onclick="closeEditUserModal()">×</button>
+        </div>
+        <div class="modal-body">
+          <div class="form-group"><label>Email</label>
+            <input class="form-control" value="${_escId(u.email)}" disabled></div>
+          <div class="form-group"><label>Nama Lengkap *</label>
+            <input class="form-control" id="euName" value="${_escId(u.full_name)}"></div>
+          <div class="form-group"><label>Role *</label>
+            <select class="form-control" id="euRole" ${u.is_owner?'disabled':''}>${roleOpts}</select>
+            ${u.is_owner ? '<small style="color:#92400e">⚠ Tenant owner — role tidak bisa diubah.</small>' : ''}</div>
+          <div class="form-group">
+            <label><input type="checkbox" id="euActive" ${u.is_active?'checked':''}> User aktif (login enabled)</label>
+          </div>
+          <div id="euErr" class="form-error" style="display:none"></div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-outline" onclick="closeEditUserModal()">Batal</button>
+          <button class="btn btn-primary" onclick="submitEditUser('${userId}')">Simpan</button>
+        </div>
+      </div>
+    </div>`;
+  document.body.insertAdjacentHTML('beforeend', html);
+}
+
+function closeEditUserModal() { document.getElementById('editUserModal')?.remove(); }
+
+async function submitEditUser(userId) {
+  const errEl = document.getElementById('euErr');
+  errEl.style.display = 'none';
+  const body = {
+    full_name: document.getElementById('euName').value.trim(),
+    is_active: document.getElementById('euActive').checked,
+  };
+  const roleSel = document.getElementById('euRole');
+  if (!roleSel.disabled) body.role_id = roleSel.value;
+  try {
+    await Api.users.update(userId, body);
+    showToast('User diupdate', 'success');
+    closeEditUserModal();
+    await _renderBackendUsersTable();
+  } catch (e) {
+    errEl.textContent = e.message; errEl.style.display = 'block';
+  }
+}
+
+async function deactivateUser(userId, name) {
+  if (!confirm(`Nonaktifkan user "${name}"? User tidak bisa login lagi (refresh tokens di-revoke). Membership tetap untuk audit trail.`)) return;
+  try {
+    await Api.users.deactivate(userId);
+    showToast('User dinonaktifkan', 'success');
+    await _renderBackendUsersTable();
+  } catch (e) { showToast('Gagal: ' + e.message, 'error'); }
+}
+
+async function reactivateUser(userId, name) {
+  if (!confirm(`Aktifkan kembali user "${name}"?`)) return;
+  try {
+    await Api.users.update(userId, {is_active: true});
+    showToast('User diaktifkan', 'success');
+    await _renderBackendUsersTable();
+  } catch (e) { showToast('Gagal: ' + e.message, 'error'); }
+}
+
+// Wrappers untuk button HTML existing — route ke backend versions
+window.openUserModal = function() { showInviteUserModal(); };
+window.openChangePasswordModal = function() { showChangePasswordModal(); };

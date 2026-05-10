@@ -1343,8 +1343,11 @@
     <!-- ===== PAGE: VENDOR BILL ===== -->
     <section class="page" id="page-purchase-bills">
       <div class="page-header">
-        <h2>Vendor Bill</h2>
+        <h2>Vendor Bill <small style="font-size:11px;color:#15803d;font-weight:normal">⚡ live dari backend</small></h2>
         <div class="page-actions">
+          <button class="btn btn-outline" onclick="refreshPurchaseFromBackend()" title="Re-fetch dari backend">
+            <i data-feather="refresh-cw"></i> Refresh
+          </button>
           <button class="btn btn-primary" onclick="showBillModal(null)">
             <i data-feather="plus"></i> Buat Bill
           </button>
@@ -1358,9 +1361,11 @@
         <select id="billFilterStatus" class="j-select" onchange="renderVendorBillPage()">
           <option value="">Semua Status</option>
           <option value="draft">Draft</option>
+          <option value="posted">Posted</option>
           <option value="outstanding">Outstanding</option>
           <option value="partial">Partial</option>
           <option value="paid">Paid</option>
+          <option value="cancelled">Cancelled / Void</option>
         </select>
         <input type="date" id="billFilterFrom" class="date-input" onchange="renderVendorBillPage()" />
         <input type="date" id="billFilterTo"   class="date-input" onchange="renderVendorBillPage()" />
@@ -1435,8 +1440,11 @@
     <!-- ===== PAGE: CUSTOMER INVOICE ===== -->
     <section class="page" id="page-customer-invoices">
       <div class="page-header">
-        <h2>Customer Invoice</h2>
+        <h2>Customer Invoice <small style="font-size:11px;color:#15803d;font-weight:normal">⚡ live dari backend</small></h2>
         <div class="page-actions">
+          <button class="btn btn-outline" onclick="refreshSalesFromBackend()" title="Re-fetch dari backend">
+            <i data-feather="refresh-cw"></i> Refresh
+          </button>
           <button class="btn btn-primary" onclick="showInvoiceModal(null)">
             <i data-feather="plus"></i> Buat Invoice
           </button>
@@ -1450,9 +1458,11 @@
         <select id="invFilterStatus" class="j-select" onchange="renderCustomerInvoicePage()">
           <option value="">Semua Status</option>
           <option value="draft">Draft</option>
+          <option value="posted">Posted</option>
           <option value="outstanding">Outstanding</option>
           <option value="partial">Partial</option>
           <option value="paid">Paid</option>
+          <option value="cancelled">Cancelled / Void</option>
         </select>
         <input type="date" id="invFilterFrom" class="date-input" onchange="renderCustomerInvoicePage()" />
         <input type="date" id="invFilterTo"   class="date-input" onchange="renderCustomerInvoicePage()" />
@@ -2584,7 +2594,7 @@
 <div id="sidebar-tooltip"></div>
 
 <!-- Scripts -->
-<script src="js/api.js?v=7"></script>
+<script src="js/api.js?v=8"></script>
 <script src="js/backend-sync.js?v=3"></script>
 <script src="js/backend-loader.js?v=2"></script>
 <script src="js/realtime.js?v=2"></script>
@@ -2598,16 +2608,16 @@
 <script src="js/reports.js?v=7"></script>
 <script src="js/export.js?v=6"></script>
 <script src="js/pos.js?v=10"></script>
-<script src="js/purchase.js?v=10"></script>
-<script src="js/sales.js?v=4"></script>
+<script src="js/purchase.js?v=11"></script>
+<script src="js/sales.js?v=5"></script>
 <script src="js/inventory.js?v=2"></script>
 <script src="js/inventory-extras.js?v=1"></script>
 <script src="js/inventory-operations.js?v=4"></script>
 <script src="js/accounting-extras.js?v=2"></script>
 <script src="js/reports-extras.js?v=1"></script>
-<script src="js/identity-extras.js?v=1"></script>
+<script src="js/identity-extras.js?v=2"></script>
 <script src="js/payments.js?v=2"></script>
-<script src="js/app.js?v=29"></script>
+<script src="js/app.js?v=30"></script>
 <!-- Feather Icons -->
 <script src="https://cdn.jsdelivr.net/npm/feather-icons/dist/feather.min.js"></script>
 <script>
