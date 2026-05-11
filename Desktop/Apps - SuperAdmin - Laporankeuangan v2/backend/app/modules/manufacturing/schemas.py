@@ -1,6 +1,6 @@
-"""Pydantic schemas for manufacturing module (Sprint M1: BOM)."""
+"""Pydantic schemas for manufacturing module (Sprint M1: BOM, M2: MO)."""
 
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Literal
 from uuid import UUID
@@ -59,3 +59,79 @@ class BOMOut(BaseModel):
     notes: str | None
     created_at: datetime
     lines: list[BOMLineOut]
+
+
+# ═══════════════════════════════════════════════════════════════════
+# Manufacturing Order (Sprint M2)
+# ═══════════════════════════════════════════════════════════════════
+
+MOStatus = Literal["draft", "confirmed", "in_progress", "done", "cancelled"]
+
+
+class MOComponentOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    bom_line_id: UUID | None
+    item_id: UUID
+    qty_planned: Decimal
+    qty_issued: Decimal
+    unit_cost: Decimal
+
+
+class MOCreate(BaseModel):
+    mo_no: str | None = Field(default=None, max_length=30)
+    # Either bom_id (explicit) OR item_id (uses the active BOM for that item)
+    bom_id: UUID | None = None
+    item_id: UUID | None = None
+    warehouse_id: UUID
+    qty_planned: Decimal = Field(gt=0)
+    planned_start: date | None = None
+    planned_end: date | None = None
+    backflush: bool = True
+    notes: str | None = Field(default=None, max_length=1000)
+
+
+class MOIssueLine(BaseModel):
+    component_id: UUID
+    qty: Decimal = Field(gt=0)
+
+
+class MOIssueRequest(BaseModel):
+    lines: list[MOIssueLine] = Field(min_length=1)
+
+
+class MOCompleteRequest(BaseModel):
+    qty_produced: Decimal = Field(gt=0)
+    complete_date: date | None = None  # default: today
+
+
+class MOCancelRequest(BaseModel):
+    reason: str = Field(min_length=1, max_length=500)
+
+
+class MOOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    mo_no: str
+    bom_id: UUID
+    item_id: UUID
+    warehouse_id: UUID
+    qty_planned: Decimal
+    qty_produced: Decimal
+    planned_start: date | None
+    planned_end: date | None
+    actual_start: datetime | None
+    actual_end: datetime | None
+    status: MOStatus
+    backflush: bool
+    notes: str | None
+    issue_journal_entry_id: UUID | None
+    receipt_journal_entry_id: UUID | None
+    created_at: datetime
+    confirmed_at: datetime | None
+    done_at: datetime | None
+    cancelled_at: datetime | None
+    cancel_reason: str | None
+    components: list[MOComponentOut]
