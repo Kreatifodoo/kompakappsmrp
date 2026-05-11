@@ -47,12 +47,10 @@ def upgrade() -> None:
             nullable=False,
         ),
         sa.Column("status", sa.String(20), nullable=False, server_default="draft"),
-        sa.Column(
-            "journal_entry_id",
-            postgresql.UUID(as_uuid=True),
-            sa.ForeignKey("journal_entries.id", ondelete="SET NULL"),
-            nullable=True,
-        ),
+        # journal_entries is partitioned (composite PK id+entry_date), so we
+        # cannot use a foreign key. Plain UUID column — same pattern as
+        # sales_invoices / purchase_invoices / payments / pos_orders.
+        sa.Column("journal_entry_id", postgresql.UUID(as_uuid=True), nullable=True),
         sa.Column("notes", sa.String(1000), nullable=True),
         sa.Column(
             "created_by",
