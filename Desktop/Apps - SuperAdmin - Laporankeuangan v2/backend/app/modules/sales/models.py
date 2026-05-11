@@ -86,6 +86,13 @@ class SalesInvoice(Base):
     # Application-level integrity (SalesService) is the source of truth.
     journal_entry_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
 
+    # Strict-mode link: in 'strict' fulfillment_mode, every SI with stock
+    # items must reference a posted DeliveryOrder. Nullable for flexible mode
+    # and non-stock invoices.
+    do_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("delivery_orders.id", ondelete="RESTRICT")
+    )
+
     # Audit
     created_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
     posted_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))

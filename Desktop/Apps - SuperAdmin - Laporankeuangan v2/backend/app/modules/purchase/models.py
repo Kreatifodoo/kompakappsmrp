@@ -87,6 +87,12 @@ class PurchaseInvoice(Base):
     # Application-level integrity (PurchaseService) is the source of truth.
     journal_entry_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
 
+    # Strict-mode link to a posted GoodsReceipt; required for stock-item PIs
+    # under fulfillment_mode='strict'.
+    gr_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("goods_receipts.id", ondelete="RESTRICT")
+    )
+
     created_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
     posted_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
     posted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

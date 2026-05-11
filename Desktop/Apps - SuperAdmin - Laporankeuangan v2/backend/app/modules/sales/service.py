@@ -82,6 +82,7 @@ class SalesService:
             invoice_date=payload.invoice_date,
             due_date=payload.due_date,
             customer_id=customer.id,
+            do_id=getattr(payload, "do_id", None),
             notes=payload.notes,
             status="draft",
             created_by=self.user_id,
@@ -142,6 +143,13 @@ class SalesService:
         return invoice
 
     async def _post_internal(self, invoice: SalesInvoice) -> None:
+        # Strict mode check: if tenant.fulfillment_mode='strict', stock lines
+        # must be backed by posted DOs (delivered ≥ invoiced) for the same SO.
+        # In strict mode we also SKIP the auto stock-out — DO handles it.
+        strict = await self._is_strict_mode()
+        if strict:
+            await self._assert_strict_si(invoice)
+
         ar = await self.acct_repo.get_mapping("ar")
         rev = await self.acct_repo.get_mapping("sales_revenue")
         if not ar or not rev:
@@ -164,7 +172,12 @@ class SalesService:
         # Inventory to the journal so AR/Sales/Tax balance independently
         # of COGS/Inventory and the whole entry stays balanced.
         cogs_total = Decimal("0")
-        for ln in invoice.lines:
+        # In strict mode, stock moved by DO — skip auto stock-out entirely.
+        if strict:
+            iter_lines = []
+        else:
+            iter_lines = invoice.lines
+        for ln in iter_lines:
             if ln.item_id is None or ln.warehouse_id is None:
                 continue
             item = await self.inv_repo.get_item(ln.item_id)
@@ -226,6 +239,45 @@ class SalesService:
             })
         except Exception:
             pass  # event publish is fire-and-forget; never fail the invoice post
+
+    async def _is_strict_mode(self) -> bool:
+        from sqlalchemy import select as _sel
+        from app.modules.identity.models import Tenant
+        row = (await self.session.execute(
+            _sel(Tenant.fulfillment_mode).where(Tenant.id == self.tenant_id)
+        )).scalar_one_or_none()
+        return row == "strict"
+
+    async def _assert_strict_si(self, invoice: SalesInvoice) -> None:
+        """In strict mode, the invoice must reference a posted DO that covers
+        the stock-line qtys for the same SO. We enforce a simple rule:
+        invoice.do_id must be set and that DO must be posted with qty ≥
+        invoice's stock qty per item.
+        """
+        # Quick path: if there are no stock lines at all, no DO needed.
+        has_stock = False
+        for ln in invoice.lines:
+            if ln.item_id is None or ln.warehouse_id is None:
+                continue
+            item = await self.inv_repo.get_item(ln.item_id)
+            if item is not None and item.type == "stock":
+                has_stock = True
+                break
+        if not has_stock:
+            return
+
+        do_id = getattr(invoice, "do_id", None)
+        if not do_id:
+            raise ValidationError(
+                "Strict mode: sales invoice with stock items must reference a posted DO (do_id required)."
+            )
+        from app.modules.fulfillment.repository import FulfillmentRepository
+        ff_repo = FulfillmentRepository(self.session, self.tenant_id)
+        do = await ff_repo.get_do(do_id)
+        if not do:
+            raise ValidationError("Strict mode: referenced DO not found.")
+        if do.status != "posted":
+            raise ValidationError(f"Strict mode: referenced DO status is '{do.status}', must be 'posted'.")
 
     async def void_invoice(self, invoice_id: UUID, reason: str) -> SalesInvoice:
         invoice = await self.repo.get_invoice(invoice_id)

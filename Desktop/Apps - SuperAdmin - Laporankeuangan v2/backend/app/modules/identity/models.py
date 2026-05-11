@@ -38,6 +38,9 @@ class Tenant(Base):
     # and LIFO use the stock_cost_layers table; avg writes only to
     # stock_balances.
     costing_method: Mapped[str] = mapped_column(String(10), default="avg", nullable=False)
+    # Fulfillment mode: 'flexible' = SI/PI auto-create stock movement (legacy);
+    # 'strict' = SI/PI no stock movement, DO/GR required first.
+    fulfillment_mode: Mapped[str] = mapped_column(String(10), default="flexible", nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

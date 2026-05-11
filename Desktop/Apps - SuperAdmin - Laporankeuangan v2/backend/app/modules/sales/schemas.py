@@ -77,6 +77,7 @@ class SalesInvoiceCreate(BaseModel):
     invoice_date: date
     due_date: date | None = None
     customer_id: UUID
+    do_id: UUID | None = None  # optional link to a posted DO (required in strict mode for stock items)
     notes: str | None = Field(default=None, max_length=1000)
     lines: list[SalesInvoiceLineIn] = Field(min_length=1)
 
@@ -96,6 +97,7 @@ class SalesInvoiceOut(BaseModel):
     status: InvoiceStatus
     notes: str | None
     journal_entry_id: UUID | None
+    do_id: UUID | None = None
     posted_at: datetime | None
     created_at: datetime
     lines: list[SalesInvoiceLineOut]

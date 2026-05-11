@@ -21,7 +21,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.exceptions import ConflictError, NotFoundError, ValidationError
 from app.modules.accounting.repository import AccountingRepository
 from app.modules.accounting.service import AccountingService
-from app.modules.fulfillment.models import DeliveryOrder, DeliveryOrderLine
+from app.modules.fulfillment.models import (
+    DeliveryOrder,
+    DeliveryOrderLine,
+    RMA,
+    RMALine,
+)
 from app.modules.fulfillment.repository import FulfillmentRepository
 from app.modules.fulfillment.schemas import DeliveryOrderCreate
 from app.modules.inventory.repository import InventoryRepository
@@ -438,3 +443,247 @@ class GoodsReceiptService:
         except Exception:
             pass
         return gr
+
+
+# ═══════════════════════════════════════════════════════════════════
+# RMA Service
+# ═══════════════════════════════════════════════════════════════════
+
+class RMAService:
+    """RMA posting handles two flavours.
+
+    customer_return (RMA-IN):
+      - Source: a posted DO
+      - Stock-in at source DO's unit_cost
+      - Journal: Dr Inventory / Cr COGS (reverse the original sale's COGS)
+
+    supplier_return (RMA-OUT):
+      - Source: a posted GR
+      - Stock-out at source GR's unit_cost
+      - Journal: Dr GR-clearing / Cr Inventory (reverse the original receipt)
+    """
+
+    def __init__(self, session: AsyncSession, tenant_id: UUID, user_id: UUID):
+        self.session = session
+        self.tenant_id = tenant_id
+        self.user_id = user_id
+        self.repo = FulfillmentRepository(session, tenant_id)
+        self.inv_repo = InventoryRepository(session, tenant_id)
+        self.inv_svc = InventoryService(session, tenant_id, user_id)
+        self.acct_repo = AccountingRepository(session, tenant_id)
+        self.acct_svc = AccountingService(session, tenant_id, user_id)
+
+    async def create_rma(self, payload) -> RMA:
+        await assert_period_open(self.session, self.tenant_id, payload.rma_date)
+
+        # XOR validation matching the rma_type
+        if payload.rma_type == "customer_return":
+            if not payload.source_do_id or payload.source_gr_id:
+                raise ValidationError("customer_return requires source_do_id (and no source_gr_id)")
+            src_do = await self.repo.get_do(payload.source_do_id)
+            if not src_do:
+                raise NotFoundError("Source DO not found")
+            if src_do.status != "posted":
+                raise ValidationError("Source DO must be posted")
+        elif payload.rma_type == "supplier_return":
+            if not payload.source_gr_id or payload.source_do_id:
+                raise ValidationError("supplier_return requires source_gr_id (and no source_do_id)")
+            src_gr = await self.repo.get_gr(payload.source_gr_id)
+            if not src_gr:
+                raise NotFoundError("Source GR not found")
+            if src_gr.status != "posted":
+                raise ValidationError("Source GR must be posted")
+        else:
+            raise ValidationError(f"Unknown rma_type '{payload.rma_type}'")
+
+        warehouse = await self.inv_repo.get_warehouse(payload.warehouse_id)
+        if not warehouse or not warehouse.is_active:
+            raise ValidationError("Warehouse not found or inactive")
+
+        # Build line objects with item_id + unit_cost resolved from source line
+        line_objs: list[RMALine] = []
+        for ln in payload.lines:
+            if payload.rma_type == "customer_return":
+                if not ln.source_do_line_id or ln.source_gr_line_id:
+                    raise ValidationError("Each line of customer_return needs source_do_line_id only")
+                src_line = await self.repo.get_do_line(ln.source_do_line_id)
+                if not src_line:
+                    raise NotFoundError(f"Source DO line {ln.source_do_line_id} not found")
+                if src_line.do_id != payload.source_do_id:
+                    raise ValidationError("Source DO line does not belong to source_do_id")
+                if ln.qty_returned > (src_line.qty_delivered or Decimal("0")):
+                    raise ValidationError(
+                        f"qty_returned {ln.qty_returned} exceeds delivered {src_line.qty_delivered}"
+                    )
+                unit_cost = ln.unit_cost if ln.unit_cost is not None else (src_line.unit_cost or Decimal("0"))
+                line_objs.append(RMALine(
+                    source_do_line_id=src_line.id,
+                    item_id=src_line.item_id,
+                    qty_returned=ln.qty_returned,
+                    unit_cost=unit_cost,
+                ))
+            else:  # supplier_return
+                if not ln.source_gr_line_id or ln.source_do_line_id:
+                    raise ValidationError("Each line of supplier_return needs source_gr_line_id only")
+                src_line = await self.repo.get_gr_line(ln.source_gr_line_id)
+                if not src_line:
+                    raise NotFoundError(f"Source GR line {ln.source_gr_line_id} not found")
+                if src_line.gr_id != payload.source_gr_id:
+                    raise ValidationError("Source GR line does not belong to source_gr_id")
+                if ln.qty_returned > (src_line.qty_received or Decimal("0")):
+                    raise ValidationError(
+                        f"qty_returned {ln.qty_returned} exceeds received {src_line.qty_received}"
+                    )
+                unit_cost = ln.unit_cost if ln.unit_cost is not None else (src_line.unit_cost or Decimal("0"))
+                line_objs.append(RMALine(
+                    source_gr_line_id=src_line.id,
+                    item_id=src_line.item_id,
+                    qty_returned=ln.qty_returned,
+                    unit_cost=unit_cost,
+                ))
+
+        rma_no = payload.rma_no or await self.repo.next_rma_no(payload.rma_date.year, payload.rma_type)
+        rma = RMA(
+            tenant_id=self.tenant_id,
+            rma_no=rma_no,
+            rma_type=payload.rma_type,
+            rma_date=payload.rma_date,
+            source_do_id=payload.source_do_id,
+            source_gr_id=payload.source_gr_id,
+            warehouse_id=warehouse.id,
+            status="draft",
+            reason=payload.reason,
+            notes=payload.notes,
+            created_by=self.user_id,
+        )
+        rma.lines = line_objs
+        return await self.repo.add_rma(rma)
+
+    async def post_rma(self, rma_id: UUID) -> RMA:
+        rma = await self.repo.get_rma(rma_id)
+        if not rma:
+            raise NotFoundError("RMA not found")
+        if rma.status == "posted":
+            raise ConflictError("RMA already posted")
+        if rma.status == "void":
+            raise ValidationError("Voided RMA cannot be posted")
+        await assert_period_open(self.session, self.tenant_id, rma.rma_date)
+
+        inv_map = await self.acct_repo.get_mapping("inventory")
+        if not inv_map:
+            raise ValidationError("Account mapping 'inventory' missing")
+
+        if rma.rma_type == "customer_return":
+            cogs_map = await self.acct_repo.get_mapping("cogs")
+            if not cogs_map:
+                raise ValidationError("Account mapping 'cogs' missing")
+            counterpart_id = cogs_map.account_id
+            direction = "in"
+        else:  # supplier_return
+            gr_clr_map = await self.acct_repo.get_mapping("gr_clearing")
+            if not gr_clr_map:
+                raise ValidationError("Account mapping 'gr_clearing' missing")
+            counterpart_id = gr_clr_map.account_id
+            direction = "out"
+
+        total_cost = Decimal("0")
+        for ln in rma.lines:
+            await self.inv_svc.post_movement(
+                StockMovementCreate(
+                    item_id=ln.item_id,
+                    warehouse_id=rma.warehouse_id,
+                    movement_date=rma.rma_date,
+                    direction=direction,
+                    qty=ln.qty_returned,
+                    unit_cost=ln.unit_cost,
+                    notes=f"RMA {rma.rma_no} line",
+                ),
+                source=("customer_return" if rma.rma_type == "customer_return" else "supplier_return"),
+                source_id=rma.id,
+            )
+            total_cost += (ln.qty_returned * ln.unit_cost).quantize(CENT)
+
+        if total_cost > 0:
+            if rma.rma_type == "customer_return":
+                # Dr Inventory / Cr COGS
+                lines = [
+                    (inv_map.account_id, total_cost, Decimal("0")),
+                    (counterpart_id, Decimal("0"), total_cost),
+                ]
+            else:
+                # Dr GR-clearing / Cr Inventory
+                lines = [
+                    (counterpart_id, total_cost, Decimal("0")),
+                    (inv_map.account_id, Decimal("0"), total_cost),
+                ]
+            entry = await self.acct_svc.post_system_journal(
+                entry_date=rma.rma_date,
+                description=f"RMA {rma.rma_no}",
+                lines=lines,
+                source=("customer_return" if rma.rma_type == "customer_return" else "supplier_return"),
+                source_id=rma.id,
+            )
+            rma.journal_entry_id = entry.id
+
+        rma.status = "posted"
+        rma.posted_at = datetime.now(UTC)
+        rma.posted_by = self.user_id
+        await self.session.flush()
+
+        try:
+            from app.core.events import publish
+            await publish("rma.posted", {
+                "tenant_id": str(self.tenant_id),
+                "rma_id": str(rma.id),
+                "rma_no": rma.rma_no,
+                "rma_type": rma.rma_type,
+                "total_cost": float(total_cost),
+            })
+        except Exception:
+            pass
+        return rma
+
+    async def void_rma(self, rma_id: UUID, reason: str) -> RMA:
+        rma = await self.repo.get_rma(rma_id)
+        if not rma:
+            raise NotFoundError("RMA not found")
+        if rma.status == "void":
+            raise ConflictError("RMA already void")
+        await assert_period_open(self.session, self.tenant_id, rma.rma_date)
+
+        if rma.status == "posted":
+            reverse_direction = "out" if rma.rma_type == "customer_return" else "in"
+            for ln in rma.lines:
+                await self.inv_svc.post_movement(
+                    StockMovementCreate(
+                        item_id=ln.item_id,
+                        warehouse_id=rma.warehouse_id,
+                        movement_date=rma.rma_date,
+                        direction=reverse_direction,
+                        qty=ln.qty_returned,
+                        unit_cost=ln.unit_cost,
+                        notes=f"Void RMA {rma.rma_no}",
+                    ),
+                    source=("customer_return_void" if rma.rma_type == "customer_return" else "supplier_return_void"),
+                    source_id=rma.id,
+                )
+            if rma.journal_entry_id:
+                src = "customer_return" if rma.rma_type == "customer_return" else "supplier_return"
+                await self.acct_svc.void_system_journal(src, rma.id, f"Voided: {reason}")
+
+        rma.status = "void"
+        rma.voided_at = datetime.now(UTC)
+        rma.void_reason = reason
+        await self.session.flush()
+
+        try:
+            from app.core.events import publish
+            await publish("rma.voided", {
+                "tenant_id": str(self.tenant_id),
+                "rma_id": str(rma.id),
+                "rma_no": rma.rma_no,
+                "reason": reason,
+            })
+        except Exception:
+            pass
+        return rma

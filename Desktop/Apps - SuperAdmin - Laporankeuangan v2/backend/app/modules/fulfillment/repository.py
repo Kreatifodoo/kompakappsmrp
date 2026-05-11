@@ -7,7 +7,12 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.modules.fulfillment.models import DeliveryOrder, DeliveryOrderLine
+from app.modules.fulfillment.models import (
+    DeliveryOrder,
+    DeliveryOrderLine,
+    RMA,
+    RMALine,
+)
 
 
 class FulfillmentRepository:
@@ -111,6 +116,69 @@ class FulfillmentRepository:
         stmt = select(func.count(GoodsReceipt.id)).where(
             GoodsReceipt.tenant_id == self.tenant_id,
             GoodsReceipt.gr_no.like(f"{prefix}%"),
+        )
+        count = (await self.session.execute(stmt)).scalar_one() or 0
+        return f"{prefix}{count + 1:05d}"
+
+    # ─── DO/GR line lookups (for RMA source cost) ─────────
+    async def get_do_line(self, do_line_id: UUID) -> DeliveryOrderLine | None:
+        stmt = select(DeliveryOrderLine).where(DeliveryOrderLine.id == do_line_id)
+        return (await self.session.execute(stmt)).scalar_one_or_none()
+
+    async def get_gr_line(self, gr_line_id: UUID):
+        from app.modules.fulfillment.models import GoodsReceiptLine
+        stmt = select(GoodsReceiptLine).where(GoodsReceiptLine.id == gr_line_id)
+        return (await self.session.execute(stmt)).scalar_one_or_none()
+
+    # ─── RMA ─────────────────────────────────────────────
+    async def list_rmas(
+        self,
+        *,
+        rma_type: str | None = None,
+        status: str | None = None,
+        source_do_id: UUID | None = None,
+        source_gr_id: UUID | None = None,
+        date_from: date | None = None,
+        date_to: date | None = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> list[RMA]:
+        conds = [RMA.tenant_id == self.tenant_id]
+        if rma_type: conds.append(RMA.rma_type == rma_type)
+        if status: conds.append(RMA.status == status)
+        if source_do_id: conds.append(RMA.source_do_id == source_do_id)
+        if source_gr_id: conds.append(RMA.source_gr_id == source_gr_id)
+        if date_from: conds.append(RMA.rma_date >= date_from)
+        if date_to: conds.append(RMA.rma_date <= date_to)
+        stmt = (
+            select(RMA).where(*conds)
+            .options(selectinload(RMA.lines))
+            .order_by(RMA.rma_date.desc(), RMA.rma_no.desc())
+            .limit(limit).offset(offset)
+        )
+        return list((await self.session.execute(stmt)).scalars().all())
+
+    async def get_rma(self, rma_id: UUID) -> RMA | None:
+        stmt = (
+            select(RMA).where(
+                RMA.id == rma_id,
+                RMA.tenant_id == self.tenant_id,
+            )
+            .options(selectinload(RMA.lines))
+        )
+        return (await self.session.execute(stmt)).scalar_one_or_none()
+
+    async def add_rma(self, rma: RMA) -> RMA:
+        self.session.add(rma)
+        await self.session.flush()
+        return rma
+
+    async def next_rma_no(self, year: int, rma_type: str) -> str:
+        infix = "IN" if rma_type == "customer_return" else "OUT"
+        prefix = f"RMA-{infix}-{year}-"
+        stmt = select(func.count(RMA.id)).where(
+            RMA.tenant_id == self.tenant_id,
+            RMA.rma_no.like(f"{prefix}%"),
         )
         count = (await self.session.execute(stmt)).scalar_one() or 0
         return f"{prefix}{count + 1:05d}"

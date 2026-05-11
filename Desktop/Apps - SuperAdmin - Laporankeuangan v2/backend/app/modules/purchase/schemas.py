@@ -81,6 +81,7 @@ class PurchaseInvoiceCreate(BaseModel):
     invoice_date: date
     due_date: date | None = None
     supplier_id: UUID
+    gr_id: UUID | None = None  # required in strict mode for stock items
     notes: str | None = Field(default=None, max_length=1000)
     lines: list[PurchaseInvoiceLineIn] = Field(min_length=1)
 
@@ -101,6 +102,7 @@ class PurchaseInvoiceOut(BaseModel):
     status: InvoiceStatus
     notes: str | None
     journal_entry_id: UUID | None
+    gr_id: UUID | None = None
     posted_at: datetime | None
     created_at: datetime
     lines: list[PurchaseInvoiceLineOut]

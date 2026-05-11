@@ -93,6 +93,7 @@ class PurchaseService:
             invoice_date=payload.invoice_date,
             due_date=payload.due_date,
             supplier_id=supplier.id,
+            gr_id=getattr(payload, "gr_id", None),
             notes=payload.notes,
             status="draft",
             created_by=self.user_id,
@@ -153,6 +154,10 @@ class PurchaseService:
         return invoice
 
     async def _post_internal(self, invoice: PurchaseInvoice) -> None:
+        strict = await self._is_strict_mode()
+        if strict:
+            await self._assert_strict_pi(invoice)
+
         ap = await self.acct_repo.get_mapping("ap")
         default_exp = await self.acct_repo.get_mapping("purchase_expense")
         if not ap or not default_exp:
@@ -160,16 +165,18 @@ class PurchaseService:
 
         lines: list[tuple[UUID, Decimal, Decimal]] = []
 
-        # Resolve the inventory account once if any line is stock-tracked
+        # Resolve the inventory account once if any line is stock-tracked.
+        # In strict mode, route stock-line debits to gr_clearing (the GR
+        # already hit inventory; PI clears that liability into AP).
         inv_account_id: UUID | None = None
         for ln in invoice.lines:
             if ln.item_id is not None and ln.warehouse_id is not None:
-                # We need it — fetch lazily
                 if inv_account_id is None:
-                    inv_mapping = await self.acct_repo.get_mapping("inventory")
+                    mapping_key = "gr_clearing" if strict else "inventory"
+                    inv_mapping = await self.acct_repo.get_mapping(mapping_key)
                     if not inv_mapping:
                         raise ValidationError(
-                            "Account mapping missing: configure 'inventory' before purchasing stock items"
+                            f"Account mapping missing: configure '{mapping_key}' before posting stock-line PI"
                         )
                     inv_account_id = inv_mapping.account_id
                 break
@@ -217,8 +224,10 @@ class PurchaseService:
 
         # Stock-in movements: one per stock-tracked line, valued at the
         # line's unit_price (this becomes the cost basis for weighted-
-        # average on subsequent receipts).
-        for ln in invoice.lines:
+        # average on subsequent receipts). In strict mode, GR already
+        # moved stock — skip this.
+        stock_iter = [] if strict else invoice.lines
+        for ln in stock_iter:
             if ln.item_id is None or ln.warehouse_id is None:
                 continue
             item = await self.inv_repo.get_item(ln.item_id)
@@ -259,6 +268,40 @@ class PurchaseService:
             })
         except Exception:
             pass
+
+    async def _is_strict_mode(self) -> bool:
+        from sqlalchemy import select as _sel
+        from app.modules.identity.models import Tenant
+        row = (await self.session.execute(
+            _sel(Tenant.fulfillment_mode).where(Tenant.id == self.tenant_id)
+        )).scalar_one_or_none()
+        return row == "strict"
+
+    async def _assert_strict_pi(self, invoice: PurchaseInvoice) -> None:
+        """In strict mode, stock-item PI must reference a posted GR (gr_id)."""
+        has_stock = False
+        for ln in invoice.lines:
+            if ln.item_id is None or ln.warehouse_id is None:
+                continue
+            item = await self.inv_repo.get_item(ln.item_id)
+            if item is not None and item.type == "stock":
+                has_stock = True
+                break
+        if not has_stock:
+            return
+
+        gr_id = getattr(invoice, "gr_id", None)
+        if not gr_id:
+            raise ValidationError(
+                "Strict mode: purchase invoice with stock items must reference a posted GR (gr_id required)."
+            )
+        from app.modules.fulfillment.repository import FulfillmentRepository
+        ff_repo = FulfillmentRepository(self.session, self.tenant_id)
+        gr = await ff_repo.get_gr(gr_id)
+        if not gr:
+            raise ValidationError("Strict mode: referenced GR not found.")
+        if gr.status != "posted":
+            raise ValidationError(f"Strict mode: referenced GR status is '{gr.status}', must be 'posted'.")
 
     async def void_invoice(self, invoice_id: UUID, reason: str) -> PurchaseInvoice:
         invoice = await self.repo.get_invoice(invoice_id)

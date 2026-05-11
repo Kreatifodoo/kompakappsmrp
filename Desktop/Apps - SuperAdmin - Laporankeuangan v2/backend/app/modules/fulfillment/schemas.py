@@ -108,3 +108,65 @@ class GoodsReceiptOut(BaseModel):
 
 class GRVoidRequest(BaseModel):
     reason: str = Field(min_length=1, max_length=500)
+
+
+# ─── RMA ────────────────────────────────────────────────
+RMAType = Literal["customer_return", "supplier_return"]
+RMAStatus = Literal["draft", "posted", "void"]
+
+
+class RMALineIn(BaseModel):
+    # Exactly one of source_do_line_id / source_gr_line_id must be set
+    source_do_line_id: UUID | None = None
+    source_gr_line_id: UUID | None = None
+    qty_returned: Decimal = Field(gt=0)
+    # Optional override — usually take from source line's unit_cost
+    unit_cost: Decimal | None = Field(default=None, ge=0)
+
+
+class RMALineOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    source_do_line_id: UUID | None
+    source_gr_line_id: UUID | None
+    item_id: UUID
+    qty_returned: Decimal
+    unit_cost: Decimal
+
+
+class RMACreate(BaseModel):
+    rma_no: str | None = Field(default=None, max_length=30)
+    rma_type: RMAType
+    rma_date: date
+    source_do_id: UUID | None = None
+    source_gr_id: UUID | None = None
+    warehouse_id: UUID
+    reason: str | None = Field(default=None, max_length=500)
+    notes: str | None = Field(default=None, max_length=1000)
+    lines: list[RMALineIn] = Field(min_length=1)
+
+
+class RMAOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    rma_no: str
+    rma_type: RMAType
+    rma_date: date
+    source_do_id: UUID | None
+    source_gr_id: UUID | None
+    warehouse_id: UUID
+    status: RMAStatus
+    reason: str | None
+    journal_entry_id: UUID | None
+    notes: str | None
+    created_at: datetime
+    posted_at: datetime | None
+    voided_at: datetime | None
+    void_reason: str | None
+    lines: list[RMALineOut]
+
+
+class RMAVoidRequest(BaseModel):
+    reason: str = Field(min_length=1, max_length=500)
