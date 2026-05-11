@@ -42,6 +42,11 @@ PERMISSIONS: list[tuple[str, str]] = [
     # Inventory
     ("inventory.read", "View items, warehouses, stock balances"),
     ("inventory.write", "Create/update items, warehouses, manual stock movements"),
+    # Manufacturing
+    ("mfg.read",   "View BOMs, work centers, manufacturing orders"),
+    ("mfg.write",  "Create/update BOMs and manufacturing orders"),
+    ("mfg.post",   "Confirm / start / issue / complete manufacturing orders"),
+    ("mfg.cancel", "Cancel manufacturing orders (with stock + journal reversal)"),
     # Reports
     ("report.read", "View reports"),
     ("report.export", "Export reports"),
@@ -74,6 +79,10 @@ ROLES: dict[str, list[str]] = {
         "period.close",
         "inventory.read",
         "inventory.write",
+        "mfg.read",
+        "mfg.write",
+        "mfg.post",
+        "mfg.cancel",
     ],
     "staff": [
         "coa.read",
@@ -88,6 +97,8 @@ ROLES: dict[str, list[str]] = {
         "report.read",
         "inventory.read",
         "inventory.write",
+        "mfg.read",
+        "mfg.write",
     ],
     "viewer": [
         "coa.read",
@@ -96,6 +107,7 @@ ROLES: dict[str, list[str]] = {
         "purchase.read",
         "report.read",
         "inventory.read",
+        "mfg.read",
     ],
 }
 
