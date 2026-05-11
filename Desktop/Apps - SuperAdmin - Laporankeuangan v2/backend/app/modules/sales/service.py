@@ -280,3 +280,128 @@ class SalesService:
         except Exception:
             pass
         return invoice
+
+
+# ═══════════════════════════════════════════════════════════════════
+# Sales Order Service (commitment doc — pre-invoice/DO)
+# ═══════════════════════════════════════════════════════════════════
+
+class SalesOrderService:
+    """SO lifecycle: draft → confirmed → partially_delivered → fulfilled.
+    Or: draft → cancelled. SO doesn't create journal/stock — those are
+    done by DeliveryOrderService (DO) and SalesInvoiceService (SI)."""
+
+    def __init__(self, session: AsyncSession, tenant_id: UUID, user_id: UUID):
+        self.session = session
+        self.tenant_id = tenant_id
+        self.user_id = user_id
+        self.repo = SalesRepository(session, tenant_id)
+
+    async def create_order(self, payload):
+        """Create new SO in draft status. Validates customer + items + warehouses."""
+        from decimal import Decimal as _D
+        from app.modules.sales.models import SalesOrder, SalesOrderLine
+
+        # Validate customer
+        customer = await self.repo.get_customer(payload.customer_id)
+        if not customer:
+            raise NotFoundError("Customer not found")
+
+        # Validate items/warehouses + compute totals
+        subtotal = _D("0"); tax_amount = _D("0")
+        line_objs = []
+        for idx, ln in enumerate(payload.lines, start=1):
+            line_total = (ln.qty_ordered * ln.unit_price).quantize(_D("0.01"))
+            line_tax = (line_total * ln.tax_rate / _D("100")).quantize(_D("0.01"))
+            subtotal += line_total
+            tax_amount += line_tax
+            line_objs.append(SalesOrderLine(
+                line_no=idx,
+                item_id=ln.item_id,
+                warehouse_id=ln.warehouse_id,
+                description=ln.description,
+                qty_ordered=ln.qty_ordered,
+                unit_price=ln.unit_price,
+                tax_rate=ln.tax_rate,
+                line_total=line_total,
+            ))
+
+        so_no = payload.so_no or await self.repo.next_so_no(payload.order_date.year)
+        so = SalesOrder(
+            tenant_id=self.tenant_id,
+            so_no=so_no,
+            order_date=payload.order_date,
+            expected_delivery_date=payload.expected_delivery_date,
+            customer_id=customer.id,
+            status="draft",
+            notes=payload.notes,
+            subtotal=subtotal,
+            tax=tax_amount,
+            total=subtotal + tax_amount,
+            created_by=self.user_id,
+        )
+        so.lines = line_objs
+        await self.repo.add_so(so)
+        return so
+
+    async def confirm_order(self, so_id: UUID):
+        so = await self.repo.get_so(so_id)
+        if not so:
+            raise NotFoundError("Sales order not found")
+        if so.status != "draft":
+            raise ConflictError(f"Cannot confirm SO in status '{so.status}'")
+        so.status = "confirmed"
+        so.confirmed_at = datetime.now(UTC)
+        await self.session.flush()
+
+        try:
+            from app.core.events import publish
+            await publish("sales_order.confirmed", {
+                "tenant_id": str(self.tenant_id),
+                "so_id": str(so.id),
+                "so_no": so.so_no,
+                "total": float(so.total),
+            })
+        except Exception:
+            pass
+        return so
+
+    async def cancel_order(self, so_id: UUID, reason: str):
+        so = await self.repo.get_so(so_id)
+        if not so:
+            raise NotFoundError("Sales order not found")
+        if so.status in ("fulfilled", "cancelled"):
+            raise ConflictError(f"Cannot cancel SO in status '{so.status}'")
+        # Block cancel if any line has been delivered
+        from decimal import Decimal as _D
+        if any((ln.qty_delivered or _D("0")) > 0 for ln in so.lines):
+            raise ConflictError(
+                "Cannot cancel SO with already-delivered lines. Void the DOs first."
+            )
+        so.status = "cancelled"
+        so.cancelled_at = datetime.now(UTC)
+        so.cancel_reason = reason
+        await self.session.flush()
+        return so
+
+    async def recompute_fulfillment_status(self, so_id: UUID):
+        """Update SO status based on line qty_delivered counters.
+        Called by DeliveryOrderService after DO post/void."""
+        so = await self.repo.get_so(so_id)
+        if not so or so.status in ("cancelled", "draft"):
+            return so
+        from decimal import Decimal as _D
+        all_fulfilled = all(
+            (ln.qty_delivered or _D("0")) >= ln.qty_ordered for ln in so.lines
+        )
+        any_delivered = any(
+            (ln.qty_delivered or _D("0")) > 0 for ln in so.lines
+        )
+        if all_fulfilled:
+            so.status = "fulfilled"
+        elif any_delivered:
+            so.status = "partially_delivered"
+        else:
+            so.status = "confirmed"
+        await self.session.flush()
+        return so

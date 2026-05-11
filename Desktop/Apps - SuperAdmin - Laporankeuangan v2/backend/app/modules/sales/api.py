@@ -126,3 +126,88 @@ async def void_invoice(
 ) -> SalesInvoiceOut:
     svc = SalesService(session, current.tenant_id, current.user_id)
     return SalesInvoiceOut.model_validate(await svc.void_invoice(invoice_id, payload.reason))
+
+
+# ═══════════════════════════════════════════════════════════════════
+# Sales Orders
+# ═══════════════════════════════════════════════════════════════════
+from app.modules.sales.schemas import (  # noqa: E402
+    SalesOrderCancelRequest,
+    SalesOrderCreate,
+    SalesOrderOut,
+)
+from app.modules.sales.service import SalesOrderService  # noqa: E402
+
+
+@router.get("/sales-orders", response_model=list[SalesOrderOut])
+async def list_sales_orders(
+    customer_id: UUID | None = Query(default=None),
+    status: str | None = Query(default=None),
+    date_from: date | None = Query(default=None),
+    date_to: date | None = Query(default=None),
+    limit: int = Query(default=100, le=500),
+    offset: int = Query(default=0, ge=0),
+    current: CurrentUser = Depends(require_permission("sales.read")),
+    session: AsyncSession = Depends(get_write_session),
+) -> list[SalesOrderOut]:
+    repo = SalesRepository(session, current.tenant_id)
+    sos = await repo.list_sos(
+        customer_id=customer_id, status=status,
+        date_from=date_from, date_to=date_to,
+        limit=limit, offset=offset,
+    )
+    return [SalesOrderOut.model_validate(s) for s in sos]
+
+
+@router.get("/sales-orders/{so_id}", response_model=SalesOrderOut)
+async def get_sales_order(
+    so_id: UUID,
+    current: CurrentUser = Depends(require_permission("sales.read")),
+    session: AsyncSession = Depends(get_write_session),
+) -> SalesOrderOut:
+    repo = SalesRepository(session, current.tenant_id)
+    so = await repo.get_so(so_id)
+    if not so:
+        raise NotFoundError("Sales order not found")
+    return SalesOrderOut.model_validate(so)
+
+
+@router.post("/sales-orders", response_model=SalesOrderOut, status_code=201)
+async def create_sales_order(
+    payload: SalesOrderCreate,
+    confirm: bool = Query(default=False, description="Auto-confirm after create"),
+    current: CurrentUser = Depends(require_permission("sales.write")),
+    session: AsyncSession = Depends(get_write_session),
+) -> SalesOrderOut:
+    svc = SalesOrderService(session, current.tenant_id, current.user_id)
+    so = await svc.create_order(payload)
+    if confirm:
+        await svc.confirm_order(so.id)
+    # Refresh to load lines eagerly for serialization
+    refreshed = await svc.repo.get_so(so.id)
+    return SalesOrderOut.model_validate(refreshed or so)
+
+
+@router.post("/sales-orders/{so_id}/confirm", response_model=SalesOrderOut)
+async def confirm_sales_order(
+    so_id: UUID,
+    current: CurrentUser = Depends(require_permission("sales.write")),
+    session: AsyncSession = Depends(get_write_session),
+) -> SalesOrderOut:
+    svc = SalesOrderService(session, current.tenant_id, current.user_id)
+    so = await svc.confirm_order(so_id)
+    refreshed = await svc.repo.get_so(so.id)
+    return SalesOrderOut.model_validate(refreshed or so)
+
+
+@router.post("/sales-orders/{so_id}/cancel", response_model=SalesOrderOut)
+async def cancel_sales_order(
+    so_id: UUID,
+    payload: SalesOrderCancelRequest,
+    current: CurrentUser = Depends(require_permission("sales.write")),
+    session: AsyncSession = Depends(get_write_session),
+) -> SalesOrderOut:
+    svc = SalesOrderService(session, current.tenant_id, current.user_id)
+    so = await svc.cancel_order(so_id, payload.reason)
+    refreshed = await svc.repo.get_so(so.id)
+    return SalesOrderOut.model_validate(refreshed or so)

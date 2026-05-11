@@ -13,6 +13,7 @@ from app.modules.notifications.api import router as notifications_router
 from app.modules.payments.api import router as payments_router
 from app.modules.periods.api import router as periods_router
 from app.modules.pos.api import router as pos_router
+from app.modules.fulfillment.api import router as fulfillment_router
 from app.modules.purchase.api import router as purchase_router
 from app.modules.realtime import bridge as _rt_bridge  # noqa: F401  register subscribers
 from app.modules.realtime.api import router as realtime_router
@@ -34,3 +35,4 @@ api_v1_router.include_router(inventory_router)
 api_v1_router.include_router(pos_router)
 api_v1_router.include_router(notifications_router)
 api_v1_router.include_router(realtime_router)
+api_v1_router.include_router(fulfillment_router)

@@ -103,3 +103,69 @@ class SalesInvoiceOut(BaseModel):
 
 class InvoiceVoidRequest(BaseModel):
     reason: str = Field(min_length=1, max_length=500)
+
+
+# ═══════════════════════════════════════════════════════════════════
+# Sales Order schemas
+# ═══════════════════════════════════════════════════════════════════
+SalesOrderStatus = Literal[
+    "draft", "confirmed", "partially_delivered", "fulfilled", "cancelled"
+]
+
+
+class SalesOrderLineIn(BaseModel):
+    item_id: UUID
+    warehouse_id: UUID | None = None
+    description: str | None = Field(default=None, max_length=500)
+    qty_ordered: Decimal = Field(gt=0)
+    unit_price: Decimal = Field(ge=0)
+    tax_rate: Decimal = Field(default=Decimal("0"), ge=0, le=100)
+
+
+class SalesOrderLineOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    line_no: int
+    item_id: UUID
+    warehouse_id: UUID | None
+    description: str | None
+    qty_ordered: Decimal
+    qty_delivered: Decimal
+    qty_invoiced: Decimal
+    unit_price: Decimal
+    tax_rate: Decimal
+    line_total: Decimal
+
+
+class SalesOrderCreate(BaseModel):
+    so_no: str | None = Field(default=None, max_length=30)
+    order_date: date
+    expected_delivery_date: date | None = None
+    customer_id: UUID
+    notes: str | None = Field(default=None, max_length=1000)
+    lines: list[SalesOrderLineIn] = Field(min_length=1)
+
+
+class SalesOrderOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    so_no: str
+    order_date: date
+    expected_delivery_date: date | None
+    customer_id: UUID
+    status: SalesOrderStatus
+    notes: str | None
+    subtotal: Decimal
+    tax: Decimal
+    total: Decimal
+    created_at: datetime
+    confirmed_at: datetime | None
+    cancelled_at: datetime | None
+    cancel_reason: str | None
+    lines: list[SalesOrderLineOut]
+
+
+class SalesOrderCancelRequest(BaseModel):
+    reason: str = Field(min_length=1, max_length=500)

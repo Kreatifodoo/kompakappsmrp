@@ -140,3 +140,89 @@ class SalesInvoiceLine(Base):
     )
 
     invoice: Mapped[SalesInvoice] = relationship(back_populates="lines")
+
+
+# ═══════════════════════════════════════════════════════════════════
+# Sales Order (commitment before invoice)
+# ═══════════════════════════════════════════════════════════════════
+
+class SalesOrder(Base):
+    """Sales Order — customer commitment to buy. Pre-invoice document.
+    Drives delivery_orders (1..n DO per SO, partial allowed)."""
+
+    __tablename__ = "sales_orders"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "so_no", name="uq_so_tenant_no"),
+        Index("ix_so_tenant_status", "tenant_id", "status"),
+        Index("ix_so_tenant_customer_date", "tenant_id", "customer_id", "order_date"),
+        CheckConstraint(
+            "status IN ('draft','confirmed','partially_delivered','fulfilled','cancelled')",
+            name="ck_so_status",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+    )
+    so_no: Mapped[str] = mapped_column(String(30), nullable=False)
+    order_date: Mapped[date] = mapped_column(Date, nullable=False)
+    expected_delivery_date: Mapped[date | None] = mapped_column(Date)
+    customer_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("customers.id", ondelete="RESTRICT"), nullable=False
+    )
+    status: Mapped[str] = mapped_column(String(30), nullable=False, default="draft")
+    notes: Mapped[str | None] = mapped_column(String(1000))
+    subtotal: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False, default=Decimal("0"))
+    tax: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False, default=Decimal("0"))
+    total: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False, default=Decimal("0"))
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    cancel_reason: Mapped[str | None] = mapped_column(String(500))
+
+    lines: Mapped[list["SalesOrderLine"]] = relationship(
+        back_populates="order",
+        cascade="all, delete-orphan",
+        order_by="SalesOrderLine.line_no",
+    )
+
+
+class SalesOrderLine(Base):
+    __tablename__ = "sales_order_lines"
+    __table_args__ = (
+        Index("ix_sol_so", "so_id"),
+        CheckConstraint("qty_ordered > 0", name="ck_sol_qty_positive"),
+        CheckConstraint("qty_delivered >= 0", name="ck_sol_delivered_nonneg"),
+        CheckConstraint("qty_invoiced >= 0", name="ck_sol_invoiced_nonneg"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    so_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("sales_orders.id", ondelete="CASCADE"), nullable=False
+    )
+    line_no: Mapped[int] = mapped_column(Integer, nullable=False)
+    item_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("items.id", ondelete="RESTRICT"), nullable=False
+    )
+    warehouse_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("warehouses.id", ondelete="RESTRICT")
+    )
+    description: Mapped[str | None] = mapped_column(String(500))
+    qty_ordered: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
+    qty_delivered: Mapped[Decimal] = mapped_column(
+        Numeric(18, 4), nullable=False, default=Decimal("0")
+    )
+    qty_invoiced: Mapped[Decimal] = mapped_column(
+        Numeric(18, 4), nullable=False, default=Decimal("0")
+    )
+    unit_price: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
+    tax_rate: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False, default=Decimal("0"))
+    line_total: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
+
+    order: Mapped[SalesOrder] = relationship(back_populates="lines")
