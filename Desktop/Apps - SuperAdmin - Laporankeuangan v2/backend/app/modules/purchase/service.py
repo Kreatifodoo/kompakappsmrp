@@ -315,3 +315,122 @@ class PurchaseService:
         except Exception:
             pass
         return invoice
+
+
+# ═══════════════════════════════════════════════════════════════════
+# Purchase Order Service
+# ═══════════════════════════════════════════════════════════════════
+
+class PurchaseOrderService:
+    """PO lifecycle: draft → confirmed → partially_received → fulfilled
+    (or cancelled). Doesn't create journal/stock. Stock comes from GR.
+    """
+
+    def __init__(self, session: AsyncSession, tenant_id: UUID, user_id: UUID):
+        self.session = session
+        self.tenant_id = tenant_id
+        self.user_id = user_id
+        self.repo = PurchaseRepository(session, tenant_id)
+
+    async def create_order(self, payload):
+        from decimal import Decimal as _D
+        from app.modules.purchase.models import PurchaseOrder, PurchaseOrderLine
+
+        supplier = await self.repo.get_supplier(payload.supplier_id)
+        if not supplier:
+            raise NotFoundError("Supplier not found")
+
+        subtotal = _D("0"); tax_amount = _D("0")
+        line_objs = []
+        for idx, ln in enumerate(payload.lines, start=1):
+            line_total = (ln.qty_ordered * ln.unit_price).quantize(_D("0.01"))
+            line_tax = (line_total * ln.tax_rate / _D("100")).quantize(_D("0.01"))
+            subtotal += line_total
+            tax_amount += line_tax
+            line_objs.append(PurchaseOrderLine(
+                line_no=idx,
+                item_id=ln.item_id,
+                warehouse_id=ln.warehouse_id,
+                description=ln.description,
+                qty_ordered=ln.qty_ordered,
+                unit_price=ln.unit_price,
+                tax_rate=ln.tax_rate,
+                line_total=line_total,
+            ))
+
+        po_no = payload.po_no or await self.repo.next_po_no(payload.order_date.year)
+        po = PurchaseOrder(
+            tenant_id=self.tenant_id,
+            po_no=po_no,
+            order_date=payload.order_date,
+            expected_receipt_date=payload.expected_receipt_date,
+            supplier_id=supplier.id,
+            status="draft",
+            notes=payload.notes,
+            subtotal=subtotal,
+            tax=tax_amount,
+            total=subtotal + tax_amount,
+            created_by=self.user_id,
+        )
+        po.lines = line_objs
+        await self.repo.add_po(po)
+        return po
+
+    async def confirm_order(self, po_id: UUID):
+        po = await self.repo.get_po(po_id)
+        if not po:
+            raise NotFoundError("Purchase order not found")
+        if po.status != "draft":
+            raise ConflictError(f"Cannot confirm PO in status '{po.status}'")
+        po.status = "confirmed"
+        po.confirmed_at = datetime.now(UTC)
+        await self.session.flush()
+
+        try:
+            from app.core.events import publish
+            await publish("purchase_order.confirmed", {
+                "tenant_id": str(self.tenant_id),
+                "po_id": str(po.id),
+                "po_no": po.po_no,
+                "total": float(po.total),
+            })
+        except Exception:
+            pass
+        return po
+
+    async def cancel_order(self, po_id: UUID, reason: str):
+        po = await self.repo.get_po(po_id)
+        if not po:
+            raise NotFoundError("Purchase order not found")
+        if po.status in ("fulfilled", "cancelled"):
+            raise ConflictError(f"Cannot cancel PO in status '{po.status}'")
+        from decimal import Decimal as _D
+        if any((ln.qty_received or _D("0")) > 0 for ln in po.lines):
+            raise ConflictError(
+                "Cannot cancel PO with already-received lines. Void the GRs first."
+            )
+        po.status = "cancelled"
+        po.cancelled_at = datetime.now(UTC)
+        po.cancel_reason = reason
+        await self.session.flush()
+        return po
+
+    async def recompute_fulfillment_status(self, po_id: UUID):
+        po = await self.repo.get_po(po_id)
+        if not po or po.status in ("cancelled", "draft"):
+            return po
+        from decimal import Decimal as _D
+        all_fulfilled = all(
+            (ln.qty_received or _D("0")) >= ln.qty_ordered for ln in po.lines
+        )
+        any_received = any(
+            (ln.qty_received or _D("0")) > 0 for ln in po.lines
+        )
+        if all_fulfilled:
+            po.status = "fulfilled"
+        elif any_received:
+            po.status = "partially_received"
+        else:
+            po.status = "confirmed"
+        await self.session.flush()
+        return po

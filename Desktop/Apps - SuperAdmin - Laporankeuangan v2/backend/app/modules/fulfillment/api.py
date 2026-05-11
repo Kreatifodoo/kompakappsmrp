@@ -94,3 +94,84 @@ async def void_delivery_order(
     do = await svc.void_do(do_id, payload.reason)
     refreshed = await svc.repo.get_do(do.id)
     return DeliveryOrderOut.model_validate(refreshed or do)
+
+
+# ─── Goods Receipts ─────────────────────────────────────
+from app.modules.fulfillment.schemas import (  # noqa: E402
+    GoodsReceiptCreate,
+    GoodsReceiptOut,
+    GRVoidRequest,
+)
+from app.modules.fulfillment.service import GoodsReceiptService  # noqa: E402
+
+
+@router.get("/goods-receipts", response_model=list[GoodsReceiptOut])
+async def list_goods_receipts(
+    po_id: UUID | None = Query(default=None),
+    status: str | None = Query(default=None),
+    date_from: date | None = Query(default=None),
+    date_to: date | None = Query(default=None),
+    limit: int = Query(default=100, le=500),
+    offset: int = Query(default=0, ge=0),
+    current: CurrentUser = Depends(require_permission("purchase.read")),
+    session: AsyncSession = Depends(get_write_session),
+) -> list[GoodsReceiptOut]:
+    repo = FulfillmentRepository(session, current.tenant_id)
+    grs = await repo.list_grs(
+        po_id=po_id, status=status, date_from=date_from, date_to=date_to,
+        limit=limit, offset=offset,
+    )
+    return [GoodsReceiptOut.model_validate(g) for g in grs]
+
+
+@router.get("/goods-receipts/{gr_id}", response_model=GoodsReceiptOut)
+async def get_goods_receipt(
+    gr_id: UUID,
+    current: CurrentUser = Depends(require_permission("purchase.read")),
+    session: AsyncSession = Depends(get_write_session),
+) -> GoodsReceiptOut:
+    repo = FulfillmentRepository(session, current.tenant_id)
+    gr = await repo.get_gr(gr_id)
+    if not gr:
+        raise NotFoundError("Goods receipt not found")
+    return GoodsReceiptOut.model_validate(gr)
+
+
+@router.post("/goods-receipts", response_model=GoodsReceiptOut, status_code=201)
+async def create_goods_receipt(
+    payload: GoodsReceiptCreate,
+    post_now: bool = Query(default=False),
+    current: CurrentUser = Depends(require_permission("purchase.write")),
+    session: AsyncSession = Depends(get_write_session),
+) -> GoodsReceiptOut:
+    svc = GoodsReceiptService(session, current.tenant_id, current.user_id)
+    gr = await svc.create_gr(payload)
+    if post_now:
+        await svc.post_gr(gr.id)
+    refreshed = await svc.repo.get_gr(gr.id)
+    return GoodsReceiptOut.model_validate(refreshed or gr)
+
+
+@router.post("/goods-receipts/{gr_id}/post", response_model=GoodsReceiptOut)
+async def post_goods_receipt(
+    gr_id: UUID,
+    current: CurrentUser = Depends(require_permission("purchase.post")),
+    session: AsyncSession = Depends(get_write_session),
+) -> GoodsReceiptOut:
+    svc = GoodsReceiptService(session, current.tenant_id, current.user_id)
+    gr = await svc.post_gr(gr_id)
+    refreshed = await svc.repo.get_gr(gr.id)
+    return GoodsReceiptOut.model_validate(refreshed or gr)
+
+
+@router.post("/goods-receipts/{gr_id}/void", response_model=GoodsReceiptOut)
+async def void_goods_receipt(
+    gr_id: UUID,
+    payload: GRVoidRequest,
+    current: CurrentUser = Depends(require_permission("purchase.post")),
+    session: AsyncSession = Depends(get_write_session),
+) -> GoodsReceiptOut:
+    svc = GoodsReceiptService(session, current.tenant_id, current.user_id)
+    gr = await svc.void_gr(gr_id, payload.reason)
+    refreshed = await svc.repo.get_gr(gr.id)
+    return GoodsReceiptOut.model_validate(refreshed or gr)

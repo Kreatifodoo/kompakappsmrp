@@ -88,3 +88,69 @@ class PurchaseRepository:
         )
         count = (await self.session.execute(stmt)).scalar_one() or 0
         return f"{prefix}{count + 1:05d}"
+
+
+    # ═══════════════════════════════════════════════════════════════
+    # Purchase Orders
+    # ═══════════════════════════════════════════════════════════════
+
+    async def list_pos(
+        self,
+        *,
+        supplier_id: UUID | None = None,
+        status: str | None = None,
+        date_from: date | None = None,
+        date_to: date | None = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> list:
+        from app.modules.purchase.models import PurchaseOrder
+        conds = [PurchaseOrder.tenant_id == self.tenant_id]
+        if supplier_id: conds.append(PurchaseOrder.supplier_id == supplier_id)
+        if status: conds.append(PurchaseOrder.status == status)
+        if date_from: conds.append(PurchaseOrder.order_date >= date_from)
+        if date_to: conds.append(PurchaseOrder.order_date <= date_to)
+        stmt = (
+            select(PurchaseOrder).where(*conds)
+            .options(selectinload(PurchaseOrder.lines))
+            .order_by(PurchaseOrder.order_date.desc(), PurchaseOrder.po_no.desc())
+            .limit(limit).offset(offset)
+        )
+        return list((await self.session.execute(stmt)).scalars().all())
+
+    async def get_po(self, po_id: UUID):
+        from app.modules.purchase.models import PurchaseOrder
+        stmt = (
+            select(PurchaseOrder).where(
+                PurchaseOrder.id == po_id, PurchaseOrder.tenant_id == self.tenant_id
+            )
+            .options(selectinload(PurchaseOrder.lines))
+        )
+        return (await self.session.execute(stmt)).scalar_one_or_none()
+
+    async def get_po_line(self, line_id: UUID):
+        from app.modules.purchase.models import PurchaseOrder, PurchaseOrderLine
+        stmt = (
+            select(PurchaseOrderLine)
+            .join(PurchaseOrder, PurchaseOrderLine.po_id == PurchaseOrder.id)
+            .where(
+                PurchaseOrderLine.id == line_id,
+                PurchaseOrder.tenant_id == self.tenant_id,
+            )
+        )
+        return (await self.session.execute(stmt)).scalar_one_or_none()
+
+    async def add_po(self, po) -> object:
+        self.session.add(po)
+        await self.session.flush()
+        return po
+
+    async def next_po_no(self, year: int) -> str:
+        from app.modules.purchase.models import PurchaseOrder
+        prefix = f"PO-{year}-"
+        stmt = select(func.count(PurchaseOrder.id)).where(
+            PurchaseOrder.tenant_id == self.tenant_id,
+            PurchaseOrder.po_no.like(f"{prefix}%"),
+        )
+        count = (await self.session.execute(stmt)).scalar_one() or 0
+        return f"{prefix}{count + 1:05d}"

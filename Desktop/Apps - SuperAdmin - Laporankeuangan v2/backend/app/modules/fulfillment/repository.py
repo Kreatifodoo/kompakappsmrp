@@ -62,3 +62,55 @@ class FulfillmentRepository:
         )
         count = (await self.session.execute(stmt)).scalar_one() or 0
         return f"{prefix}{count + 1:05d}"
+
+
+    # ─── Goods Receipts ─────────────────────────────────────
+    async def list_grs(
+        self,
+        *,
+        po_id: UUID | None = None,
+        status: str | None = None,
+        date_from: date | None = None,
+        date_to: date | None = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> list:
+        from app.modules.fulfillment.models import GoodsReceipt
+        conds = [GoodsReceipt.tenant_id == self.tenant_id]
+        if po_id: conds.append(GoodsReceipt.po_id == po_id)
+        if status: conds.append(GoodsReceipt.status == status)
+        if date_from: conds.append(GoodsReceipt.receipt_date >= date_from)
+        if date_to: conds.append(GoodsReceipt.receipt_date <= date_to)
+        stmt = (
+            select(GoodsReceipt).where(*conds)
+            .options(selectinload(GoodsReceipt.lines))
+            .order_by(GoodsReceipt.receipt_date.desc(), GoodsReceipt.gr_no.desc())
+            .limit(limit).offset(offset)
+        )
+        return list((await self.session.execute(stmt)).scalars().all())
+
+    async def get_gr(self, gr_id: UUID):
+        from app.modules.fulfillment.models import GoodsReceipt
+        stmt = (
+            select(GoodsReceipt).where(
+                GoodsReceipt.id == gr_id,
+                GoodsReceipt.tenant_id == self.tenant_id,
+            )
+            .options(selectinload(GoodsReceipt.lines))
+        )
+        return (await self.session.execute(stmt)).scalar_one_or_none()
+
+    async def add_gr(self, gr):
+        self.session.add(gr)
+        await self.session.flush()
+        return gr
+
+    async def next_gr_no(self, year: int) -> str:
+        from app.modules.fulfillment.models import GoodsReceipt
+        prefix = f"GR-{year}-"
+        stmt = select(func.count(GoodsReceipt.id)).where(
+            GoodsReceipt.tenant_id == self.tenant_id,
+            GoodsReceipt.gr_no.like(f"{prefix}%"),
+        )
+        count = (await self.session.execute(stmt)).scalar_one() or 0
+        return f"{prefix}{count + 1:05d}"

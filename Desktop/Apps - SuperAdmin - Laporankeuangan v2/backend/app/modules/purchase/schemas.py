@@ -108,3 +108,69 @@ class PurchaseInvoiceOut(BaseModel):
 
 class InvoiceVoidRequest(BaseModel):
     reason: str = Field(min_length=1, max_length=500)
+
+
+# ═══════════════════════════════════════════════════════════════════
+# Purchase Order schemas
+# ═══════════════════════════════════════════════════════════════════
+PurchaseOrderStatus = Literal[
+    "draft", "confirmed", "partially_received", "fulfilled", "cancelled"
+]
+
+
+class PurchaseOrderLineIn(BaseModel):
+    item_id: UUID
+    warehouse_id: UUID | None = None
+    description: str | None = Field(default=None, max_length=500)
+    qty_ordered: Decimal = Field(gt=0)
+    unit_price: Decimal = Field(ge=0)
+    tax_rate: Decimal = Field(default=Decimal("0"), ge=0, le=100)
+
+
+class PurchaseOrderLineOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    line_no: int
+    item_id: UUID
+    warehouse_id: UUID | None
+    description: str | None
+    qty_ordered: Decimal
+    qty_received: Decimal
+    qty_invoiced: Decimal
+    unit_price: Decimal
+    tax_rate: Decimal
+    line_total: Decimal
+
+
+class PurchaseOrderCreate(BaseModel):
+    po_no: str | None = Field(default=None, max_length=30)
+    order_date: date
+    expected_receipt_date: date | None = None
+    supplier_id: UUID
+    notes: str | None = Field(default=None, max_length=1000)
+    lines: list[PurchaseOrderLineIn] = Field(min_length=1)
+
+
+class PurchaseOrderOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    po_no: str
+    order_date: date
+    expected_receipt_date: date | None
+    supplier_id: UUID
+    status: PurchaseOrderStatus
+    notes: str | None
+    subtotal: Decimal
+    tax: Decimal
+    total: Decimal
+    created_at: datetime
+    confirmed_at: datetime | None
+    cancelled_at: datetime | None
+    cancel_reason: str | None
+    lines: list[PurchaseOrderLineOut]
+
+
+class PurchaseOrderCancelRequest(BaseModel):
+    reason: str = Field(min_length=1, max_length=500)
