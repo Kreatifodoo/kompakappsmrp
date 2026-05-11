@@ -132,6 +132,41 @@ const Realtime = (() => {
     on('connected', (d) => {
       console.log('[Realtime] connected to tenant', d.tenant_id);
     });
+
+    // ── Sprint D events: SO / PO / DO / GR / RMA ────────────────
+    on('sales_order.confirmed', (d) => {
+      _refreshCurrentPage(['sales-orders']);
+      _showToast(`📋 SO ${d.so_no || ''} di-confirm`, 'info');
+    });
+    on('purchase_order.confirmed', (d) => {
+      _refreshCurrentPage(['purchase-orders']);
+      _showToast(`📋 PO ${d.po_no || ''} di-confirm`, 'info');
+    });
+    on('delivery_order.posted', (d) => {
+      _refreshCurrentPage(['delivery-orders', 'sales-orders', 'inventory', 'inventory-movements', 'inv-onhand']);
+      _showToast(`🚚 DO ${d.do_no || ''} di-post`, 'success');
+    });
+    on('delivery_order.voided', (d) => {
+      _refreshCurrentPage(['delivery-orders', 'sales-orders', 'inventory', 'inventory-movements']);
+      _showToast(`↩️ DO ${d.do_no || ''} di-void`, 'warning');
+    });
+    on('goods_receipt.posted', (d) => {
+      _refreshCurrentPage(['goods-receipts', 'purchase-orders', 'inventory', 'inventory-movements', 'inv-onhand']);
+      _showToast(`📥 GR ${d.gr_no || ''} di-post`, 'success');
+    });
+    on('goods_receipt.voided', (d) => {
+      _refreshCurrentPage(['goods-receipts', 'purchase-orders', 'inventory', 'inventory-movements']);
+      _showToast(`↩️ GR ${d.gr_no || ''} di-void`, 'warning');
+    });
+    on('rma.posted', (d) => {
+      _refreshCurrentPage(['rmas', 'delivery-orders', 'goods-receipts', 'inventory', 'inv-onhand']);
+      const arrow = d.rma_type === 'customer_return' ? '↩' : '↪';
+      _showToast(`${arrow} RMA ${d.rma_no || ''} di-post`, 'info');
+    });
+    on('rma.voided', (d) => {
+      _refreshCurrentPage(['rmas', 'inventory']);
+      _showToast(`↩️ RMA ${d.rma_no || ''} di-void`, 'warning');
+    });
   }
 
   function _refreshCurrentPage(pages) {

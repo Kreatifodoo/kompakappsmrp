@@ -311,6 +311,51 @@ const Api = {
     list: () => Api.get('/permissions'),
   },
 
+  // ── Sales Orders ──────────────────────────────────────────
+  salesOrders: {
+    list:    (params) => Api.get('/sales-orders' + _qs(params)),
+    get:     (id)     => Api.get(`/sales-orders/${id}`),
+    create:  (body, opts) => Api.post('/sales-orders' + _qs(opts), body),
+    confirm: (id)     => Api.post(`/sales-orders/${id}/confirm`),
+    cancel:  (id, b)  => Api.post(`/sales-orders/${id}/cancel`, b || {reason:'Cancelled from UI'}),
+  },
+
+  // ── Purchase Orders ───────────────────────────────────────
+  purchaseOrders: {
+    list:    (params) => Api.get('/purchase-orders' + _qs(params)),
+    get:     (id)     => Api.get(`/purchase-orders/${id}`),
+    create:  (body, opts) => Api.post('/purchase-orders' + _qs(opts), body),
+    confirm: (id)     => Api.post(`/purchase-orders/${id}/confirm`),
+    cancel:  (id, b)  => Api.post(`/purchase-orders/${id}/cancel`, b || {reason:'Cancelled from UI'}),
+  },
+
+  // ── Delivery Orders ───────────────────────────────────────
+  deliveryOrders: {
+    list:   (params) => Api.get('/delivery-orders' + _qs(params)),
+    get:    (id)     => Api.get(`/delivery-orders/${id}`),
+    create: (body, opts) => Api.post('/delivery-orders' + _qs(opts), body),
+    post:   (id)     => Api.post(`/delivery-orders/${id}/post`),
+    void:   (id, b)  => Api.post(`/delivery-orders/${id}/void`, b || {reason:'Voided from UI'}),
+  },
+
+  // ── Goods Receipts ────────────────────────────────────────
+  goodsReceipts: {
+    list:   (params) => Api.get('/goods-receipts' + _qs(params)),
+    get:    (id)     => Api.get(`/goods-receipts/${id}`),
+    create: (body, opts) => Api.post('/goods-receipts' + _qs(opts), body),
+    post:   (id)     => Api.post(`/goods-receipts/${id}/post`),
+    void:   (id, b)  => Api.post(`/goods-receipts/${id}/void`, b || {reason:'Voided from UI'}),
+  },
+
+  // ── RMAs (Return Merchandise Authorization) ───────────────
+  rmas: {
+    list:   (params) => Api.get('/rmas' + _qs(params)),
+    get:    (id)     => Api.get(`/rmas/${id}`),
+    create: (body, opts) => Api.post('/rmas' + _qs(opts), body),
+    post:   (id)     => Api.post(`/rmas/${id}/post`),
+    void:   (id, b)  => Api.post(`/rmas/${id}/void`, b || {reason:'Voided from UI'}),
+  },
+
   // ── Password reset (forgot/reset flow) ────────────────────
   authPassword: {
     forgot: (email) => Api.post('/auth/forgot-password', {email}),

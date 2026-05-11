@@ -2587,6 +2587,113 @@
   </div>
 </div>
 
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!-- Sprint D: Sales Order / Purchase Order / Delivery Order / GR / RMA -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+
+<section class="page" id="page-sales-orders" style="display:none">
+  <div class="page-header">
+    <h2>Sales Order <small style="font-size:11px;color:#15803d;font-weight:normal">⚡ live dari backend</small></h2>
+    <div class="page-actions">
+      <button class="btn btn-outline" onclick="renderSalesOrderPage()"><i data-feather="refresh-cw"></i> Refresh</button>
+      <button class="btn btn-primary" onclick="showSalesOrderModal()"><i data-feather="plus"></i> Buat SO</button>
+    </div>
+  </div>
+  <div class="report-filter-bar" style="margin-bottom:16px;flex-wrap:wrap;gap:8px">
+    <select id="soFilterCustomer" class="j-select" onchange="renderSalesOrderPage()"><option value="">Semua Customer</option></select>
+    <select id="soFilterStatus" class="j-select" onchange="renderSalesOrderPage()">
+      <option value="">Semua Status</option>
+      <option value="draft">Draft</option>
+      <option value="confirmed">Confirmed</option>
+      <option value="partially_delivered">Partial Delivered</option>
+      <option value="fulfilled">Fulfilled</option>
+      <option value="cancelled">Cancelled</option>
+    </select>
+  </div>
+  <div class="table-card"><div id="soTableWrap"></div></div>
+</section>
+
+<section class="page" id="page-purchase-orders" style="display:none">
+  <div class="page-header">
+    <h2>Purchase Order <small style="font-size:11px;color:#15803d;font-weight:normal">⚡ live dari backend</small></h2>
+    <div class="page-actions">
+      <button class="btn btn-outline" onclick="renderPurchaseOrderPage()"><i data-feather="refresh-cw"></i> Refresh</button>
+      <button class="btn btn-primary" onclick="showPurchaseOrderModal()"><i data-feather="plus"></i> Buat PO</button>
+    </div>
+  </div>
+  <div class="report-filter-bar" style="margin-bottom:16px;flex-wrap:wrap;gap:8px">
+    <select id="poFilterSupplier" class="j-select" onchange="renderPurchaseOrderPage()"><option value="">Semua Supplier</option></select>
+    <select id="poFilterStatus" class="j-select" onchange="renderPurchaseOrderPage()">
+      <option value="">Semua Status</option>
+      <option value="draft">Draft</option>
+      <option value="confirmed">Confirmed</option>
+      <option value="partially_received">Partial Received</option>
+      <option value="fulfilled">Fulfilled</option>
+      <option value="cancelled">Cancelled</option>
+    </select>
+  </div>
+  <div class="table-card"><div id="poTableWrap"></div></div>
+</section>
+
+<section class="page" id="page-delivery-orders" style="display:none">
+  <div class="page-header">
+    <h2>Delivery Order <small style="font-size:11px;color:#15803d;font-weight:normal">⚡ live dari backend</small></h2>
+    <div class="page-actions">
+      <button class="btn btn-outline" onclick="renderDeliveryOrderPage()"><i data-feather="refresh-cw"></i> Refresh</button>
+    </div>
+  </div>
+  <div class="report-filter-bar" style="margin-bottom:16px;gap:8px">
+    <select id="doFilterStatus" class="j-select" onchange="renderDeliveryOrderPage()">
+      <option value="">Semua Status</option>
+      <option value="draft">Draft</option>
+      <option value="posted">Posted</option>
+      <option value="void">Void</option>
+    </select>
+  </div>
+  <div class="table-card"><div id="doTableWrap"></div></div>
+</section>
+
+<section class="page" id="page-goods-receipts" style="display:none">
+  <div class="page-header">
+    <h2>Goods Receipt <small style="font-size:11px;color:#15803d;font-weight:normal">⚡ live dari backend</small></h2>
+    <div class="page-actions">
+      <button class="btn btn-outline" onclick="renderGoodsReceiptPage()"><i data-feather="refresh-cw"></i> Refresh</button>
+    </div>
+  </div>
+  <div class="report-filter-bar" style="margin-bottom:16px;gap:8px">
+    <select id="grFilterStatus" class="j-select" onchange="renderGoodsReceiptPage()">
+      <option value="">Semua Status</option>
+      <option value="draft">Draft</option>
+      <option value="posted">Posted</option>
+      <option value="void">Void</option>
+    </select>
+  </div>
+  <div class="table-card"><div id="grTableWrap"></div></div>
+</section>
+
+<section class="page" id="page-rmas" style="display:none">
+  <div class="page-header">
+    <h2>RMA — Return Merchandise Authorization <small style="font-size:11px;color:#15803d;font-weight:normal">⚡ live dari backend</small></h2>
+    <div class="page-actions">
+      <button class="btn btn-outline" onclick="renderRMAPage()"><i data-feather="refresh-cw"></i> Refresh</button>
+    </div>
+  </div>
+  <div class="report-filter-bar" style="margin-bottom:16px;flex-wrap:wrap;gap:8px">
+    <select id="rmaFilterType" class="j-select" onchange="renderRMAPage()">
+      <option value="">Semua Type</option>
+      <option value="customer_return">Customer Return (IN)</option>
+      <option value="supplier_return">Supplier Return (OUT)</option>
+    </select>
+    <select id="rmaFilterStatus" class="j-select" onchange="renderRMAPage()">
+      <option value="">Semua Status</option>
+      <option value="draft">Draft</option>
+      <option value="posted">Posted</option>
+      <option value="void">Void</option>
+    </select>
+  </div>
+  <div class="table-card"><div id="rmaTableWrap"></div></div>
+</section>
+
 <!-- ===== TOAST ===== -->
 <div class="toast-container" id="toastContainer"></div>
 
@@ -2594,10 +2701,10 @@
 <div id="sidebar-tooltip"></div>
 
 <!-- Scripts -->
-<script src="js/api.js?v=8"></script>
+<script src="js/api.js?v=9"></script>
 <script src="js/backend-sync.js?v=3"></script>
 <script src="js/backend-loader.js?v=2"></script>
-<script src="js/realtime.js?v=2"></script>
+<script src="js/realtime.js?v=3"></script>
 <script src="js/storage.js?v=3"></script>
 <script src="js/license.js?v=2"></script>
 <script src="js/auth.js?v=9"></script>
@@ -2617,7 +2724,9 @@
 <script src="js/reports-extras.js?v=1"></script>
 <script src="js/identity-extras.js?v=2"></script>
 <script src="js/payments.js?v=2"></script>
-<script src="js/app.js?v=30"></script>
+<script src="js/orders.js?v=1"></script>
+<script src="js/fulfillment.js?v=1"></script>
+<script src="js/app.js?v=31"></script>
 <!-- Feather Icons -->
 <script src="https://cdn.jsdelivr.net/npm/feather-icons/dist/feather.min.js"></script>
 <script>

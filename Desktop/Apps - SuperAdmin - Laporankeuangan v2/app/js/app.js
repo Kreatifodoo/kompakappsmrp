@@ -152,7 +152,10 @@ const FLYOUT_GROUPS = {
       { action: 'showFeeMasterModal',   icon: 'percent',  label: '% Biaya' },
       { action: 'showPOSSettingsModal', icon: 'settings', label: 'Setting' },
       { page: 'customer-master',        icon: 'user-check',   label: 'Master Customer' },
+      { page: 'sales-orders',           icon: 'clipboard',    label: 'Sales Order' },
       { page: 'customer-invoices',      icon: 'file-text',    label: 'Customer Invoice' },
+      { page: 'delivery-orders',        icon: 'truck',        label: 'Delivery Order' },
+      { page: 'rmas',                   icon: 'corner-down-left', label: 'RMA (Return)' },
       { page: 'customer-payments',      icon: 'dollar-sign',  label: 'Penerimaan' },
       { page: 'customer-report',        icon: 'bar-chart-2',  label: 'Laporan Invoice' },
     ]
@@ -161,7 +164,9 @@ const FLYOUT_GROUPS = {
     label: 'Purchase',
     items: [
       { page: 'purchase-vendors',  icon: 'users',       label: 'Master Vendor' },
+      { page: 'purchase-orders',   icon: 'clipboard',   label: 'Purchase Order' },
       { page: 'purchase-bills',    icon: 'file-text',   label: 'Vendor Bill' },
+      { page: 'goods-receipts',    icon: 'inbox',       label: 'Goods Receipt' },
       { page: 'purchase-report',   icon: 'bar-chart-2', label: 'Laporan Vendor Bill' },
       { page: 'purchase-payments', icon: 'send',        label: 'Payment' },
     ]
@@ -242,8 +247,10 @@ function closeFlyout() {
 
 function updateGroupActiveState(page) {
   const salesPages     = ['pos', 'pos-products', 'pos-categories', 'pos-payment-methods', 'pos-report',
-                          'customer-master', 'customer-invoices', 'customer-payments', 'customer-report'];
-  const purchasePages  = ['purchase-vendors', 'purchase-bills', 'purchase-payments', 'purchase-report'];
+                          'customer-master', 'customer-invoices', 'customer-payments', 'customer-report',
+                          'sales-orders', 'delivery-orders', 'rmas'];
+  const purchasePages  = ['purchase-vendors', 'purchase-bills', 'purchase-payments', 'purchase-report',
+                          'purchase-orders', 'goods-receipts'];
   const group = salesPages.includes(page) ? 'sales'
     : purchasePages.includes(page) ? 'purchase'
     : 'accounting';
@@ -334,6 +341,11 @@ function navigateTo(page) {
     'payments':              'Pembayaran',
     'payments-in':           'Penerimaan',
     'payments-out':          'Pengeluaran',
+    'sales-orders':          'Sales Order',
+    'purchase-orders':       'Purchase Order',
+    'delivery-orders':       'Delivery Order',
+    'goods-receipts':        'Goods Receipt',
+    'rmas':                  'RMA — Return',
   };
   document.getElementById('pageTitle').textContent = titles[page] || page;
   AppState.currentPage = page;
@@ -391,6 +403,12 @@ function navigateTo(page) {
   if (page === 'customer-invoices') { if (typeof renderCustomerInvoicePage === 'function') renderCustomerInvoicePage(); }
   if (page === 'customer-payments') { if (typeof renderCustomerPaymentPage === 'function') renderCustomerPaymentPage(); }
   if (page === 'customer-report')   { if (typeof renderCustomerReportPage  === 'function') renderCustomerReportPage(); }
+  // Sprint D: SO / PO / DO / GR / RMA
+  if (page === 'sales-orders')      { if (typeof renderSalesOrderPage      === 'function') renderSalesOrderPage(); }
+  if (page === 'purchase-orders')   { if (typeof renderPurchaseOrderPage   === 'function') renderPurchaseOrderPage(); }
+  if (page === 'delivery-orders')   { if (typeof renderDeliveryOrderPage   === 'function') renderDeliveryOrderPage(); }
+  if (page === 'goods-receipts')    { if (typeof renderGoodsReceiptPage    === 'function') renderGoodsReceiptPage(); }
+  if (page === 'rmas')              { if (typeof renderRMAPage             === 'function') renderRMAPage(); }
 
   // Auto-render laporan keuangan saat navigasi ke halaman income/balance/cashflow
   if (page === 'income' && AppState.incomeData) {
