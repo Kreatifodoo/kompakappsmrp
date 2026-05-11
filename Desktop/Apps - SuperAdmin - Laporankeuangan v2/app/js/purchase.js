@@ -477,6 +477,8 @@ function showBillModal(id) {
   document.getElementById('billDate').value    = bill?.date    || _todayStr();
   document.getElementById('billDueDate').value = bill?.dueDate || '';
   document.getElementById('billRef').value     = bill?.ref     || '';
+  // Sprint E: populate posted-GR dropdown (strict-mode link)
+  _loadGRsForBill(bill?.grId || '');
 
   // Build line items
   _billLineCtr = 0;
@@ -488,7 +490,7 @@ function showBillModal(id) {
   }
 
   // Readonly controls for confirmed bills
-  ['billVendorSelect','billDate','billDueDate','billRef'].forEach(elId => {
+  ['billVendorSelect','billDate','billDueDate','billRef','billGrSelect'].forEach(elId => {
     const el = document.getElementById(elId);
     if (el) el.disabled = isConfirmed;
   });
@@ -672,6 +674,7 @@ function _collectBillData() {
   const date     = document.getElementById('billDate').value;
   const dueDate  = document.getElementById('billDueDate').value;
   const ref      = document.getElementById('billRef').value.trim();
+  const grId     = document.getElementById('billGrSelect')?.value || '';
   const vendor   = PurchaseState.vendors.find(v => v.id === vendorId);
 
   if (!vendorId) { showToast('Pilih vendor terlebih dahulu', 'error'); return null; }
@@ -684,8 +687,23 @@ function _collectBillData() {
   const subtotal = _getBillSubtotal();
   const total    = subtotal; // no fees — Purchase module is POS-independent
 
-  return { vendorId, vendorName: vendor.name, date, dueDate, ref, subtotal, appliedFees: [], total };
+  return { vendorId, vendorName: vendor.name, date, dueDate, ref, grId, subtotal, appliedFees: [], total };
 }
+
+// Sprint E: populate posted-GR dropdown in vendor-bill modal
+async function _loadGRsForBill(preselectId) {
+  const sel = document.getElementById('billGrSelect');
+  if (!sel || typeof Api === 'undefined' || !Api.isLoggedIn || !Api.isLoggedIn()) return;
+  try {
+    const grs = await Api.goodsReceipts.list({ status: 'posted', limit: 200 });
+    sel.innerHTML = '<option value="">— tidak terkait GR —</option>' +
+      (Array.isArray(grs) ? grs : []).map(g =>
+        `<option value="${g.id}" ${g.id === preselectId ? 'selected' : ''}>${_escPurchase ? _escPurchase(g.gr_no) : g.gr_no} · ${g.receipt_date || ''}</option>`
+      ).join('');
+  } catch (e) { console.warn('[purchase] failed to load GRs', e); }
+}
+
+function onPiGrChange() { /* no-op for now */ }
 
 function saveBillAsDraft() {
   const hdr = _collectBillData();
@@ -700,10 +718,11 @@ function saveBillAsDraft() {
   }));
   if (_editingBillId) {
     const idx = PurchaseState.bills.findIndex(b => b.id === _editingBillId);
-    if (idx >= 0) PurchaseState.bills[idx] = { ...PurchaseState.bills[idx], ...hdr, items };
+    if (idx >= 0) PurchaseState.bills[idx] = { ...PurchaseState.bills[idx], ...hdr, items, grId: hdr.grId || null };
   } else {
     const newBill = {
       id: _nextBillNumber(), ...hdr, items,
+      grId: hdr.grId || null,
       paidAmount: 0, status: 'draft', journalId: null, journalEntry: null,
       payments: [], confirmedAt: null
     };

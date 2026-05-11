@@ -158,7 +158,10 @@ function loadCustomerData() {
       const n = parseInt((p.journalId || '').replace('JE-REC-', '')) || 0;
       if (n > _recJeCounter) _recJeCounter = n;
     });
-  _restoreCustomerJournalsToState();
+    _restoreCustomerJournalsToState();
+  } catch (e) {
+    console.warn('[sales] loadCustomerData warm-up failed', e);
+  }
 }
 
 // ===== JOURNAL INTEGRATION =====
@@ -480,6 +483,8 @@ function showInvoiceModal(id) {
   document.getElementById('invDate').value    = inv?.date    || _todayStrSales();
   document.getElementById('invDueDate').value = inv?.dueDate || '';
   document.getElementById('invRef').value     = inv?.ref     || '';
+  // Sprint E: populate posted-DO dropdown (strict-mode link)
+  _loadDOsForInvoice(inv?.doId || '');
 
   _invLineCtr = 0;
   if (inv?.items?.length) {
@@ -489,7 +494,7 @@ function showInvoiceModal(id) {
     _addEmptyInvLine();
   }
 
-  ['invCustomerSelect','invDate','invDueDate','invRef'].forEach(elId => {
+  ['invCustomerSelect','invDate','invDueDate','invRef','invDoSelect'].forEach(elId => {
     const el = document.getElementById(elId);
     if (el) el.disabled = isConfirmed;
   });
@@ -680,6 +685,7 @@ function _collectInvData() {
   const date       = document.getElementById('invDate').value;
   const dueDate    = document.getElementById('invDueDate').value;
   const ref        = document.getElementById('invRef').value.trim();
+  const doId       = document.getElementById('invDoSelect')?.value || '';
   const customer   = CustomerState.customers.find(c => c.id === customerId);
 
   if (!customerId)       { showToast('Pilih customer terlebih dahulu', 'error'); return null; }
@@ -687,8 +693,27 @@ function _collectInvData() {
   if (!_invLines.length) { showToast('Tambahkan minimal 1 baris item', 'error'); return null; }
 
   const total = _getInvSubtotal();
-  return { customerId, customerName: customer.name, date, dueDate, ref, total };
+  return { customerId, customerName: customer.name, date, dueDate, ref, doId, total };
 }
+
+// Sprint E: load posted Delivery Orders into the SI modal dropdown.
+// Used by strict-mode tenants — flexible mode treats the field as optional metadata.
+async function _loadDOsForInvoice(preselectId) {
+  const sel = document.getElementById('invDoSelect');
+  if (!sel || typeof Api === 'undefined' || !Api.isLoggedIn || !Api.isLoggedIn()) return;
+  try {
+    const dos = await Api.deliveryOrders.list({ status: 'posted', limit: 200 });
+    sel.innerHTML = '<option value="">— tidak terkait DO —</option>' +
+      (Array.isArray(dos) ? dos : []).map(d =>
+        `<option value="${d.id}" ${d.id === preselectId ? 'selected' : ''}>${_escSales(d.do_no)} · ${d.delivery_date || ''}</option>`
+      ).join('');
+  } catch (e) {
+    console.warn('[sales] failed to load DOs', e);
+  }
+}
+
+// onChange handler (placeholder — future: prefill lines from DO line snapshot)
+function onSiDoChange() { /* no-op for now */ }
 
 function saveInvoiceAsDraft() {
   const hdr = _collectInvData();
@@ -705,10 +730,11 @@ function saveInvoiceAsDraft() {
   }));
   if (_editingInvId) {
     const idx = CustomerState.invoices.findIndex(i => i.id === _editingInvId);
-    if (idx >= 0) CustomerState.invoices[idx] = { ...CustomerState.invoices[idx], ...hdr, items };
+    if (idx >= 0) CustomerState.invoices[idx] = { ...CustomerState.invoices[idx], ...hdr, items, doId: hdr.doId || null };
   } else {
     const inv = {
       id: _nextInvNumber(), ...hdr, items,
+      doId: hdr.doId || null,
       paidAmount: 0, status: 'draft', journalId: null, journalEntry: null,
       payments: [], confirmedAt: null
     };

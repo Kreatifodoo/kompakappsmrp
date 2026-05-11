@@ -277,6 +277,8 @@ const BackendSync = (() => {
       invoice_date: localInv.date || new Date().toISOString().slice(0, 10),
       due_date:     localInv.dueDate || null,
       customer_id:  custBackend.id,
+      // Sprint E: optional link to a posted DO (required for strict-mode tenants with stock items)
+      do_id:        localInv.doId || null,
       notes:        localInv.notes || null,
       lines,
     };
@@ -341,6 +343,8 @@ const BackendSync = (() => {
       due_date:      localBill.dueDate || null,
       supplier_id:   suppBackend.id,
       supplier_invoice_no: localBill.vendorInvoiceNo || null,
+      // Sprint E: optional link to a posted GR (required for strict-mode tenants with stock items)
+      gr_id:         localBill.grId || null,
       notes:         localBill.notes || null,
       lines,
     };

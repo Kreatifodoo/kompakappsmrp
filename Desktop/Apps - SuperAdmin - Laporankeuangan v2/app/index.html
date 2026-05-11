@@ -2355,6 +2355,15 @@
           <input type="text" id="billRef" placeholder="INV/001" />
         </div>
       </div>
+      <!-- Sprint E: Sumber GR untuk strict-mode tenant (opsional di flexible) -->
+      <div class="form-row" style="grid-template-columns:1fr;gap:12px;margin-bottom:12px">
+        <div class="form-group">
+          <label>Sumber Goods Receipt <small style="color:#6b7280">(wajib di strict-mode bila ada stock item — opsional di flexible)</small></label>
+          <select id="billGrSelect" class="j-select" onchange="onPiGrChange()">
+            <option value="">— tidak terkait GR —</option>
+          </select>
+        </div>
+      </div>
       <!-- Line items table -->
       <div class="table-card" style="margin-bottom:8px;overflow-x:auto">
         <table style="width:100%;min-width:800px">
@@ -2525,6 +2534,15 @@
         <div class="form-group">
           <label>Ref / No. PO</label>
           <input type="text" id="invRef" placeholder="PO-001" />
+        </div>
+      </div>
+      <!-- Sprint E: Sumber DO untuk strict-mode tenant (opsional di flexible) -->
+      <div class="form-row" style="grid-template-columns:1fr;gap:12px;margin-bottom:12px">
+        <div class="form-group">
+          <label>Sumber Delivery Order <small style="color:#6b7280">(wajib di strict-mode bila ada stock item — opsional di flexible)</small></label>
+          <select id="invDoSelect" class="j-select" onchange="onSiDoChange()">
+            <option value="">— tidak terkait DO —</option>
+          </select>
         </div>
       </div>
       <!-- Line items table -->
@@ -2731,7 +2749,7 @@
 
 <!-- Scripts -->
 <script src="js/api.js?v=9"></script>
-<script src="js/backend-sync.js?v=3"></script>
+<script src="js/backend-sync.js?v=4"></script>
 <script src="js/backend-loader.js?v=2"></script>
 <script src="js/realtime.js?v=3"></script>
 <script src="js/storage.js?v=3"></script>
@@ -2744,8 +2762,8 @@
 <script src="js/reports.js?v=7"></script>
 <script src="js/export.js?v=6"></script>
 <script src="js/pos.js?v=10"></script>
-<script src="js/purchase.js?v=11"></script>
-<script src="js/sales.js?v=5"></script>
+<script src="js/purchase.js?v=12"></script>
+<script src="js/sales.js?v=6"></script>
 <script src="js/inventory.js?v=2"></script>
 <script src="js/inventory-extras.js?v=1"></script>
 <script src="js/inventory-operations.js?v=4"></script>
