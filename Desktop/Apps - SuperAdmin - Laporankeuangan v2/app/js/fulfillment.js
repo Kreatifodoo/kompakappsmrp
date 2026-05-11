@@ -555,6 +555,53 @@ async function voidRMA(id) {
   } catch (e) { showToast('Gagal: ' + e.message, 'error'); }
 }
 
+// ════════════════════════════════════════════════════════════════
+// Pipeline KPIs (Dashboard) — Sprint E
+// ════════════════════════════════════════════════════════════════
+async function refreshPipelineKPIs() {
+  if (!Api.isLoggedIn || !Api.isLoggedIn()) return;
+  try {
+    const [sos, pos, dos, grs, rmas] = await Promise.all([
+      Api.salesOrders.list({limit: 500}).catch(() => []),
+      Api.purchaseOrders.list({limit: 500}).catch(() => []),
+      Api.deliveryOrders.list({limit: 500}).catch(() => []),
+      Api.goodsReceipts.list({limit: 500}).catch(() => []),
+      Api.rmas.list({limit: 500}).catch(() => []),
+    ]);
+    const openSO  = (sos  || []).filter(s => ['draft','confirmed','partially_delivered'].includes(s.status)).length;
+    const openPO  = (pos  || []).filter(p => ['draft','confirmed','partially_received'].includes(p.status)).length;
+    const pendDO  = (dos  || []).filter(d => d.status === 'draft').length;
+    const pendGR  = (grs  || []).filter(g => g.status === 'draft').length;
+    const openRMA = (rmas || []).filter(r => r.status === 'draft').length;
+    const setVal = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+    setVal('kpiOpenSO',     openSO);
+    setVal('kpiOpenPO',     openPO);
+    setVal('kpiPendingDO',  pendDO);
+    setVal('kpiPendingGR',  pendGR);
+    setVal('kpiOpenRMA',    openRMA);
+  } catch (e) {
+    console.warn('[pipeline KPI] refresh failed', e);
+  }
+}
+
+// Auto-refresh KPIs whenever Dashboard is shown
+document.addEventListener('DOMContentLoaded', () => {
+  // Initial load when logged in
+  if (Api?.isLoggedIn && Api.isLoggedIn()) {
+    setTimeout(refreshPipelineKPIs, 500);
+  }
+  // Hook into navigation: refresh when entering dashboard
+  const origNav = window.navigateTo;
+  if (typeof origNav === 'function' && !origNav._pipelineHooked) {
+    window.navigateTo = function(page) {
+      const r = origNav.apply(this, arguments);
+      if (page === 'dashboard') refreshPipelineKPIs();
+      return r;
+    };
+    window.navigateTo._pipelineHooked = true;
+  }
+});
+
 async function showRMADetail(id) {
   try {
     const r = await Api.rmas.get(id);

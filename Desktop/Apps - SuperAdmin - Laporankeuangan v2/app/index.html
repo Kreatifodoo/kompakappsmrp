@@ -341,6 +341,35 @@
         </div>
       </div>
 
+      <!-- ===== Pipeline KPIs (Sprint E): SO / PO / DO / GR / RMA ===== -->
+      <div class="kpi-grid" id="pipelineKpiGrid" style="margin-top:16px">
+        <div class="kpi-card" style="cursor:pointer" onclick="navigateTo('sales-orders')">
+          <div class="kpi-label">📋 Open Sales Order</div>
+          <div class="kpi-value" id="kpiOpenSO" style="color:#3b82f6">—</div>
+          <div class="kpi-badge badge-blue" id="kpiOpenSOBadge">draft + confirmed</div>
+        </div>
+        <div class="kpi-card" style="cursor:pointer" onclick="navigateTo('delivery-orders')">
+          <div class="kpi-label">🚚 Pending DO</div>
+          <div class="kpi-value" id="kpiPendingDO" style="color:#f59e0b">—</div>
+          <div class="kpi-badge badge-yellow" id="kpiPendingDOBadge">draft</div>
+        </div>
+        <div class="kpi-card" style="cursor:pointer" onclick="navigateTo('purchase-orders')">
+          <div class="kpi-label">📋 Open Purchase Order</div>
+          <div class="kpi-value" id="kpiOpenPO" style="color:#3b82f6">—</div>
+          <div class="kpi-badge badge-blue" id="kpiOpenPOBadge">draft + confirmed</div>
+        </div>
+        <div class="kpi-card" style="cursor:pointer" onclick="navigateTo('goods-receipts')">
+          <div class="kpi-label">📥 Pending GR</div>
+          <div class="kpi-value" id="kpiPendingGR" style="color:#f59e0b">—</div>
+          <div class="kpi-badge badge-yellow" id="kpiPendingGRBadge">draft</div>
+        </div>
+        <div class="kpi-card" style="cursor:pointer" onclick="navigateTo('rmas')">
+          <div class="kpi-label">↩ Open RMA</div>
+          <div class="kpi-value" id="kpiOpenRMA" style="color:#ef4444">—</div>
+          <div class="kpi-badge badge-red" id="kpiOpenRMABadge">draft</div>
+        </div>
+      </div>
+
       <!-- Charts Row -->
       <div class="charts-row">
         <div class="chart-card chart-lg">
@@ -2725,7 +2754,7 @@
 <script src="js/identity-extras.js?v=2"></script>
 <script src="js/payments.js?v=2"></script>
 <script src="js/orders.js?v=1"></script>
-<script src="js/fulfillment.js?v=1"></script>
+<script src="js/fulfillment.js?v=2"></script>
 <script src="js/app.js?v=31"></script>
 <!-- Feather Icons -->
 <script src="https://cdn.jsdelivr.net/npm/feather-icons/dist/feather.min.js"></script>
