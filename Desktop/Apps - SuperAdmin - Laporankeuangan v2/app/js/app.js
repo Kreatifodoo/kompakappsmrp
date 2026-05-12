@@ -190,8 +190,9 @@ const FLYOUT_GROUPS = {
   manufacturing: {
     label: 'Manufacturing',
     items: [
-      { page: 'bom-master',  icon: 'list',       label: 'BOM Master' },
-      { page: 'mfg-orders',  icon: 'cpu',        label: 'Manufacturing Order' },
+      { page: 'work-centers', icon: 'sliders',    label: 'Work Center' },
+      { page: 'bom-master',   icon: 'list',       label: 'BOM Master' },
+      { page: 'mfg-orders',   icon: 'cpu',        label: 'Manufacturing Order' },
     ]
   },
   payments: {
@@ -258,7 +259,7 @@ function updateGroupActiveState(page) {
                           'sales-orders', 'delivery-orders', 'rmas'];
   const purchasePages  = ['purchase-vendors', 'purchase-bills', 'purchase-payments', 'purchase-report',
                           'purchase-orders', 'goods-receipts'];
-  const mfgPages       = ['bom-master', 'mfg-orders'];
+  const mfgPages       = ['bom-master', 'mfg-orders', 'work-centers'];
   const group = salesPages.includes(page) ? 'sales'
     : purchasePages.includes(page) ? 'purchase'
     : mfgPages.includes(page) ? 'manufacturing'
@@ -357,6 +358,7 @@ function navigateTo(page) {
     'rmas':                  'RMA — Return',
     'bom-master':            'BOM Master',
     'mfg-orders':            'Manufacturing Order',
+    'work-centers':          'Work Center',
   };
   document.getElementById('pageTitle').textContent = titles[page] || page;
   AppState.currentPage = page;
@@ -423,6 +425,7 @@ function navigateTo(page) {
   // Sprint M7: Manufacturing
   if (page === 'bom-master')        { if (typeof renderBOMPage             === 'function') renderBOMPage(); }
   if (page === 'mfg-orders')        { if (typeof renderMfgOrderPage        === 'function') renderMfgOrderPage(); }
+  if (page === 'work-centers')      { if (typeof renderWorkCenterPage      === 'function') renderWorkCenterPage(); }
 
   // Auto-render laporan keuangan saat navigasi ke halaman income/balance/cashflow
   if (page === 'income' && AppState.incomeData) {

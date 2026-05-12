@@ -377,6 +377,15 @@ const Api = {
     issue:    (id, body) => Api.post(`/manufacturing-orders/${id}/issue`, body),
     complete: (id, body) => Api.post(`/manufacturing-orders/${id}/complete`, body),
     cancel:   (id, body) => Api.post(`/manufacturing-orders/${id}/cancel`, body || {reason:'Cancelled from UI'}),
+    updateOperations: (id, body) => Api.post(`/manufacturing-orders/${id}/operations/update`, body),
+  },
+
+  // ── Manufacturing: Work Centers ───────────────────────────
+  workCenters: {
+    list:   (params) => Api.get('/work-centers' + _qs(params)),
+    get:    (id)     => Api.get(`/work-centers/${id}`),
+    create: (body)   => Api.post('/work-centers', body),
+    update: (id, b)  => Api.patch(`/work-centers/${id}`, b),
   },
 
   // ── Password reset (forgot/reset flow) ────────────────────

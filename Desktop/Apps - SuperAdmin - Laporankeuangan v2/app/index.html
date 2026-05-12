@@ -2735,6 +2735,17 @@
 <!-- Sprint M7: BOM Master + Manufacturing Order -->
 <!-- ═══════════════════════════════════════════════════════════════ -->
 
+<section class="page" id="page-work-centers">
+  <div class="page-header">
+    <h2>Work Center <small style="font-size:11px;color:#15803d;font-weight:normal">⚡ live dari backend</small></h2>
+    <div class="page-actions">
+      <button class="btn btn-outline" onclick="renderWorkCenterPage()"><i data-feather="refresh-cw"></i> Refresh</button>
+      <button class="btn btn-primary" onclick="showWorkCenterModal(null)"><i data-feather="plus"></i> Buat Work Center</button>
+    </div>
+  </div>
+  <div class="table-card"><div id="wcTableWrap"></div></div>
+</section>
+
 <section class="page" id="page-bom-master">
   <div class="page-header">
     <h2>BOM Master <small style="font-size:11px;color:#15803d;font-weight:normal">⚡ live dari backend</small></h2>
@@ -2806,7 +2817,7 @@
 <div id="sidebar-tooltip"></div>
 
 <!-- Scripts -->
-<script src="js/api.js?v=10"></script>
+<script src="js/api.js?v=11"></script>
 <script src="js/backend-sync.js?v=4"></script>
 <script src="js/backend-loader.js?v=2"></script>
 <script src="js/realtime.js?v=3"></script>
@@ -2831,8 +2842,8 @@
 <script src="js/payments.js?v=2"></script>
 <script src="js/orders.js?v=1"></script>
 <script src="js/fulfillment.js?v=3"></script>
-<script src="js/manufacturing.js?v=2"></script>
-<script src="js/app.js?v=33"></script>
+<script src="js/manufacturing.js?v=3"></script>
+<script src="js/app.js?v=34"></script>
 <!-- Feather Icons -->
 <script src="https://cdn.jsdelivr.net/npm/feather-icons/dist/feather.min.js"></script>
 <script>

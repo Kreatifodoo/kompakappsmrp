@@ -15,21 +15,24 @@ const MfgState = {
   mos: [],
   items: [],
   warehouses: [],
+  workCenters: [],
 };
 
 const _mfgFmtRp = (n) => 'Rp ' + Math.round(n || 0).toLocaleString('id-ID');
 const _mfgEsc   = (s) => String(s ?? '').replace(/[<>&"]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c]));
 const _mfgToday = () => new Date().toISOString().slice(0,10);
 
-async function _mfgEnsureMasters() {
-  if (!MfgState.items.length || !MfgState.warehouses.length) {
+async function _mfgEnsureMasters(force) {
+  if (force || !MfgState.items.length || !MfgState.warehouses.length || !MfgState.workCenters.length) {
     try {
-      const [items, whs] = await Promise.all([
+      const [items, whs, wcs] = await Promise.all([
         Api.items.list({limit: 500}),
         Api.warehouses.list(),
+        Api.workCenters ? Api.workCenters.list({is_active: 'true'}).catch(() => []) : Promise.resolve([]),
       ]);
-      MfgState.items      = Array.isArray(items) ? items : [];
-      MfgState.warehouses = Array.isArray(whs)   ? whs   : [];
+      MfgState.items       = Array.isArray(items) ? items : [];
+      MfgState.warehouses  = Array.isArray(whs)   ? whs   : [];
+      MfgState.workCenters = Array.isArray(wcs)   ? wcs   : [];
     } catch (e) {
       console.warn('[mfg] load masters failed', e);
     }
@@ -363,6 +366,7 @@ async function renderMfgOrderPage() {
             ${m.status === 'draft'     ? `<button class="btn btn-sm btn-primary" style="margin-left:4px" onclick="confirmMO('${m.id}')">Confirm</button>` : ''}
             ${m.status === 'confirmed' ? `<button class="btn btn-sm btn-info" style="margin-left:4px" onclick="startMO('${m.id}')">Start</button>` : ''}
             ${m.status === 'in_progress' ? `<button class="btn btn-sm btn-warning" style="margin-left:4px" onclick="showIssueModal('${m.id}')">Issue</button>` : ''}
+            ${['confirmed','in_progress'].includes(m.status) && (m.operations || []).length > 0 ? `<button class="btn btn-sm btn-info" style="margin-left:4px" onclick="showOperationsModal('${m.id}')">Ops</button>` : ''}
             ${m.status === 'in_progress' ? `<button class="btn btn-sm btn-success" style="margin-left:4px" onclick="showCompleteModal('${m.id}')">Complete</button>` : ''}
             ${['draft','confirmed','in_progress'].includes(m.status) ? `<button class="btn btn-sm btn-danger" style="margin-left:4px" onclick="cancelMO('${m.id}')">Cancel</button>` : ''}
           </td>
@@ -661,6 +665,7 @@ async function showMODetail(id) {
             <div><strong>Issue Journal:</strong> ${m.issue_journal_entry_id ? `<code>${_mfgEsc(m.issue_journal_entry_id.slice(0,8))}</code>` : '-'}</div>
             <div><strong>Receipt Journal:</strong> ${m.receipt_journal_entry_id ? `<code>${_mfgEsc(m.receipt_journal_entry_id.slice(0,8))}</code>` : '-'}</div>
             ${m.variance_journal_entry_id ? `<div><strong>Variance Journal:</strong> <code>${_mfgEsc(m.variance_journal_entry_id.slice(0,8))}</code></div>` : ''}
+            ${m.labor_journal_entry_id ? `<div><strong>Labor Journal:</strong> <code>${_mfgEsc(m.labor_journal_entry_id.slice(0,8))}</code></div>` : ''}
           </div>
           <h4>Komponen ${hasStd ? '<span style="font-size:11px;color:#06b6d4">📊 Standard Cost mode</span>' : '<span style="font-size:11px;color:#6b7280">Actual Cost mode</span>'}</h4>
           <table class="data-table">
@@ -683,13 +688,319 @@ async function showMODetail(id) {
                 <th colspan="6" style="text-align:right;color:${varColor}">Variance${varLabel}</th>
                 <th colspan="2" style="text-align:right;color:${varColor};font-weight:700">${variance >= 0 ? '+' : ''}${_mfgFmtRp(variance)}</th>
               </tr>` : ''}
+              ${m.labor_total_cost != null && parseFloat(m.labor_total_cost) > 0 ? `<tr>
+                <th colspan="6" style="text-align:right;color:#06b6d4">🔧 Labor Cost (Cr mfg_labor_applied)</th>
+                <th colspan="2" style="text-align:right;color:#06b6d4;font-weight:700">${_mfgFmtRp(m.labor_total_cost)}</th>
+              </tr>` : ''}
             </tfoot>
           </table>
+          ${(m.operations || []).length > 0 ? `
+          <h4 style="margin-top:16px">Operations / Routing</h4>
+          <table class="data-table">
+            <thead><tr>
+              <th>#</th><th>Operasi</th>
+              <th style="text-align:right">Planned (min)</th>
+              <th style="text-align:right">Actual (min)</th>
+              <th style="text-align:right">Cost/Hour</th>
+              <th style="text-align:right">Total</th>
+              <th>Status</th>
+            </tr></thead>
+            <tbody>
+              ${m.operations.map(op => {
+                const cost = (parseFloat(op.actual_time_min || 0) * parseFloat(op.cost_per_hour_snapshot || 0)) / 60;
+                return `<tr>
+                  <td>${op.seq}</td>
+                  <td>${_mfgEsc(op.name)}</td>
+                  <td style="text-align:right">${op.planned_time_min}</td>
+                  <td style="text-align:right">${op.actual_time_min}</td>
+                  <td style="text-align:right">${_mfgFmtRp(op.cost_per_hour_snapshot)}</td>
+                  <td style="text-align:right">${_mfgFmtRp(cost)}</td>
+                  <td>${op.status}</td>
+                </tr>`;
+              }).join('')}
+            </tbody>
+          </table>
+          ` : ''}
           ${m.cancel_reason ? `<p style="margin-top:12px;color:#ef4444"><strong>Cancel reason:</strong> ${_mfgEsc(m.cancel_reason)}</p>` : ''}
           ${m.notes ? `<p style="margin-top:12px"><strong>Notes:</strong> ${_mfgEsc(m.notes)}</p>` : ''}
         </div>
       </div>
     </div>`;
     document.body.insertAdjacentHTML('beforeend', html);
+  } catch (e) { showToast('Gagal: ' + e.message, 'error'); }
+}
+
+
+// ════════════════════════════════════════════════════════════════
+// WORK CENTER (Sprint M5)
+// ════════════════════════════════════════════════════════════════
+
+async function renderWorkCenterPage() {
+  await _mfgEnsureMasters(true);
+  try {
+    const list = await Api.workCenters.list({});
+    MfgState.workCenters = Array.isArray(list) ? list : [];
+  } catch (e) {
+    showToast('Gagal load Work Center: ' + e.message, 'error');
+    MfgState.workCenters = [];
+  }
+  const wrap = document.getElementById('wcTableWrap');
+  if (!wrap) return;
+  if (!MfgState.workCenters.length) {
+    wrap.innerHTML = `<div style="padding:48px;text-align:center;color:#6b7280">Belum ada Work Center. Klik <strong>"Buat Work Center"</strong>.</div>`;
+    return;
+  }
+  wrap.innerHTML = `
+    <table class="data-table">
+      <thead><tr>
+        <th>Code</th><th>Name</th>
+        <th style="text-align:right">Cost/Hour</th>
+        <th style="text-align:right">Capacity/Day</th>
+        <th>Status</th>
+        <th style="text-align:center">Aksi</th>
+      </tr></thead>
+      <tbody>
+      ${MfgState.workCenters.map(w => `
+        <tr>
+          <td><code>${_mfgEsc(w.code)}</code></td>
+          <td>${_mfgEsc(w.name)}</td>
+          <td style="text-align:right">${_mfgFmtRp(w.cost_per_hour)}</td>
+          <td style="text-align:right">${w.capacity_hours_per_day} jam</td>
+          <td>${w.is_active ? '<span style="color:#10b981;font-weight:600">Active</span>' : '<span style="color:#ef4444">Inactive</span>'}</td>
+          <td style="text-align:center;white-space:nowrap">
+            <button class="btn btn-sm btn-outline" onclick="showWorkCenterModal('${w.id}')">Edit</button>
+            ${w.is_active ? `<button class="btn btn-sm btn-warning" style="margin-left:4px" onclick="toggleWorkCenter('${w.id}',false)">Nonaktifkan</button>` : `<button class="btn btn-sm btn-success" style="margin-left:4px" onclick="toggleWorkCenter('${w.id}',true)">Aktifkan</button>`}
+          </td>
+        </tr>`).join('')}
+      </tbody>
+    </table>`;
+}
+
+function showWorkCenterModal(id) {
+  const wc = id ? MfgState.workCenters.find(w => w.id === id) : null;
+  const html = `
+  <div class="modal-backdrop" id="wcModalBackdrop" onclick="if(event.target===this)this.remove()">
+    <div class="modal-content" style="max-width:560px">
+      <div class="modal-header">
+        <h3>${id ? 'Edit' : 'Buat'} Work Center</h3>
+        <button class="modal-close" onclick="document.getElementById('wcModalBackdrop').remove()">×</button>
+      </div>
+      <div class="modal-body">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div><label>Code</label><input type="text" id="wcCode" value="${_mfgEsc(wc?.code || '')}" class="form-control" ${id?'readonly':''}></div>
+          <div><label>Name</label><input type="text" id="wcName" value="${_mfgEsc(wc?.name || '')}" class="form-control"></div>
+          <div><label>Cost per Hour (Rp)</label><input type="number" step="500" id="wcCost" value="${wc?.cost_per_hour || 0}" class="form-control"></div>
+          <div><label>Capacity (jam/hari)</label><input type="number" step="0.5" id="wcCap" value="${wc?.capacity_hours_per_day || 8}" class="form-control"></div>
+        </div>
+        <div style="margin-top:12px"><label>Notes</label><textarea id="wcNotes" rows="2" class="form-control">${_mfgEsc(wc?.notes || '')}</textarea></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline" onclick="document.getElementById('wcModalBackdrop').remove()">Tutup</button>
+        <button class="btn btn-primary" onclick="saveWorkCenter('${id || ''}')">Simpan</button>
+      </div>
+    </div>
+  </div>`;
+  document.body.insertAdjacentHTML('beforeend', html);
+}
+
+async function saveWorkCenter(id) {
+  const code = document.getElementById('wcCode').value.trim();
+  const name = document.getElementById('wcName').value.trim();
+  const cost = parseFloat(document.getElementById('wcCost').value) || 0;
+  const cap  = parseFloat(document.getElementById('wcCap').value) || 8;
+  const notes = document.getElementById('wcNotes').value;
+  if (!code || !name) { showToast('Code & name wajib', 'error'); return; }
+  try {
+    if (id) {
+      await Api.workCenters.update(id, { name, cost_per_hour: cost, capacity_hours_per_day: cap, notes: notes || null });
+      showToast('Work center diperbarui', 'success');
+    } else {
+      await Api.workCenters.create({ code, name, cost_per_hour: cost, capacity_hours_per_day: cap, notes: notes || null });
+      showToast('Work center dibuat', 'success');
+    }
+    document.getElementById('wcModalBackdrop')?.remove();
+    renderWorkCenterPage();
+  } catch (e) { showToast('Gagal: ' + e.message, 'error'); }
+}
+
+async function toggleWorkCenter(id, active) {
+  if (!confirm(active ? 'Aktifkan WC ini?' : 'Nonaktifkan WC ini? BOM yang pakai WC ini tidak bisa di-activate sampai diaktifkan lagi.')) return;
+  try {
+    await Api.workCenters.update(id, { is_active: active });
+    showToast(active ? 'WC aktif' : 'WC nonaktif', 'success');
+    renderWorkCenterPage();
+  } catch (e) { showToast('Gagal: ' + e.message, 'error'); }
+}
+
+// ════════════════════════════════════════════════════════════════
+// BOM operations editor (extends Sprint M1/M4 modal)
+// ════════════════════════════════════════════════════════════════
+
+let _bomOps = [];
+
+function _bomOpsRender() {
+  const body = document.getElementById('bomOpsBody');
+  if (!body) return;
+  const wcOpts = MfgState.workCenters.map(w =>
+    `<option value="${w.id}" data-cph="${w.cost_per_hour}">${_mfgEsc(w.code)} — ${_mfgEsc(w.name)} (Rp ${Math.round(w.cost_per_hour).toLocaleString('id-ID')}/jam)</option>`
+  ).join('');
+  body.innerHTML = _bomOps.map((op, idx) => `
+    <tr>
+      <td>${idx+1}</td>
+      <td><input type="text" value="${_mfgEsc(op.name || '')}" placeholder="cth: Cutting" class="form-control" onchange="_bomOpsUpdate(${idx},'name',this.value)"></td>
+      <td><select class="form-control" onchange="_bomOpsUpdate(${idx},'work_center_id',this.value)"><option value="">— pilih —</option>${wcOpts.replace(`value="${op.work_center_id}"`, `value="${op.work_center_id}" selected`)}</select></td>
+      <td><input type="number" step="0.5" value="${op.time_minutes ?? 0}" class="form-control" onchange="_bomOpsUpdate(${idx},'time_minutes',parseFloat(this.value)||0)"></td>
+      <td><input type="number" step="0.5" value="${op.setup_minutes ?? 0}" class="form-control" onchange="_bomOpsUpdate(${idx},'setup_minutes',parseFloat(this.value)||0)"></td>
+      <td><button class="btn btn-sm btn-danger" onclick="_bomOpsRemove(${idx})">×</button></td>
+    </tr>`).join('');
+}
+function _bomOpsUpdate(idx, field, value) { _bomOps[idx][field] = value; }
+function _bomOpsAdd() { _bomOps.push({ name:'', work_center_id:'', time_minutes:0, setup_minutes:0 }); _bomOpsRender(); }
+function _bomOpsRemove(idx) { _bomOps.splice(idx,1); _bomOpsRender(); }
+
+// Hook into the existing showBOMModal: re-render after it inserts, then add the
+// Operations section if not present. We do this with a wrapper.
+const _origShowBOMModal = window.showBOMModal;
+window.showBOMModal = function() {
+  _bomOps = [];
+  _origShowBOMModal();
+  // Inject operations section below components if WC list is available
+  setTimeout(() => {
+    const modal = document.getElementById('bomModalBackdrop');
+    if (!modal) return;
+    const body = modal.querySelector('.modal-body');
+    if (!body) return;
+    if (!MfgState.workCenters.length) {
+      const warn = document.createElement('p');
+      warn.style.cssText = 'font-size:12px;color:#9ca3af;margin-top:12px;border-top:1px dashed #e5e7eb;padding-top:8px';
+      warn.innerHTML = '💡 Tambahkan <strong>Work Center</strong> dulu (sidebar Manufacturing → Work Center) untuk mengaktifkan routing operations & labor cost.';
+      body.appendChild(warn);
+      return;
+    }
+    const opsBlock = document.createElement('div');
+    opsBlock.innerHTML = `
+      <h4 style="margin:16px 0 8px;border-top:1px solid #e5e7eb;padding-top:12px">Operations / Routing (opsional)</h4>
+      <p style="font-size:12px;color:#6b7280;margin-bottom:8px">
+        💡 Tambahkan langkah produksi untuk track labor cost. Kosongkan untuk mode tanpa labor.
+      </p>
+      <table class="data-table">
+        <thead><tr>
+          <th style="width:30px">#</th>
+          <th>Nama Operasi</th>
+          <th>Work Center</th>
+          <th style="width:90px">Time/unit (menit)</th>
+          <th style="width:90px">Setup (menit)</th>
+          <th></th>
+        </tr></thead>
+        <tbody id="bomOpsBody"></tbody>
+      </table>
+      <button class="btn btn-sm btn-outline" onclick="_bomOpsAdd()" style="margin-top:8px">+ Tambah operasi</button>`;
+    body.appendChild(opsBlock);
+    _bomOpsRender();
+  }, 50);
+};
+
+// Wrap saveBOM to include operations payload
+const _origSaveBOM = window.saveBOM;
+window.saveBOM = async function(activate) {
+  // Build operations payload separately, then call original saveBOM
+  // but we need to inject ops into the payload. The cleanest way: monkey-patch
+  // Api.boms.create to add ops once.
+  const validOps = _bomOps.filter(o => o.name && o.work_center_id);
+  if (validOps.length && _bomOps.some(o => !o.name || !o.work_center_id)) {
+    showToast('Setiap operation butuh nama + work center', 'error');
+    return;
+  }
+  const origCreate = Api.boms.create;
+  Api.boms.create = (body, opts) => origCreate({ ...body, operations: validOps.map(o => ({
+    name: o.name,
+    work_center_id: o.work_center_id,
+    time_minutes: parseFloat(o.time_minutes) || 0,
+    setup_minutes: parseFloat(o.setup_minutes) || 0,
+  })) }, opts);
+  try {
+    await _origSaveBOM(activate);
+  } finally {
+    Api.boms.create = origCreate;
+  }
+};
+
+// ════════════════════════════════════════════════════════════════
+// MO operations modal (update actual_time)
+// ════════════════════════════════════════════════════════════════
+
+async function showOperationsModal(moId) {
+  try {
+    const mo = await Api.manufacturingOrders.get(moId);
+    if (!mo.operations || mo.operations.length === 0) {
+      showToast('MO ini tidak punya operations (BOM-nya tidak punya routing)', 'info');
+      return;
+    }
+    const wcMap = Object.fromEntries(MfgState.workCenters.map(w => [w.id, w]));
+    const rows = mo.operations.map(op => {
+      const wc = wcMap[op.work_center_id];
+      return `
+        <tr>
+          <td>${op.seq}</td>
+          <td>${_mfgEsc(op.name)}</td>
+          <td>${wc ? _mfgEsc(wc.code) : op.work_center_id.slice(0,8)}</td>
+          <td style="text-align:right">${op.planned_time_min}</td>
+          <td><input type="number" step="0.5" class="moop-actual form-control" data-op-id="${op.id}" value="${op.actual_time_min || 0}" style="width:80px"></td>
+          <td style="text-align:right">${_mfgFmtRp(op.cost_per_hour_snapshot)}</td>
+          <td>
+            <select class="moop-status form-control" data-op-id="${op.id}">
+              <option value="pending"     ${op.status==='pending'?'selected':''}>Pending</option>
+              <option value="in_progress" ${op.status==='in_progress'?'selected':''}>In Progress</option>
+              <option value="done"        ${op.status==='done'?'selected':''}>Done</option>
+            </select>
+          </td>
+        </tr>`;
+    }).join('');
+    const html = `
+    <div class="modal-backdrop" id="opsModalBackdrop" onclick="if(event.target===this)this.remove()">
+      <div class="modal-content" style="max-width:880px">
+        <div class="modal-header">
+          <h3>Operations — ${_mfgEsc(mo.mo_no)}</h3>
+          <button class="modal-close" onclick="document.getElementById('opsModalBackdrop').remove()">×</button>
+        </div>
+        <div class="modal-body">
+          <p style="color:#6b7280;font-size:13px">Isi <strong>Actual Time (menit)</strong> untuk setiap operasi. Saat MO complete, total labor = Σ(actual × cost_per_hour ÷ 60) → journal <strong>Dr WIP / Cr Labor Applied</strong>.</p>
+          <table class="data-table">
+            <thead><tr>
+              <th>#</th><th>Operasi</th><th>WC</th>
+              <th style="text-align:right">Planned (min)</th>
+              <th>Actual (min)</th>
+              <th style="text-align:right">Rate/hr</th>
+              <th>Status</th>
+            </tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-outline" onclick="document.getElementById('opsModalBackdrop').remove()">Tutup</button>
+          <button class="btn btn-primary" onclick="submitOperationsUpdate('${mo.id}')">Simpan</button>
+        </div>
+      </div>
+    </div>`;
+    document.body.insertAdjacentHTML('beforeend', html);
+  } catch (e) { showToast('Gagal load MO: ' + e.message, 'error'); }
+}
+
+async function submitOperationsUpdate(moId) {
+  const ops = [];
+  document.querySelectorAll('.moop-actual').forEach(inp => {
+    const id = inp.dataset.opId;
+    const status = document.querySelector(`.moop-status[data-op-id="${id}"]`)?.value;
+    ops.push({
+      id,
+      actual_time_min: parseFloat(inp.value) || 0,
+      status,
+    });
+  });
+  try {
+    await Api.manufacturingOrders.updateOperations(moId, { operations: ops });
+    showToast('Operations updated', 'success');
+    document.getElementById('opsModalBackdrop')?.remove();
+    if (AppState.currentPage === 'mfg-orders') renderMfgOrderPage();
   } catch (e) { showToast('Gagal: ' + e.message, 'error'); }
 }
