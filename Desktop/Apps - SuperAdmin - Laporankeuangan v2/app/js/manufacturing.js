@@ -117,6 +117,7 @@ async function renderBOMPage() {
           <td>${(b.created_at || '').slice(0,10)}</td>
           <td style="text-align:center;white-space:nowrap">
             <button class="btn btn-sm btn-outline" onclick="showBOMDetail('${b.id}')">Detail</button>
+            ${b.status === 'draft' ? `<button class="btn btn-sm btn-info" style="margin-left:4px" onclick="showBOMForm('${b.id}')">Edit</button>` : ''}
             ${b.status === 'draft' ? `<button class="btn btn-sm btn-primary" style="margin-left:4px" onclick="activateBOM('${b.id}')">Activate</button>` : ''}
             ${b.status === 'active' ? `<button class="btn btn-sm btn-warning" style="margin-left:4px" onclick="obsoleteBOM('${b.id}')">Obsolete</button>` : ''}
             ${b.status === 'draft' ? `<button class="btn btn-sm btn-danger" style="margin-left:4px" onclick="deleteBOM('${b.id}')">Hapus</button>` : ''}
@@ -1004,3 +1005,287 @@ async function submitOperationsUpdate(moId) {
     if (AppState.currentPage === 'mfg-orders') renderMfgOrderPage();
   } catch (e) { showToast('Gagal: ' + e.message, 'error'); }
 }
+
+
+// ════════════════════════════════════════════════════════════════
+// Sprint F1: Form-page pattern for BOM + MO (replaces modals)
+// ════════════════════════════════════════════════════════════════
+
+let _bomFormEditId = null;   // null = create mode
+let _moFormPrefill = null;   // any pre-fill state for MO create
+
+// ── BOM ─────────────────────────────────────────────────
+function showBOMForm(id) {
+  _bomFormEditId = id || null;
+  navigateTo('bom-form');
+  // renderBOMForm will be called by the route handler.
+}
+
+function exitBOMForm() {
+  // Lightweight dirty check: warn if any line has data
+  const hasData = (_bomLines || []).some(l => l.item_id || (l.qty_required && l.qty_required !== 1));
+  if (hasData && !confirm('Perubahan belum disimpan. Yakin keluar?')) return;
+  _bomFormEditId = null;
+  _bomLines = [];
+  _bomOps = [];
+  navigateTo('bom-master');
+}
+
+async function renderBOMForm() {
+  await _mfgEnsureMasters();
+  const id = _bomFormEditId;
+  let bom = null;
+  if (id) {
+    try { bom = await Api.boms.get(id); } catch (e) { /* not found */ }
+    if (!bom) {
+      showToast('BOM tidak ditemukan', 'error');
+      navigateTo('bom-master');
+      return;
+    }
+    if (bom.status !== 'draft') {
+      showToast(`BOM status "${bom.status}" tidak bisa diedit. Membuka detail saja.`, 'info');
+      navigateTo('bom-master');
+      showBOMDetail(id);
+      return;
+    }
+  }
+
+  // Initialize state
+  _bomLines = bom?.lines?.length ? bom.lines.map(l => ({
+    item_id: l.item_id,
+    qty_required: parseFloat(l.qty_required),
+    scrap_pct: parseFloat(l.scrap_pct || 0),
+    std_unit_cost: l.std_unit_cost ?? '',
+    notes: l.notes || '',
+  })) : [{ item_id:'', qty_required:1, scrap_pct:0, std_unit_cost:'', notes:'' }];
+
+  _bomOps = (bom?.operations || []).map(o => ({
+    name: o.name,
+    work_center_id: o.work_center_id,
+    time_minutes: parseFloat(o.time_minutes || 0),
+    setup_minutes: parseFloat(o.setup_minutes || 0),
+    notes: o.notes || '',
+  }));
+
+  // Set title
+  const titleEl = document.getElementById('bomFormTitle');
+  if (titleEl) titleEl.textContent = id ? `Edit BOM — ${bom.bom_code}` : 'Buat BOM';
+
+  // Render form body
+  const stockItems = MfgState.items.filter(i => i.type === 'stock');
+  const itemOpts = stockItems.map(i => `<option value="${i.id}">${_mfgEsc(i.name)} (${_mfgEsc(i.sku || '-')})</option>`).join('');
+  const body = document.getElementById('bomFormBody');
+  if (!body) return;
+  body.innerHTML = `
+    <div style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:12px;margin-bottom:16px">
+      <div><label>Output Item (yang dihasilkan)</label>
+        <select id="bomOutputItem" class="form-control" ${id?'disabled':''}><option value="">— pilih —</option>${itemOpts}</select>
+      </div>
+      <div><label>Qty Output (per resep)</label>
+        <input type="number" step="0.01" id="bomQtyOutput" value="${bom?.qty_output || 1}" class="form-control">
+      </div>
+      <div><label>BOM Code (opsional)</label>
+        <input type="text" id="bomCode" placeholder="otomatis dari SKU" value="${_mfgEsc(bom?.bom_code || '')}" class="form-control" ${id?'readonly':''}>
+      </div>
+    </div>
+    <h4>Komponen (Bahan Baku)</h4>
+    <p style="font-size:12px;color:#6b7280;margin-bottom:8px">
+      💡 Isi <strong>Std Unit Cost</strong> di SEMUA baris untuk mengaktifkan standard costing + variance journal. Kosongkan semua untuk mode actual cost (default).
+    </p>
+    <table class="data-table">
+      <thead><tr>
+        <th style="width:32%">Item</th>
+        <th style="width:90px">Qty Required</th>
+        <th style="width:75px">Scrap %</th>
+        <th style="width:120px">Std Unit Cost</th>
+        <th>Notes</th>
+        <th></th>
+      </tr></thead>
+      <tbody id="bomLinesBody"></tbody>
+    </table>
+    <button class="btn btn-sm btn-outline" onclick="_bomAddLine()" style="margin-top:8px">+ Tambah komponen</button>
+    ${MfgState.workCenters.length ? `
+      <h4 style="margin-top:24px;border-top:1px solid #e5e7eb;padding-top:16px">Operations / Routing (opsional)</h4>
+      <p style="font-size:12px;color:#6b7280;margin-bottom:8px">
+        💡 Tambahkan langkah produksi untuk track labor cost. Kosongkan untuk mode tanpa labor.
+      </p>
+      <table class="data-table">
+        <thead><tr>
+          <th style="width:30px">#</th>
+          <th>Nama Operasi</th>
+          <th>Work Center</th>
+          <th style="width:120px">Time/unit (menit)</th>
+          <th style="width:100px">Setup (menit)</th>
+          <th></th>
+        </tr></thead>
+        <tbody id="bomOpsBody"></tbody>
+      </table>
+      <button class="btn btn-sm btn-outline" onclick="_bomOpsAdd()" style="margin-top:8px">+ Tambah operasi</button>
+    ` : `
+      <p style="font-size:12px;color:#9ca3af;margin-top:16px;border-top:1px dashed #e5e7eb;padding-top:12px">
+        💡 Tambahkan <strong>Work Center</strong> dulu (sidebar Manufacturing → Work Center) untuk mengaktifkan routing operations & labor cost.
+      </p>
+    `}
+    <div style="margin-top:16px"><label>Catatan</label><textarea id="bomNotes" class="form-control" rows="2">${_mfgEsc(bom?.notes || '')}</textarea></div>
+  `;
+
+  if (bom) {
+    document.getElementById('bomOutputItem').value = bom.item_id;
+  }
+
+  _bomRenderLines();
+  if (MfgState.workCenters.length) _bomOpsRender();
+  if (typeof feather !== 'undefined') feather.replace();
+}
+
+async function submitBOMForm(activate) {
+  const item_id    = document.getElementById('bomOutputItem').value;
+  const qty_output = parseFloat(document.getElementById('bomQtyOutput').value) || 1;
+  const bom_code   = document.getElementById('bomCode').value.trim();
+  const notes      = document.getElementById('bomNotes').value;
+  if (!item_id) { showToast('Output item wajib dipilih', 'error'); return; }
+  const valid = _bomLines.filter(l => l.item_id && l.qty_required > 0);
+  if (!valid.length) { showToast('Minimal 1 komponen valid', 'error'); return; }
+  if (valid.some(l => l.item_id === item_id)) {
+    showToast('Output item tidak boleh muncul sebagai komponen sendiri', 'error');
+    return;
+  }
+  const withStd    = valid.filter(l => l.std_unit_cost !== null && l.std_unit_cost !== '' && !isNaN(parseFloat(l.std_unit_cost)));
+  const withoutStd = valid.filter(l => !(l.std_unit_cost !== null && l.std_unit_cost !== '' && !isNaN(parseFloat(l.std_unit_cost))));
+  if (withStd.length && withoutStd.length) {
+    showToast('Standard cost harus diisi di SEMUA baris atau KOSONG semua.', 'error');
+    return;
+  }
+  const validOps = (_bomOps || []).filter(o => o.name && o.work_center_id);
+  if (validOps.length !== (_bomOps || []).length) {
+    showToast('Setiap operasi butuh nama + work center', 'error');
+    return;
+  }
+
+  const payload = {
+    item_id, qty_output, notes: notes || null,
+    bom_code: bom_code || null,
+    lines: valid.map(l => ({
+      item_id: l.item_id,
+      qty_required: l.qty_required,
+      scrap_pct: l.scrap_pct || 0,
+      std_unit_cost: (l.std_unit_cost === null || l.std_unit_cost === '' || isNaN(parseFloat(l.std_unit_cost)))
+        ? null : parseFloat(l.std_unit_cost),
+      notes: l.notes || null,
+    })),
+    operations: validOps.map(o => ({
+      name: o.name,
+      work_center_id: o.work_center_id,
+      time_minutes: parseFloat(o.time_minutes) || 0,
+      setup_minutes: parseFloat(o.setup_minutes) || 0,
+      notes: o.notes || null,
+    })),
+  };
+
+  try {
+    let res;
+    if (_bomFormEditId) {
+      res = await Api.boms.update(_bomFormEditId, payload);
+      if (activate) await Api.boms.activate(_bomFormEditId);
+      showToast(`BOM ${res.bom_code} ${activate?'di-activate':'diperbarui'}`, 'success');
+    } else {
+      res = await Api.boms.create(payload, activate ? {activate:'true'} : {});
+      showToast(`BOM ${res.bom_code} ${activate?'di-activate':'tersimpan'}`, 'success');
+    }
+    _bomFormEditId = null;
+    _bomLines = [];
+    _bomOps = [];
+    navigateTo('bom-master');
+  } catch (e) { showToast('Gagal: ' + e.message, 'error'); }
+}
+
+
+// ── Manufacturing Order ─────────────────────────────────
+function showMOForm() {
+  _moFormPrefill = null;
+  navigateTo('mo-form');
+}
+
+function exitMOForm() {
+  if (!confirm('Yakin keluar tanpa simpan?')) return;
+  navigateTo('mfg-orders');
+}
+
+async function renderMOForm() {
+  await _mfgEnsureMasters();
+  // Load active BOMs for the picker
+  let activeBoms = [];
+  try {
+    activeBoms = await Api.boms.list({status: 'active', limit: 200});
+  } catch (e) { activeBoms = []; }
+  if (!activeBoms.length) {
+    const body = document.getElementById('moFormBody');
+    if (body) body.innerHTML = `
+      <div style="padding:48px;text-align:center;color:#6b7280">
+        <p>Belum ada BOM <strong>active</strong>. Buat & aktifkan BOM dulu di <a href="#" onclick="navigateTo('bom-master');return false">BOM Master</a>.</p>
+      </div>`;
+    return;
+  }
+  const itemMap = Object.fromEntries(MfgState.items.map(i => [i.id, i.name]));
+  const bomOpts = activeBoms.map(b =>
+    `<option value="${b.id}" data-item="${b.item_id}">${_mfgEsc(b.bom_code)} — ${_mfgEsc(itemMap[b.item_id] || '?')}</option>`).join('');
+  const whOpts = MfgState.warehouses.map(w => `<option value="${w.id}">${_mfgEsc(w.name)}</option>`).join('');
+
+  document.getElementById('moFormTitle').textContent = 'Buat Manufacturing Order';
+  const body = document.getElementById('moFormBody');
+  if (!body) return;
+  body.innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
+      <div><label>BOM (Active)</label>
+        <select id="moBom" class="form-control" onchange="_moPreviewBOM()"><option value="">— pilih —</option>${bomOpts}</select>
+      </div>
+      <div><label>Qty Plan (output)</label>
+        <input type="number" step="1" id="moQtyPlanned" value="1" class="form-control" oninput="_moPreviewBOM()">
+      </div>
+      <div><label>Warehouse</label>
+        <select id="moWarehouse" class="form-control">${whOpts}</select>
+      </div>
+      <div><label>Tanggal Mulai (planned)</label>
+        <input type="date" id="moPlannedStart" value="${_mfgToday()}" class="form-control">
+      </div>
+      <div><label>Tanggal Selesai (planned)</label>
+        <input type="date" id="moPlannedEnd" class="form-control">
+      </div>
+      <div><label style="display:flex;align-items:center;gap:8px;margin-top:24px"><input type="checkbox" id="moBackflush" checked> <span>Backflush (auto-issue saat complete)</span></label></div>
+    </div>
+    <h4>Komponen yang akan dibutuhkan (pratampil)</h4>
+    <div id="moBomPreview" style="font-size:13px;color:#6b7280;padding:12px;border:1px solid #e5e7eb;border-radius:6px;background:#fafafa">Pilih BOM dulu</div>
+    <div style="margin-top:16px"><label>Notes</label><textarea id="moNotes" class="form-control" rows="2"></textarea></div>
+  `;
+  window._activeBoms = activeBoms;
+  if (typeof feather !== 'undefined') feather.replace();
+}
+
+async function submitMOForm(confirmNow) {
+  const bom_id        = document.getElementById('moBom').value;
+  const qty_planned   = parseFloat(document.getElementById('moQtyPlanned').value) || 0;
+  const warehouse_id  = document.getElementById('moWarehouse').value;
+  const planned_start = document.getElementById('moPlannedStart').value;
+  const planned_end   = document.getElementById('moPlannedEnd').value;
+  const backflush     = document.getElementById('moBackflush').checked;
+  const notes         = document.getElementById('moNotes').value;
+  if (!bom_id) { showToast('BOM wajib dipilih', 'error'); return; }
+  if (qty_planned <= 0) { showToast('Qty plan harus > 0', 'error'); return; }
+  if (!warehouse_id) { showToast('Warehouse wajib', 'error'); return; }
+
+  const payload = {
+    bom_id, warehouse_id, qty_planned, backflush,
+    planned_start: planned_start || null,
+    planned_end:   planned_end   || null,
+    notes: notes || null,
+  };
+  try {
+    const res = await Api.manufacturingOrders.create(payload, confirmNow ? {confirm:'true'} : {});
+    showToast(`MO ${res.mo_no} ${confirmNow?'di-confirm':'tersimpan'}`, 'success');
+    navigateTo('mfg-orders');
+  } catch (e) { showToast('Gagal: ' + e.message, 'error'); }
+}
+
+// ── Update BOM detail "Edit" handler to go to form page ───
+//     Old `showBOMDetail` stays as read-only viewer; "Edit" button
+//     inside detail (for draft) is wired via _bomFormEditId.

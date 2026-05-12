@@ -2735,6 +2735,50 @@
 <!-- Sprint M7: BOM Master + Manufacturing Order -->
 <!-- ═══════════════════════════════════════════════════════════════ -->
 
+<!-- ═════ Sprint F1: Form pages (separate from list) ═════ -->
+<style>
+  .form-action-bar {
+    position: sticky; bottom: 0; background: #fff; border-top: 1px solid #e5e7eb;
+    padding: 12px 16px; margin-top: 24px; display: flex; justify-content: flex-end;
+    gap: 8px; z-index: 10;
+  }
+  .form-page-body {
+    background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 20px;
+  }
+  .form-page-body h4 { margin: 16px 0 8px; }
+  .form-page-back-btn { display: inline-flex; align-items: center; gap: 6px; }
+</style>
+
+<section class="page" id="page-bom-form">
+  <div class="page-header">
+    <h2>
+      <button class="btn btn-outline btn-sm form-page-back-btn" onclick="exitBOMForm()"><i data-feather="arrow-left"></i> Kembali ke daftar BOM</button>
+      &nbsp;&nbsp;<span id="bomFormTitle" style="font-size:20px">Buat BOM</span>
+    </h2>
+  </div>
+  <div class="form-page-body" id="bomFormBody"></div>
+  <div class="form-action-bar">
+    <button class="btn btn-outline" onclick="exitBOMForm()">Batal</button>
+    <button class="btn btn-primary" onclick="submitBOMForm(false)">Simpan Draft</button>
+    <button class="btn btn-success" onclick="submitBOMForm(true)">Simpan + Activate</button>
+  </div>
+</section>
+
+<section class="page" id="page-mo-form">
+  <div class="page-header">
+    <h2>
+      <button class="btn btn-outline btn-sm form-page-back-btn" onclick="exitMOForm()"><i data-feather="arrow-left"></i> Kembali ke daftar MO</button>
+      &nbsp;&nbsp;<span id="moFormTitle" style="font-size:20px">Buat Manufacturing Order</span>
+    </h2>
+  </div>
+  <div class="form-page-body" id="moFormBody"></div>
+  <div class="form-action-bar">
+    <button class="btn btn-outline" onclick="exitMOForm()">Batal</button>
+    <button class="btn btn-primary" onclick="submitMOForm(false)">Simpan Draft</button>
+    <button class="btn btn-success" onclick="submitMOForm(true)">Simpan + Confirm</button>
+  </div>
+</section>
+
 <section class="page" id="page-work-centers">
   <div class="page-header">
     <h2>Work Center <small style="font-size:11px;color:#15803d;font-weight:normal">⚡ live dari backend</small></h2>
@@ -2751,7 +2795,7 @@
     <h2>BOM Master <small style="font-size:11px;color:#15803d;font-weight:normal">⚡ live dari backend</small></h2>
     <div class="page-actions">
       <button class="btn btn-outline" onclick="renderBOMPage()"><i data-feather="refresh-cw"></i> Refresh</button>
-      <button class="btn btn-primary" onclick="showBOMModal()"><i data-feather="plus"></i> Buat BOM</button>
+      <button class="btn btn-primary" onclick="showBOMForm(null)"><i data-feather="plus"></i> Buat BOM</button>
     </div>
   </div>
   <div class="report-filter-bar" style="margin-bottom:16px;flex-wrap:wrap;gap:8px">
@@ -2771,7 +2815,7 @@
     <h2>Manufacturing Order <small style="font-size:11px;color:#15803d;font-weight:normal">⚡ live dari backend</small></h2>
     <div class="page-actions">
       <button class="btn btn-outline" onclick="renderMfgOrderPage()"><i data-feather="refresh-cw"></i> Refresh</button>
-      <button class="btn btn-primary" onclick="showMOModal()"><i data-feather="plus"></i> Buat MO</button>
+      <button class="btn btn-primary" onclick="showMOForm()"><i data-feather="plus"></i> Buat MO</button>
     </div>
   </div>
   <div class="report-filter-bar" style="margin-bottom:16px;gap:8px">
@@ -2842,8 +2886,8 @@
 <script src="js/payments.js?v=2"></script>
 <script src="js/orders.js?v=1"></script>
 <script src="js/fulfillment.js?v=3"></script>
-<script src="js/manufacturing.js?v=3"></script>
-<script src="js/app.js?v=34"></script>
+<script src="js/manufacturing.js?v=4"></script>
+<script src="js/app.js?v=35"></script>
 <!-- Feather Icons -->
 <script src="https://cdn.jsdelivr.net/npm/feather-icons/dist/feather.min.js"></script>
 <script>
