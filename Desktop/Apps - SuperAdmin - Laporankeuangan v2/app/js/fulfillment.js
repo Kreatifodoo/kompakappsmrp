@@ -448,8 +448,9 @@ async function renderRMAPage() {
     </table>`;
 }
 
-async function createRMAFromDO(doId) { await _openRMAModal('customer_return', doId); }
-async function createRMAFromGR(grId) { await _openRMAModal('supplier_return', grId); }
+// Sprint F2: navigate to RMA form page (replaces modal)
+async function createRMAFromDO(doId) { showRMAForm('customer_return', doId); }
+async function createRMAFromGR(grId) { showRMAForm('supplier_return', grId); }
 
 async function _openRMAModal(type, sourceId) {
   try {
@@ -652,5 +653,307 @@ async function showRMADetail(id) {
       </div>
     </div>`;
     document.body.insertAdjacentHTML('beforeend', html);
+  } catch (e) { showToast('Gagal: ' + e.message, 'error'); }
+}
+
+
+// ════════════════════════════════════════════════════════════════
+// Sprint F2: Form-page pattern for DO/GR/RMA (replaces modals)
+// ════════════════════════════════════════════════════════════════
+
+let _doFormSourceSO = null;
+let _grFormSourcePO = null;
+let _rmaFormSource  = null;   // {type:'customer_return'|'supplier_return', sourceId}
+
+// ── Delivery Order form ────────────────────────────────
+function showDOForm(soId) {
+  _doFormSourceSO = soId;
+  navigateTo('do-form');
+}
+
+function exitDOForm() {
+  if (!confirm('Yakin keluar tanpa simpan?')) return;
+  _doFormSourceSO = null;
+  navigateTo('sales-orders');
+}
+
+async function renderDOForm() {
+  if (typeof _ordEnsureMasters === 'function') await _ordEnsureMasters();
+  const soId = _doFormSourceSO;
+  if (!soId) {
+    document.getElementById('doFormBody').innerHTML = `<div style="padding:48px;text-align:center;color:#6b7280">Buka dari halaman Sales Order, klik <strong>"Buat DO"</strong>.</div>`;
+    return;
+  }
+  let so;
+  try { so = await Api.salesOrders.get(soId); } catch (e) {
+    showToast('SO tidak ditemukan', 'error');
+    navigateTo('sales-orders'); return;
+  }
+  if (!['confirmed','partially_delivered'].includes(so.status)) {
+    showToast('SO harus confirmed/partially_delivered dulu', 'error');
+    navigateTo('sales-orders'); return;
+  }
+  const itemMap = Object.fromEntries((OrdersState?.items || []).map(i => [i.id, i.name]));
+  const linesRows = (so.lines || []).map((ln, idx) => {
+    const remaining = (parseFloat(ln.qty_ordered) || 0) - (parseFloat(ln.qty_delivered) || 0);
+    return `
+      <tr>
+        <td><label><input type="checkbox" class="do-line-cb" data-idx="${idx}" data-line-id="${ln.id}" data-max="${remaining}" ${remaining > 0 ? 'checked' : 'disabled'}> ${_ffEsc(itemMap[ln.item_id] || ln.item_id?.slice(0,8))}</label></td>
+        <td style="text-align:right">${ln.qty_ordered}</td>
+        <td style="text-align:right">${ln.qty_delivered || 0}</td>
+        <td style="text-align:right;color:#f59e0b"><strong>${remaining}</strong></td>
+        <td><input type="number" step="0.01" class="do-line-qty form-control" data-idx="${idx}" value="${remaining}" ${remaining <= 0 ? 'disabled' : ''} style="width:90px"></td>
+      </tr>`;
+  }).join('');
+
+  document.getElementById('doFormTitle').textContent = `Buat Delivery Order dari ${so.so_no}`;
+  const body = document.getElementById('doFormBody');
+  if (!body) return;
+  body.innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
+      <div><label>Tanggal Delivery</label><input type="date" id="doDate" value="${_ffToday()}" class="form-control"></div>
+      <div><label>Warehouse</label>
+        <select id="doWarehouse" class="form-control">${(OrdersState?.warehouses || []).map(w => `<option value="${w.id}">${_ffEsc(w.name)}</option>`).join('')}</select>
+      </div>
+    </div>
+    <h4>Pilih line yang dikirim</h4>
+    <table class="data-table">
+      <thead><tr><th>Item (centang)</th><th>Ordered</th><th>Delivered</th><th>Remaining</th><th>Qty Kirim</th></tr></thead>
+      <tbody>${linesRows}</tbody>
+    </table>
+    <div style="margin-top:12px"><label>Notes</label><textarea id="doNotes" class="form-control" rows="2"></textarea></div>
+  `;
+  const firstWh = so.lines?.[0]?.warehouse_id;
+  if (firstWh) document.getElementById('doWarehouse').value = firstWh;
+  // Cache so for submit
+  window._doFormSO = so;
+  if (typeof feather !== 'undefined') feather.replace();
+}
+
+async function submitDOForm(postNow) {
+  const so = window._doFormSO;
+  if (!so) { showToast('SO data missing — reload halaman', 'error'); return; }
+  const delivery_date = document.getElementById('doDate').value;
+  const warehouse_id  = document.getElementById('doWarehouse').value;
+  const notes         = document.getElementById('doNotes').value;
+  if (!delivery_date || !warehouse_id) { showToast('Tanggal & warehouse wajib', 'error'); return; }
+  const lines = [];
+  document.querySelectorAll('.do-line-cb').forEach(cb => {
+    if (cb.checked) {
+      const qty = parseFloat(document.querySelector(`.do-line-qty[data-idx="${cb.dataset.idx}"]`).value) || 0;
+      const max = parseFloat(cb.dataset.max);
+      if (qty > 0 && qty <= max) lines.push({ so_line_id: cb.dataset.lineId, qty_delivered: qty });
+    }
+  });
+  if (!lines.length) { showToast('Pilih minimal 1 line dengan qty > 0', 'error'); return; }
+  try {
+    const res = await Api.deliveryOrders.create({
+      delivery_date, so_id: so.id, warehouse_id, notes: notes || null, lines,
+    }, postNow ? {post_now:'true'} : {});
+    showToast(`DO ${res.do_no} ${postNow?'di-post':'tersimpan'}`, 'success');
+    _doFormSourceSO = null;
+    window._doFormSO = null;
+    navigateTo('delivery-orders');
+  } catch (e) { showToast('Gagal: ' + e.message, 'error'); }
+}
+
+// ── Goods Receipt form ────────────────────────────────
+function showGRForm(poId) {
+  _grFormSourcePO = poId;
+  navigateTo('gr-form');
+}
+
+function exitGRForm() {
+  if (!confirm('Yakin keluar tanpa simpan?')) return;
+  _grFormSourcePO = null;
+  navigateTo('purchase-orders');
+}
+
+async function renderGRForm() {
+  if (typeof _ordEnsureMasters === 'function') await _ordEnsureMasters();
+  const poId = _grFormSourcePO;
+  if (!poId) {
+    document.getElementById('grFormBody').innerHTML = `<div style="padding:48px;text-align:center;color:#6b7280">Buka dari halaman Purchase Order, klik <strong>"Buat GR"</strong>.</div>`;
+    return;
+  }
+  let po;
+  try { po = await Api.purchaseOrders.get(poId); } catch (e) {
+    showToast('PO tidak ditemukan', 'error');
+    navigateTo('purchase-orders'); return;
+  }
+  if (!['confirmed','partially_received'].includes(po.status)) {
+    showToast('PO harus confirmed/partially_received dulu', 'error');
+    navigateTo('purchase-orders'); return;
+  }
+  const itemMap = Object.fromEntries((OrdersState?.items || []).map(i => [i.id, i.name]));
+  const linesRows = (po.lines || []).map((ln, idx) => {
+    const remaining = (parseFloat(ln.qty_ordered) || 0) - (parseFloat(ln.qty_received) || 0);
+    return `
+      <tr>
+        <td><label><input type="checkbox" class="gr-line-cb" data-idx="${idx}" data-line-id="${ln.id}" data-max="${remaining}" ${remaining > 0 ? 'checked' : 'disabled'}> ${_ffEsc(itemMap[ln.item_id] || ln.item_id?.slice(0,8))}</label></td>
+        <td style="text-align:right">${ln.qty_ordered}</td>
+        <td style="text-align:right">${ln.qty_received || 0}</td>
+        <td style="text-align:right;color:#f59e0b"><strong>${remaining}</strong></td>
+        <td><input type="number" step="0.01" class="gr-line-qty form-control" data-idx="${idx}" value="${remaining}" ${remaining <= 0 ? 'disabled' : ''} style="width:90px"></td>
+        <td><input type="number" step="100" class="gr-line-cost form-control" data-idx="${idx}" value="${ln.unit_price}" style="width:110px"></td>
+      </tr>`;
+  }).join('');
+
+  document.getElementById('grFormTitle').textContent = `Buat Goods Receipt dari ${po.po_no}`;
+  const body = document.getElementById('grFormBody');
+  if (!body) return;
+  body.innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
+      <div><label>Tanggal Receipt</label><input type="date" id="grDate" value="${_ffToday()}" class="form-control"></div>
+      <div><label>Warehouse</label>
+        <select id="grWarehouse" class="form-control">${(OrdersState?.warehouses || []).map(w => `<option value="${w.id}">${_ffEsc(w.name)}</option>`).join('')}</select>
+      </div>
+    </div>
+    <h4>Pilih line yang diterima</h4>
+    <table class="data-table">
+      <thead><tr><th>Item</th><th>Ordered</th><th>Received</th><th>Remaining</th><th>Qty Terima</th><th>Unit Cost</th></tr></thead>
+      <tbody>${linesRows}</tbody>
+    </table>
+    <div style="margin-top:12px"><label>Notes</label><textarea id="grNotes" class="form-control" rows="2"></textarea></div>
+  `;
+  const firstWh = po.lines?.[0]?.warehouse_id;
+  if (firstWh) document.getElementById('grWarehouse').value = firstWh;
+  window._grFormPO = po;
+  if (typeof feather !== 'undefined') feather.replace();
+}
+
+async function submitGRForm(postNow) {
+  const po = window._grFormPO;
+  if (!po) { showToast('PO data missing — reload halaman', 'error'); return; }
+  const receipt_date = document.getElementById('grDate').value;
+  const warehouse_id = document.getElementById('grWarehouse').value;
+  const notes        = document.getElementById('grNotes').value;
+  if (!receipt_date || !warehouse_id) { showToast('Tanggal & warehouse wajib', 'error'); return; }
+  const lines = [];
+  document.querySelectorAll('.gr-line-cb').forEach(cb => {
+    if (cb.checked) {
+      const idx = cb.dataset.idx;
+      const qty = parseFloat(document.querySelector(`.gr-line-qty[data-idx="${idx}"]`).value) || 0;
+      const cost = parseFloat(document.querySelector(`.gr-line-cost[data-idx="${idx}"]`).value) || 0;
+      const max = parseFloat(cb.dataset.max);
+      if (qty > 0 && qty <= max) lines.push({ po_line_id: cb.dataset.lineId, qty_received: qty, unit_cost: cost });
+    }
+  });
+  if (!lines.length) { showToast('Pilih minimal 1 line dengan qty > 0', 'error'); return; }
+  try {
+    const res = await Api.goodsReceipts.create({
+      receipt_date, po_id: po.id, warehouse_id, notes: notes || null, lines,
+    }, postNow ? {post_now:'true'} : {});
+    showToast(`GR ${res.gr_no} ${postNow?'di-post':'tersimpan'}`, 'success');
+    _grFormSourcePO = null;
+    window._grFormPO = null;
+    navigateTo('goods-receipts');
+  } catch (e) { showToast('Gagal: ' + e.message, 'error'); }
+}
+
+// ── RMA form ──────────────────────────────────────────
+function showRMAForm(type, sourceId) {
+  _rmaFormSource = { type, sourceId };
+  navigateTo('rma-form');
+}
+
+function exitRMAForm() {
+  if (!confirm('Yakin keluar tanpa simpan?')) return;
+  _rmaFormSource = null;
+  // Navigate back to source list (DO/GR) or fallback to rmas
+  navigateTo(_rmaFormSource?.type === 'supplier_return' ? 'goods-receipts' : 'delivery-orders');
+  _rmaFormSource = null;
+}
+
+async function renderRMAForm() {
+  if (typeof _ordEnsureMasters === 'function') await _ordEnsureMasters();
+  const src = _rmaFormSource;
+  if (!src) {
+    document.getElementById('rmaFormBody').innerHTML = `<div style="padding:48px;text-align:center;color:#6b7280">Buka dari halaman <strong>Delivery Order</strong> atau <strong>Goods Receipt</strong> yang sudah posted, klik <strong>"Buat RMA"</strong>.</div>`;
+    return;
+  }
+  const { type, sourceId } = src;
+  let source;
+  try {
+    source = type === 'customer_return'
+      ? await Api.deliveryOrders.get(sourceId)
+      : await Api.goodsReceipts.get(sourceId);
+  } catch (e) {
+    showToast('Source tidak ditemukan', 'error');
+    navigateTo(type === 'supplier_return' ? 'goods-receipts' : 'delivery-orders');
+    return;
+  }
+  if (source.status !== 'posted') {
+    showToast(`Source ${type === 'customer_return' ? 'DO' : 'GR'} harus posted`, 'error');
+    navigateTo(type === 'supplier_return' ? 'goods-receipts' : 'delivery-orders');
+    return;
+  }
+  const itemMap = Object.fromEntries((OrdersState?.items || []).map(i => [i.id, i.name]));
+  const qtyField = type === 'customer_return' ? 'qty_delivered' : 'qty_received';
+  const linesRows = (source.lines || []).map((ln, idx) => `
+    <tr>
+      <td><label><input type="checkbox" class="rma-line-cb" data-idx="${idx}" data-line-id="${ln.id}" data-max="${ln[qtyField]}" data-unit-cost="${ln.unit_cost || 0}"> ${_ffEsc(itemMap[ln.item_id] || ln.item_id?.slice(0,8))}</label></td>
+      <td style="text-align:right">${ln[qtyField]}</td>
+      <td style="text-align:right">${_ffFmtRp(ln.unit_cost || 0)}</td>
+      <td><input type="number" step="0.01" class="rma-line-qty form-control" data-idx="${idx}" value="1" style="width:90px"></td>
+    </tr>`).join('');
+  const sourceLabel = type === 'customer_return' ? source.do_no : source.gr_no;
+
+  document.getElementById('rmaFormTitle').textContent =
+    `Buat RMA ${type === 'customer_return' ? '(Customer Return)' : '(Supplier Return)'} dari ${sourceLabel}`;
+  const body = document.getElementById('rmaFormBody');
+  if (!body) return;
+  body.innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
+      <div><label>Tanggal Return</label><input type="date" id="rmaDate" value="${_ffToday()}" class="form-control"></div>
+      <div><label>Warehouse</label>
+        <select id="rmaWarehouse" class="form-control">${(OrdersState?.warehouses || []).map(w => `<option value="${w.id}" ${w.id===source.warehouse_id?'selected':''}>${_ffEsc(w.name)}</option>`).join('')}</select>
+      </div>
+    </div>
+    <div style="margin-bottom:12px"><label>Reason</label><input type="text" id="rmaReason" class="form-control" placeholder="Alasan return"></div>
+    <table class="data-table">
+      <thead><tr><th>Item (centang)</th><th>Qty asli</th><th>Unit Cost</th><th>Qty Return</th></tr></thead>
+      <tbody>${linesRows}</tbody>
+    </table>
+    <div style="margin-top:12px"><label>Notes</label><textarea id="rmaNotes" class="form-control" rows="2"></textarea></div>
+  `;
+  window._rmaFormSource = source;
+  if (typeof feather !== 'undefined') feather.replace();
+}
+
+async function submitRMAForm(postNow) {
+  const src = _rmaFormSource;
+  if (!src) { showToast('Source missing', 'error'); return; }
+  const { type, sourceId } = src;
+  const rma_date     = document.getElementById('rmaDate').value;
+  const warehouse_id = document.getElementById('rmaWarehouse').value;
+  const reason       = document.getElementById('rmaReason').value;
+  const notes        = document.getElementById('rmaNotes').value;
+  if (!rma_date || !warehouse_id) { showToast('Tanggal & warehouse wajib', 'error'); return; }
+  const lineKey = type === 'customer_return' ? 'source_do_line_id' : 'source_gr_line_id';
+  const sourceKey = type === 'customer_return' ? 'source_do_id' : 'source_gr_id';
+  const lines = [];
+  document.querySelectorAll('.rma-line-cb').forEach(cb => {
+    if (cb.checked) {
+      const idx = cb.dataset.idx;
+      const qty = parseFloat(document.querySelector(`.rma-line-qty[data-idx="${idx}"]`).value) || 0;
+      const max = parseFloat(cb.dataset.max);
+      if (qty > 0 && qty <= max) {
+        lines.push({ [lineKey]: cb.dataset.lineId, qty_returned: qty, unit_cost: parseFloat(cb.dataset.unitCost) || undefined });
+      }
+    }
+  });
+  if (!lines.length) { showToast('Pilih minimal 1 line', 'error'); return; }
+  const payload = {
+    rma_type: type, rma_date, warehouse_id,
+    reason: reason || null, notes: notes || null,
+    [sourceKey]: sourceId, lines,
+  };
+  try {
+    const res = await Api.rmas.create(payload, postNow ? {post_now:'true'} : {});
+    showToast(`RMA ${res.rma_no} ${postNow?'di-post':'tersimpan'}`, 'success');
+    _rmaFormSource = null;
+    window._rmaFormSource = null;
+    navigateTo('rmas');
   } catch (e) { showToast('Gagal: ' + e.message, 'error'); }
 }

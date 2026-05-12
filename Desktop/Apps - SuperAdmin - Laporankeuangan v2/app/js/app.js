@@ -256,9 +256,11 @@ function closeFlyout() {
 function updateGroupActiveState(page) {
   const salesPages     = ['pos', 'pos-products', 'pos-categories', 'pos-payment-methods', 'pos-report',
                           'customer-master', 'customer-invoices', 'customer-payments', 'customer-report',
-                          'sales-orders', 'delivery-orders', 'rmas'];
+                          'sales-orders', 'delivery-orders', 'rmas',
+                          'so-form', 'do-form', 'rma-form'];
   const purchasePages  = ['purchase-vendors', 'purchase-bills', 'purchase-payments', 'purchase-report',
-                          'purchase-orders', 'goods-receipts'];
+                          'purchase-orders', 'goods-receipts',
+                          'po-form', 'gr-form'];
   const mfgPages       = ['bom-master', 'mfg-orders', 'work-centers', 'bom-form', 'mo-form'];
   const group = salesPages.includes(page) ? 'sales'
     : purchasePages.includes(page) ? 'purchase'
@@ -361,6 +363,11 @@ function navigateTo(page) {
     'work-centers':          'Work Center',
     'bom-form':              'BOM Form',
     'mo-form':               'Manufacturing Order Form',
+    'so-form':               'Sales Order Form',
+    'po-form':               'Purchase Order Form',
+    'do-form':               'Delivery Order Form',
+    'gr-form':               'Goods Receipt Form',
+    'rma-form':              'RMA Form',
   };
   document.getElementById('pageTitle').textContent = titles[page] || page;
   AppState.currentPage = page;
@@ -431,6 +438,12 @@ function navigateTo(page) {
   // Sprint F1: separate form pages for Manufacturing
   if (page === 'bom-form')          { if (typeof renderBOMForm             === 'function') renderBOMForm(); }
   if (page === 'mo-form')           { if (typeof renderMOForm              === 'function') renderMOForm(); }
+  // Sprint F2: separate form pages for SO/PO/DO/GR/RMA
+  if (page === 'so-form')           { if (typeof renderSOForm              === 'function') renderSOForm(); }
+  if (page === 'po-form')           { if (typeof renderPOForm              === 'function') renderPOForm(); }
+  if (page === 'do-form')           { if (typeof renderDOForm              === 'function') renderDOForm(); }
+  if (page === 'gr-form')           { if (typeof renderGRForm              === 'function') renderGRForm(); }
+  if (page === 'rma-form')          { if (typeof renderRMAForm             === 'function') renderRMAForm(); }
 
   // Auto-render laporan keuangan saat navigasi ke halaman income/balance/cashflow
   if (page === 'income' && AppState.incomeData) {

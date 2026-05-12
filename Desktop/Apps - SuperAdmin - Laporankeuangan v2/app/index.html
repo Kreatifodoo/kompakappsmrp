@@ -2656,7 +2656,7 @@
     <h2>Sales Order <small style="font-size:11px;color:#15803d;font-weight:normal">⚡ live dari backend</small></h2>
     <div class="page-actions">
       <button class="btn btn-outline" onclick="renderSalesOrderPage()"><i data-feather="refresh-cw"></i> Refresh</button>
-      <button class="btn btn-primary" onclick="showSalesOrderModal()"><i data-feather="plus"></i> Buat SO</button>
+      <button class="btn btn-primary" onclick="showSOForm()"><i data-feather="plus"></i> Buat SO</button>
     </div>
   </div>
   <div class="report-filter-bar" style="margin-bottom:16px;flex-wrap:wrap;gap:8px">
@@ -2678,7 +2678,7 @@
     <h2>Purchase Order <small style="font-size:11px;color:#15803d;font-weight:normal">⚡ live dari backend</small></h2>
     <div class="page-actions">
       <button class="btn btn-outline" onclick="renderPurchaseOrderPage()"><i data-feather="refresh-cw"></i> Refresh</button>
-      <button class="btn btn-primary" onclick="showPurchaseOrderModal()"><i data-feather="plus"></i> Buat PO</button>
+      <button class="btn btn-primary" onclick="showPOForm()"><i data-feather="plus"></i> Buat PO</button>
     </div>
   </div>
   <div class="report-filter-bar" style="margin-bottom:16px;flex-wrap:wrap;gap:8px">
@@ -2748,6 +2748,83 @@
   .form-page-body h4 { margin: 16px 0 8px; }
   .form-page-back-btn { display: inline-flex; align-items: center; gap: 6px; }
 </style>
+
+<!-- ═════ Sprint F2: Form pages for SO/PO/DO/GR/RMA ═════ -->
+
+<section class="page" id="page-so-form">
+  <div class="page-header">
+    <h2>
+      <button class="btn btn-outline btn-sm form-page-back-btn" onclick="exitSOForm()"><i data-feather="arrow-left"></i> Kembali</button>
+      &nbsp;&nbsp;<span id="soFormTitle" style="font-size:20px">Buat Sales Order</span>
+    </h2>
+  </div>
+  <div class="form-page-body" id="soFormBody"></div>
+  <div class="form-action-bar">
+    <button class="btn btn-outline" onclick="exitSOForm()">Batal</button>
+    <button class="btn btn-primary" onclick="submitSOForm(false)">Simpan Draft</button>
+    <button class="btn btn-success" onclick="submitSOForm(true)">Simpan + Confirm</button>
+  </div>
+</section>
+
+<section class="page" id="page-po-form">
+  <div class="page-header">
+    <h2>
+      <button class="btn btn-outline btn-sm form-page-back-btn" onclick="exitPOForm()"><i data-feather="arrow-left"></i> Kembali</button>
+      &nbsp;&nbsp;<span id="poFormTitle" style="font-size:20px">Buat Purchase Order</span>
+    </h2>
+  </div>
+  <div class="form-page-body" id="poFormBody"></div>
+  <div class="form-action-bar">
+    <button class="btn btn-outline" onclick="exitPOForm()">Batal</button>
+    <button class="btn btn-primary" onclick="submitPOForm(false)">Simpan Draft</button>
+    <button class="btn btn-success" onclick="submitPOForm(true)">Simpan + Confirm</button>
+  </div>
+</section>
+
+<section class="page" id="page-do-form">
+  <div class="page-header">
+    <h2>
+      <button class="btn btn-outline btn-sm form-page-back-btn" onclick="exitDOForm()"><i data-feather="arrow-left"></i> Kembali</button>
+      &nbsp;&nbsp;<span id="doFormTitle" style="font-size:20px">Buat Delivery Order</span>
+    </h2>
+  </div>
+  <div class="form-page-body" id="doFormBody"></div>
+  <div class="form-action-bar">
+    <button class="btn btn-outline" onclick="exitDOForm()">Batal</button>
+    <button class="btn btn-primary" onclick="submitDOForm(false)">Simpan Draft</button>
+    <button class="btn btn-success" onclick="submitDOForm(true)">Simpan + Post</button>
+  </div>
+</section>
+
+<section class="page" id="page-gr-form">
+  <div class="page-header">
+    <h2>
+      <button class="btn btn-outline btn-sm form-page-back-btn" onclick="exitGRForm()"><i data-feather="arrow-left"></i> Kembali</button>
+      &nbsp;&nbsp;<span id="grFormTitle" style="font-size:20px">Buat Goods Receipt</span>
+    </h2>
+  </div>
+  <div class="form-page-body" id="grFormBody"></div>
+  <div class="form-action-bar">
+    <button class="btn btn-outline" onclick="exitGRForm()">Batal</button>
+    <button class="btn btn-primary" onclick="submitGRForm(false)">Simpan Draft</button>
+    <button class="btn btn-success" onclick="submitGRForm(true)">Simpan + Post</button>
+  </div>
+</section>
+
+<section class="page" id="page-rma-form">
+  <div class="page-header">
+    <h2>
+      <button class="btn btn-outline btn-sm form-page-back-btn" onclick="exitRMAForm()"><i data-feather="arrow-left"></i> Kembali</button>
+      &nbsp;&nbsp;<span id="rmaFormTitle" style="font-size:20px">Buat RMA</span>
+    </h2>
+  </div>
+  <div class="form-page-body" id="rmaFormBody"></div>
+  <div class="form-action-bar">
+    <button class="btn btn-outline" onclick="exitRMAForm()">Batal</button>
+    <button class="btn btn-primary" onclick="submitRMAForm(false)">Simpan Draft</button>
+    <button class="btn btn-success" onclick="submitRMAForm(true)">Simpan + Post</button>
+  </div>
+</section>
 
 <section class="page" id="page-bom-form">
   <div class="page-header">
@@ -2884,10 +2961,10 @@
 <script src="js/reports-extras.js?v=1"></script>
 <script src="js/identity-extras.js?v=2"></script>
 <script src="js/payments.js?v=2"></script>
-<script src="js/orders.js?v=1"></script>
-<script src="js/fulfillment.js?v=3"></script>
+<script src="js/orders.js?v=2"></script>
+<script src="js/fulfillment.js?v=4"></script>
 <script src="js/manufacturing.js?v=4"></script>
-<script src="js/app.js?v=35"></script>
+<script src="js/app.js?v=36"></script>
 <!-- Feather Icons -->
 <script src="https://cdn.jsdelivr.net/npm/feather-icons/dist/feather.min.js"></script>
 <script>

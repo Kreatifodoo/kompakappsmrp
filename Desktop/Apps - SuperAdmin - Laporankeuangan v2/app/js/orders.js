@@ -297,9 +297,9 @@ async function showSalesOrderDetail(id) {
   }
 }
 
-// Stub: handed off to fulfillment.js
+// Sprint F2: navigate to DO form page instead of opening modal
 function createDOFromSO(soId) {
-  if (typeof showCreateDOModal === 'function') showCreateDOModal(soId);
+  if (typeof showDOForm === 'function') showDOForm(soId);
   else showToast('fulfillment.js belum dimuat', 'error');
 }
 
@@ -541,6 +541,154 @@ async function showPurchaseOrderDetail(id) {
 }
 
 function createGRFromPO(poId) {
-  if (typeof showCreateGRModal === 'function') showCreateGRModal(poId);
+  if (typeof showGRForm === 'function') showGRForm(poId);
   else showToast('fulfillment.js belum dimuat', 'error');
+}
+
+
+// ════════════════════════════════════════════════════════════════
+// Sprint F2: Form-page pattern for SO + PO (replaces modals)
+// ════════════════════════════════════════════════════════════════
+
+// ── Sales Order ─────────────────────────────────────────
+function showSOForm() {
+  _soLines = [{ item_id: '', warehouse_id: '', qty_ordered: 1, unit_price: 0, tax_rate: 0 }];
+  navigateTo('so-form');
+}
+
+function exitSOForm() {
+  const hasData = _soLines.some(l => l.item_id || l.unit_price > 0);
+  if (hasData && !confirm('Perubahan belum disimpan. Yakin keluar?')) return;
+  _soLines = [];
+  navigateTo('sales-orders');
+}
+
+async function renderSOForm() {
+  await _ordEnsureMasters();
+  const itemOpts = OrdersState.items.map(i => `<option value="${i.id}" data-price="${i.sale_price || 0}">${_ordEsc(i.name)} (${_ordEsc(i.sku || '-')})</option>`).join('');
+  const whOpts   = OrdersState.warehouses.map(w => `<option value="${w.id}">${_ordEsc(w.name)}</option>`).join('');
+  const custOpts = OrdersState.customers.map(c => `<option value="${c.id}">${_ordEsc(c.name)}</option>`).join('');
+
+  document.getElementById('soFormTitle').textContent = 'Buat Sales Order';
+  const body = document.getElementById('soFormBody');
+  if (!body) return;
+  body.innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:16px">
+      <div><label>Tanggal Order</label><input type="date" id="soDate" value="${_ordToday()}" class="form-control"></div>
+      <div><label>Expected Delivery</label><input type="date" id="soExpDate" class="form-control"></div>
+      <div><label>Customer</label>
+        <select id="soCustomer" class="form-control"><option value="">— pilih —</option>${custOpts}</select>
+      </div>
+    </div>
+    <h4>Items</h4>
+    <table class="data-table" id="soLinesTable">
+      <thead><tr>
+        <th style="width:30%">Item</th><th>Warehouse</th>
+        <th style="width:80px">Qty</th><th style="width:120px">Harga</th>
+        <th style="width:60px">Tax %</th><th style="width:120px">Subtotal</th><th></th>
+      </tr></thead>
+      <tbody id="soLinesBody"></tbody>
+    </table>
+    <button class="btn btn-sm btn-outline" onclick="_soAddLine()" style="margin-top:8px">+ Tambah baris</button>
+    <div style="margin-top:16px"><label>Notes</label><textarea id="soNotes" class="form-control" rows="2"></textarea></div>
+    <div style="margin-top:16px;text-align:right;font-size:16px"><strong>Total: <span id="soTotalDisplay">Rp 0</span></strong></div>
+  `;
+  _soRenderLines(itemOpts, whOpts);
+  if (typeof feather !== 'undefined') feather.replace();
+}
+
+async function submitSOForm(confirmNow) {
+  const customer_id = document.getElementById('soCustomer').value;
+  const order_date  = document.getElementById('soDate').value;
+  const exp_date    = document.getElementById('soExpDate').value;
+  const notes       = document.getElementById('soNotes').value;
+  if (!customer_id) { showToast('Customer wajib dipilih', 'error'); return; }
+  if (!order_date)  { showToast('Tanggal wajib diisi', 'error'); return; }
+  const valid = _soLines.filter(l => l.item_id && l.warehouse_id && l.qty_ordered > 0);
+  if (!valid.length) { showToast('Minimal 1 baris item valid', 'error'); return; }
+
+  const payload = {
+    order_date, customer_id, notes: notes || null,
+    expected_delivery_date: exp_date || null,
+    lines: valid.map(l => ({
+      item_id: l.item_id, warehouse_id: l.warehouse_id,
+      qty_ordered: l.qty_ordered, unit_price: l.unit_price, tax_rate: l.tax_rate || 0,
+    })),
+  };
+  try {
+    const res = await Api.salesOrders.create(payload, confirmNow ? {confirm:'true'} : {});
+    showToast(`SO ${res.so_no} ${confirmNow?'di-confirm':'tersimpan'}`, 'success');
+    _soLines = [];
+    navigateTo('sales-orders');
+  } catch (e) { showToast('Gagal: ' + e.message, 'error'); }
+}
+
+// ── Purchase Order ──────────────────────────────────────
+function showPOForm() {
+  _poLines = [{ item_id: '', warehouse_id: '', qty_ordered: 1, unit_price: 0 }];
+  navigateTo('po-form');
+}
+
+function exitPOForm() {
+  const hasData = _poLines.some(l => l.item_id || l.unit_price > 0);
+  if (hasData && !confirm('Perubahan belum disimpan. Yakin keluar?')) return;
+  _poLines = [];
+  navigateTo('purchase-orders');
+}
+
+async function renderPOForm() {
+  await _ordEnsureMasters();
+  const supOpts  = OrdersState.suppliers.map(s => `<option value="${s.id}">${_ordEsc(s.name)}</option>`).join('');
+  document.getElementById('poFormTitle').textContent = 'Buat Purchase Order';
+  const body = document.getElementById('poFormBody');
+  if (!body) return;
+  body.innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:16px">
+      <div><label>Tanggal Order</label><input type="date" id="poDate" value="${_ordToday()}" class="form-control"></div>
+      <div><label>Expected Receipt</label><input type="date" id="poExpDate" class="form-control"></div>
+      <div><label>Supplier</label>
+        <select id="poSupplier" class="form-control"><option value="">— pilih —</option>${supOpts}</select>
+      </div>
+    </div>
+    <h4>Items</h4>
+    <table class="data-table">
+      <thead><tr>
+        <th style="width:30%">Item</th><th>Warehouse</th>
+        <th style="width:80px">Qty</th><th style="width:120px">Harga</th>
+        <th style="width:120px">Subtotal</th><th></th>
+      </tr></thead>
+      <tbody id="poLinesBody"></tbody>
+    </table>
+    <button class="btn btn-sm btn-outline" onclick="_poAddLine()" style="margin-top:8px">+ Tambah baris</button>
+    <div style="margin-top:16px"><label>Notes</label><textarea id="poNotes" class="form-control" rows="2"></textarea></div>
+    <div style="margin-top:16px;text-align:right;font-size:16px"><strong>Total: <span id="poTotalDisplay">Rp 0</span></strong></div>
+  `;
+  _poRenderLines();
+  if (typeof feather !== 'undefined') feather.replace();
+}
+
+async function submitPOForm(confirmNow) {
+  const supplier_id = document.getElementById('poSupplier').value;
+  const order_date  = document.getElementById('poDate').value;
+  const exp_date    = document.getElementById('poExpDate').value;
+  const notes       = document.getElementById('poNotes').value;
+  if (!supplier_id) { showToast('Supplier wajib dipilih', 'error'); return; }
+  if (!order_date)  { showToast('Tanggal wajib diisi', 'error'); return; }
+  const valid = _poLines.filter(l => l.item_id && l.warehouse_id && l.qty_ordered > 0);
+  if (!valid.length) { showToast('Minimal 1 baris item valid', 'error'); return; }
+
+  const payload = {
+    order_date, supplier_id, notes: notes || null,
+    expected_receipt_date: exp_date || null,
+    lines: valid.map(l => ({
+      item_id: l.item_id, warehouse_id: l.warehouse_id,
+      qty_ordered: l.qty_ordered, unit_price: l.unit_price,
+    })),
+  };
+  try {
+    const res = await Api.purchaseOrders.create(payload, confirmNow ? {confirm:'true'} : {});
+    showToast(`PO ${res.po_no} ${confirmNow?'di-confirm':'tersimpan'}`, 'success');
+    _poLines = [];
+    navigateTo('purchase-orders');
+  } catch (e) { showToast('Gagal: ' + e.message, 'error'); }
 }
