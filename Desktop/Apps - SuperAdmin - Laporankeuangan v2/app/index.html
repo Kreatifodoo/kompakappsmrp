@@ -249,6 +249,9 @@
     <button class="nav-group-btn" data-group="inventory" data-tooltip="Inventory">
       <span class="nav-icon"><i data-feather="package"></i></span>
     </button>
+    <button class="nav-group-btn" data-group="manufacturing" data-tooltip="Manufacturing">
+      <span class="nav-icon"><i data-feather="tool"></i></span>
+    </button>
     <button class="nav-group-btn" data-group="payments" data-tooltip="Payments">
       <span class="nav-icon"><i data-feather="credit-card"></i></span>
     </button>
@@ -367,6 +370,16 @@
           <div class="kpi-label">↩ Open RMA</div>
           <div class="kpi-value" id="kpiOpenRMA" style="color:#ef4444">—</div>
           <div class="kpi-badge badge-red" id="kpiOpenRMABadge">draft</div>
+        </div>
+        <div class="kpi-card" style="cursor:pointer" onclick="navigateTo('mfg-orders')">
+          <div class="kpi-label">🏭 Open MO</div>
+          <div class="kpi-value" id="kpiOpenMO" style="color:#8b5cf6">—</div>
+          <div class="kpi-badge badge-purple" id="kpiOpenMOBadge">draft+confirmed+in_progress</div>
+        </div>
+        <div class="kpi-card" style="cursor:pointer" onclick="navigateTo('mfg-orders')">
+          <div class="kpi-label">💰 WIP Value</div>
+          <div class="kpi-value" id="kpiWipValue" style="color:#06b6d4">—</div>
+          <div class="kpi-badge badge-blue" id="kpiWipValueBadge">in-progress MOs</div>
         </div>
       </div>
 
@@ -2718,6 +2731,51 @@
   <div class="table-card"><div id="grTableWrap"></div></div>
 </section>
 
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!-- Sprint M7: BOM Master + Manufacturing Order -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+
+<section class="page" id="page-bom-master">
+  <div class="page-header">
+    <h2>BOM Master <small style="font-size:11px;color:#15803d;font-weight:normal">⚡ live dari backend</small></h2>
+    <div class="page-actions">
+      <button class="btn btn-outline" onclick="renderBOMPage()"><i data-feather="refresh-cw"></i> Refresh</button>
+      <button class="btn btn-primary" onclick="showBOMModal()"><i data-feather="plus"></i> Buat BOM</button>
+    </div>
+  </div>
+  <div class="report-filter-bar" style="margin-bottom:16px;flex-wrap:wrap;gap:8px">
+    <select id="bomFilterItem" class="j-select" onchange="renderBOMPage()"><option value="">Semua Output Item</option></select>
+    <select id="bomFilterStatus" class="j-select" onchange="renderBOMPage()">
+      <option value="">Semua Status</option>
+      <option value="draft">Draft</option>
+      <option value="active">Active</option>
+      <option value="obsolete">Obsolete</option>
+    </select>
+  </div>
+  <div class="table-card"><div id="bomTableWrap"></div></div>
+</section>
+
+<section class="page" id="page-mfg-orders">
+  <div class="page-header">
+    <h2>Manufacturing Order <small style="font-size:11px;color:#15803d;font-weight:normal">⚡ live dari backend</small></h2>
+    <div class="page-actions">
+      <button class="btn btn-outline" onclick="renderMfgOrderPage()"><i data-feather="refresh-cw"></i> Refresh</button>
+      <button class="btn btn-primary" onclick="showMOModal()"><i data-feather="plus"></i> Buat MO</button>
+    </div>
+  </div>
+  <div class="report-filter-bar" style="margin-bottom:16px;gap:8px">
+    <select id="moFilterStatus" class="j-select" onchange="renderMfgOrderPage()">
+      <option value="">Semua Status</option>
+      <option value="draft">Draft</option>
+      <option value="confirmed">Confirmed</option>
+      <option value="in_progress">In Progress</option>
+      <option value="done">Done</option>
+      <option value="cancelled">Cancelled</option>
+    </select>
+  </div>
+  <div class="table-card"><div id="moTableWrap"></div></div>
+</section>
+
 <section class="page" id="page-rmas">
   <div class="page-header">
     <h2>RMA — Return Merchandise Authorization <small style="font-size:11px;color:#15803d;font-weight:normal">⚡ live dari backend</small></h2>
@@ -2748,7 +2806,7 @@
 <div id="sidebar-tooltip"></div>
 
 <!-- Scripts -->
-<script src="js/api.js?v=9"></script>
+<script src="js/api.js?v=10"></script>
 <script src="js/backend-sync.js?v=4"></script>
 <script src="js/backend-loader.js?v=2"></script>
 <script src="js/realtime.js?v=3"></script>
@@ -2772,8 +2830,9 @@
 <script src="js/identity-extras.js?v=2"></script>
 <script src="js/payments.js?v=2"></script>
 <script src="js/orders.js?v=1"></script>
-<script src="js/fulfillment.js?v=2"></script>
-<script src="js/app.js?v=32"></script>
+<script src="js/fulfillment.js?v=3"></script>
+<script src="js/manufacturing.js?v=1"></script>
+<script src="js/app.js?v=33"></script>
 <!-- Feather Icons -->
 <script src="https://cdn.jsdelivr.net/npm/feather-icons/dist/feather.min.js"></script>
 <script>

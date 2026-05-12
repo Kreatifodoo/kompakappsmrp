@@ -167,6 +167,27 @@ const Realtime = (() => {
       _refreshCurrentPage(['rmas', 'inventory']);
       _showToast(`↩️ RMA ${d.rma_no || ''} di-void`, 'warning');
     });
+
+    // ── Sprint M7: Manufacturing events ─────────────────────────
+    on('mfg_order.confirmed', (d) => {
+      _refreshCurrentPage(['mfg-orders', 'dashboard']);
+      _showToast(`🏭 MO ${d.mo_no || ''} di-confirm`, 'info');
+    });
+    on('mfg_order.started', (d) => {
+      _refreshCurrentPage(['mfg-orders']);
+    });
+    on('mfg_order.issued', (d) => {
+      _refreshCurrentPage(['mfg-orders', 'inventory', 'inv-onhand', 'inventory-movements', 'dashboard']);
+      _showToast(`🔧 MO ${d.mo_no || ''} materials issued (Rp ${Math.round(d.total_cost||0).toLocaleString('id-ID')})`, 'info');
+    });
+    on('mfg_order.completed', (d) => {
+      _refreshCurrentPage(['mfg-orders', 'inventory', 'inv-onhand', 'inventory-movements', 'dashboard']);
+      _showToast(`✅ MO ${d.mo_no || ''} done · ${d.qty_produced || 0} unit @ Rp ${Math.round(d.unit_cost||0).toLocaleString('id-ID')}`, 'success');
+    });
+    on('mfg_order.cancelled', (d) => {
+      _refreshCurrentPage(['mfg-orders', 'inventory', 'inv-onhand', 'dashboard']);
+      _showToast(`↩️ MO ${d.mo_no || ''} di-cancel`, 'warning');
+    });
   }
 
   function _refreshCurrentPage(pages) {

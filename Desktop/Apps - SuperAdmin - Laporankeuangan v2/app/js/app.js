@@ -187,6 +187,13 @@ const FLYOUT_GROUPS = {
       { page: 'inv-costing',          icon: 'layers',          label: 'Costing Method' },
     ]
   },
+  manufacturing: {
+    label: 'Manufacturing',
+    items: [
+      { page: 'bom-master',  icon: 'list',       label: 'BOM Master' },
+      { page: 'mfg-orders',  icon: 'cpu',        label: 'Manufacturing Order' },
+    ]
+  },
   payments: {
     label: 'Payments',
     items: [
@@ -251,8 +258,10 @@ function updateGroupActiveState(page) {
                           'sales-orders', 'delivery-orders', 'rmas'];
   const purchasePages  = ['purchase-vendors', 'purchase-bills', 'purchase-payments', 'purchase-report',
                           'purchase-orders', 'goods-receipts'];
+  const mfgPages       = ['bom-master', 'mfg-orders'];
   const group = salesPages.includes(page) ? 'sales'
     : purchasePages.includes(page) ? 'purchase'
+    : mfgPages.includes(page) ? 'manufacturing'
     : 'accounting';
   document.querySelectorAll('.nav-group-btn').forEach(b => b.classList.remove('active-group'));
   const btn = document.querySelector(`.nav-group-btn[data-group="${group}"]`);
@@ -346,6 +355,8 @@ function navigateTo(page) {
     'delivery-orders':       'Delivery Order',
     'goods-receipts':        'Goods Receipt',
     'rmas':                  'RMA — Return',
+    'bom-master':            'BOM Master',
+    'mfg-orders':            'Manufacturing Order',
   };
   document.getElementById('pageTitle').textContent = titles[page] || page;
   AppState.currentPage = page;
@@ -409,6 +420,9 @@ function navigateTo(page) {
   if (page === 'delivery-orders')   { if (typeof renderDeliveryOrderPage   === 'function') renderDeliveryOrderPage(); }
   if (page === 'goods-receipts')    { if (typeof renderGoodsReceiptPage    === 'function') renderGoodsReceiptPage(); }
   if (page === 'rmas')              { if (typeof renderRMAPage             === 'function') renderRMAPage(); }
+  // Sprint M7: Manufacturing
+  if (page === 'bom-master')        { if (typeof renderBOMPage             === 'function') renderBOMPage(); }
+  if (page === 'mfg-orders')        { if (typeof renderMfgOrderPage        === 'function') renderMfgOrderPage(); }
 
   // Auto-render laporan keuangan saat navigasi ke halaman income/balance/cashflow
   if (page === 'income' && AppState.incomeData) {

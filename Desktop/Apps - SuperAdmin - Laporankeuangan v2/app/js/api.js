@@ -356,6 +356,29 @@ const Api = {
     void:   (id, b)  => Api.post(`/rmas/${id}/void`, b || {reason:'Voided from UI'}),
   },
 
+  // ── Manufacturing: BOM ────────────────────────────────────
+  boms: {
+    list:     (params) => Api.get('/boms' + _qs(params)),
+    get:      (id)     => Api.get(`/boms/${id}`),
+    create:   (body, opts) => Api.post('/boms' + _qs(opts), body),   // opts.activate=true
+    update:   (id, body) => Api.patch(`/boms/${id}`, body),
+    activate: (id)     => Api.post(`/boms/${id}/activate`),
+    obsolete: (id)     => Api.post(`/boms/${id}/obsolete`),
+    delete:   (id)     => Api.delete(`/boms/${id}`),
+  },
+
+  // ── Manufacturing: Manufacturing Orders ───────────────────
+  manufacturingOrders: {
+    list:     (params) => Api.get('/manufacturing-orders' + _qs(params)),
+    get:      (id)     => Api.get(`/manufacturing-orders/${id}`),
+    create:   (body, opts) => Api.post('/manufacturing-orders' + _qs(opts), body),
+    confirm:  (id)     => Api.post(`/manufacturing-orders/${id}/confirm`),
+    start:    (id)     => Api.post(`/manufacturing-orders/${id}/start`),
+    issue:    (id, body) => Api.post(`/manufacturing-orders/${id}/issue`, body),
+    complete: (id, body) => Api.post(`/manufacturing-orders/${id}/complete`, body),
+    cancel:   (id, body) => Api.post(`/manufacturing-orders/${id}/cancel`, body || {reason:'Cancelled from UI'}),
+  },
+
   // ── Password reset (forgot/reset flow) ────────────────────
   authPassword: {
     forgot: (email) => Api.post('/auth/forgot-password', {email}),

@@ -561,24 +561,36 @@ async function voidRMA(id) {
 async function refreshPipelineKPIs() {
   if (!Api.isLoggedIn || !Api.isLoggedIn()) return;
   try {
-    const [sos, pos, dos, grs, rmas] = await Promise.all([
+    const [sos, pos, dos, grs, rmas, mos] = await Promise.all([
       Api.salesOrders.list({limit: 500}).catch(() => []),
       Api.purchaseOrders.list({limit: 500}).catch(() => []),
       Api.deliveryOrders.list({limit: 500}).catch(() => []),
       Api.goodsReceipts.list({limit: 500}).catch(() => []),
       Api.rmas.list({limit: 500}).catch(() => []),
+      (Api.manufacturingOrders ? Api.manufacturingOrders.list({limit: 500}).catch(() => []) : Promise.resolve([])),
     ]);
     const openSO  = (sos  || []).filter(s => ['draft','confirmed','partially_delivered'].includes(s.status)).length;
     const openPO  = (pos  || []).filter(p => ['draft','confirmed','partially_received'].includes(p.status)).length;
     const pendDO  = (dos  || []).filter(d => d.status === 'draft').length;
     const pendGR  = (grs  || []).filter(g => g.status === 'draft').length;
     const openRMA = (rmas || []).filter(r => r.status === 'draft').length;
+    const openMO  = (mos  || []).filter(m => ['draft','confirmed','in_progress'].includes(m.status)).length;
+    // WIP value = sum of issued qty × unit_cost across MOs currently in_progress
+    let wipValue = 0;
+    for (const m of (mos || [])) {
+      if (m.status !== 'in_progress') continue;
+      for (const c of (m.components || [])) {
+        wipValue += parseFloat(c.qty_issued || 0) * parseFloat(c.unit_cost || 0);
+      }
+    }
     const setVal = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
     setVal('kpiOpenSO',     openSO);
     setVal('kpiOpenPO',     openPO);
     setVal('kpiPendingDO',  pendDO);
     setVal('kpiPendingGR',  pendGR);
     setVal('kpiOpenRMA',    openRMA);
+    setVal('kpiOpenMO',     openMO);
+    setVal('kpiWipValue',   'Rp ' + Math.round(wipValue).toLocaleString('id-ID'));
   } catch (e) {
     console.warn('[pipeline KPI] refresh failed', e);
   }
