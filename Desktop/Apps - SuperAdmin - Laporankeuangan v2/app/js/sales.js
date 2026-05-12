@@ -508,14 +508,15 @@ function showInvoiceModal(id) {
   _renderInvLinesTable(isConfirmed);
   _recomputeInvSummary();
 
-  document.getElementById('salesInvoiceModal').style.display = 'flex';
+  // Sprint F3: form-page pattern (was modal)
+  navigateTo('invoice-form');
   if (typeof feather !== 'undefined') feather.replace();
 }
 
 function closeInvoiceModal() {
-  document.getElementById('salesInvoiceModal').style.display = 'none';
   _editingInvId = null;
   _invLines = [];
+  if (typeof navigateTo === 'function') navigateTo('customer-invoices');
 }
 
 function _addEmptyInvLine() {
@@ -960,13 +961,13 @@ function showCustomerPaymentModal(id) {
   document.getElementById('recNotes').value  = '';
   document.getElementById('recInvList').innerHTML =
     '<p style="color:#6b7280;font-size:13px">Pilih customer untuk melihat invoice outstanding.</p>';
-  document.getElementById('salesPaymentModal').style.display = 'flex';
+  navigateTo('customer-payment-form');
   if (typeof feather !== 'undefined') feather.replace();
 }
 
 function closeCustomerPaymentModal() {
-  document.getElementById('salesPaymentModal').style.display = 'none';
   _editingRecId = null;
+  if (typeof navigateTo === 'function') navigateTo('customer-payments');
 }
 
 function onCustomerPaymentChange() {

@@ -257,10 +257,12 @@ function updateGroupActiveState(page) {
   const salesPages     = ['pos', 'pos-products', 'pos-categories', 'pos-payment-methods', 'pos-report',
                           'customer-master', 'customer-invoices', 'customer-payments', 'customer-report',
                           'sales-orders', 'delivery-orders', 'rmas',
-                          'so-form', 'do-form', 'rma-form'];
+                          'so-form', 'do-form', 'rma-form',
+                          'invoice-form', 'customer-payment-form'];
   const purchasePages  = ['purchase-vendors', 'purchase-bills', 'purchase-payments', 'purchase-report',
                           'purchase-orders', 'goods-receipts',
-                          'po-form', 'gr-form'];
+                          'po-form', 'gr-form',
+                          'bill-form', 'vendor-payment-form'];
   const mfgPages       = ['bom-master', 'mfg-orders', 'work-centers', 'bom-form', 'mo-form'];
   const group = salesPages.includes(page) ? 'sales'
     : purchasePages.includes(page) ? 'purchase'
@@ -368,6 +370,11 @@ function navigateTo(page) {
     'do-form':               'Delivery Order Form',
     'gr-form':               'Goods Receipt Form',
     'rma-form':              'RMA Form',
+    'invoice-form':          'Customer Invoice Form',
+    'bill-form':             'Vendor Bill Form',
+    'customer-payment-form': 'Penerimaan Customer Form',
+    'vendor-payment-form':   'Pembayaran Vendor Form',
+    'journal-form':          'Jurnal Manual Form',
   };
   document.getElementById('pageTitle').textContent = titles[page] || page;
   AppState.currentPage = page;
@@ -444,6 +451,8 @@ function navigateTo(page) {
   if (page === 'do-form')           { if (typeof renderDOForm              === 'function') renderDOForm(); }
   if (page === 'gr-form')           { if (typeof renderGRForm              === 'function') renderGRForm(); }
   if (page === 'rma-form')          { if (typeof renderRMAForm             === 'function') renderRMAForm(); }
+  // Sprint F3: in-place form pages for Invoice/Bill/Payment/Journal
+  // (state is set up before navigateTo; no extra render call needed)
 
   // Auto-render laporan keuangan saat navigasi ke halaman income/balance/cashflow
   if (page === 'income' && AppState.incomeData) {
@@ -2391,13 +2400,14 @@ function openCreateJournalModal(editId = null) {
     _renderCjLines('kredit', [{ accountCode: '', amount: 0, note: '' }]);
   }
 
-  document.getElementById('createJournalModal').style.display = 'flex';
+  // Sprint F3: form-page pattern (was modal)
+  navigateTo('journal-form');
   if (typeof feather !== 'undefined') feather.replace();
 }
 
 function closeCreateJournalModal() {
-  document.getElementById('createJournalModal').style.display = 'none';
   _cjEditId = null;
+  navigateTo('journal');
 }
 
 // ----- Line rendering (reuse split-line HTML pattern) -----

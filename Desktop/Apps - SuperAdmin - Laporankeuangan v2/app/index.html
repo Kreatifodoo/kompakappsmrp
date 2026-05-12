@@ -1833,13 +1833,14 @@
 </div>
 
 <!-- ===== MANUAL JOURNAL: Create / Edit Modal ===== -->
-<div class="modal-overlay" id="createJournalModal" style="display:none">
-  <div class="modal modal-wide">
-    <div class="modal-header">
-      <h3 id="createJournalModalTitle">Buat Jurnal Manual</h3>
-      <button class="modal-close" onclick="closeCreateJournalModal()"><i data-feather="x"></i></button>
-    </div>
-    <div class="modal-body" style="max-height:80vh;overflow-y:auto">
+<section class="page" id="page-journal-form">
+  <div class="page-header">
+    <h2>
+      <button class="btn btn-outline btn-sm form-page-back-btn" onclick="closeCreateJournalModal()"><i data-feather="arrow-left"></i> Kembali</button>
+      &nbsp;&nbsp;<span id="createJournalModalTitle" style="font-size:20px">Buat Jurnal Manual</span>
+    </h2>
+  </div>
+  <div class="form-page-body">
 
       <!-- Date + Description -->
       <div class="split-tx-info" style="display:grid;grid-template-columns:180px 1fr;gap:12px;margin-bottom:16px;padding:12px;background:#f8fafc;border-radius:8px">
@@ -1888,12 +1889,11 @@
       </div>
 
     </div>
-    <div class="modal-footer">
+    <div class="form-action-bar">
       <button class="btn btn-outline" onclick="closeCreateJournalModal()">Batal</button>
       <button class="btn btn-primary" id="btnSaveCj" onclick="saveManualJournal()" disabled>Simpan</button>
     </div>
-  </div>
-</div>
+</section>
 
 <!-- ===== POS: Payment Modal ===== -->
 <div class="pos-modal-overlay" id="posPaymentModal">
@@ -2342,13 +2342,14 @@
 </div>
 
 <!-- ===== PURCHASE: Vendor Bill Modal ===== -->
-<div class="modal-overlay" id="purchaseBillModal" style="display:none">
-  <div class="modal-box" style="max-width:1140px;width:96vw">
-    <div class="modal-header">
-      <h3 id="purchaseBillModalTitle">Vendor Bill</h3>
-      <button class="modal-close" onclick="closeBillModal()"><i data-feather="x"></i></button>
-    </div>
-    <div class="modal-body">
+<section class="page" id="page-bill-form">
+  <div class="page-header">
+    <h2>
+      <button class="btn btn-outline btn-sm form-page-back-btn" onclick="closeBillModal()"><i data-feather="arrow-left"></i> Kembali</button>
+      &nbsp;&nbsp;<span id="purchaseBillModalTitle" style="font-size:20px">Vendor Bill</span>
+    </h2>
+  </div>
+  <div class="form-page-body">
       <!-- Header fields -->
       <div class="form-row" style="grid-template-columns:2fr 1fr 1fr 1fr;gap:12px">
         <div class="form-group">
@@ -2402,7 +2403,7 @@
       <!-- Fee summary (rendered by JS) -->
       <div id="billFeeSummary"></div>
     </div>
-    <div class="modal-footer">
+    <div class="form-action-bar">
       <button class="btn btn-outline" onclick="closeBillModal()">Batal</button>
       <button class="btn btn-danger" id="btnCancelBill" style="display:none" onclick="cancelBill(_editingBillId)">
         <i data-feather="x-circle"></i> Batalkan Bill
@@ -2414,17 +2415,17 @@
         <i data-feather="check-circle"></i> Konfirmasi
       </button>
     </div>
-  </div>
-</div>
+</section>
 
 <!-- ===== PURCHASE: Payment Modal ===== -->
-<div class="modal-overlay" id="purchasePaymentModal" style="display:none">
-  <div class="modal-box" style="max-width:700px;width:96vw">
-    <div class="modal-header">
-      <h3>Pembayaran ke Vendor</h3>
-      <button class="modal-close" onclick="closePurchasePaymentModal()"><i data-feather="x"></i></button>
-    </div>
-    <div class="modal-body">
+<section class="page" id="page-vendor-payment-form">
+  <div class="page-header">
+    <h2>
+      <button class="btn btn-outline btn-sm form-page-back-btn" onclick="closePurchasePaymentModal()"><i data-feather="arrow-left"></i> Kembali</button>
+      &nbsp;&nbsp;<span style="font-size:20px">Pembayaran ke Vendor</span>
+    </h2>
+  </div>
+  <div class="form-page-body">
       <div class="form-row">
         <div class="form-group" style="grid-column:1/3">
           <label>Vendor <span style="color:red">*</span></label>
@@ -2460,14 +2461,13 @@
         <p style="color:#6b7280;font-size:13px">Pilih vendor untuk melihat tagihan outstanding.</p>
       </div>
     </div>
-    <div class="modal-footer">
+    <div class="form-action-bar">
       <button class="btn btn-outline" onclick="closePurchasePaymentModal()">Batal</button>
       <button class="btn btn-primary" onclick="savePaymentFromModal()">
         <i data-feather="send"></i> Simpan Payment
       </button>
     </div>
-  </div>
-</div>
+</section>
 
 <!-- ===== SALES: Customer Modal ===== -->
 <div class="modal-overlay" id="salesCustomerModal" style="display:none">
@@ -2524,13 +2524,14 @@
 </div>
 
 <!-- ===== SALES: Customer Invoice Modal ===== -->
-<div class="modal-overlay" id="salesInvoiceModal" style="display:none">
-  <div class="modal-box" style="max-width:1100px;width:96vw">
-    <div class="modal-header">
-      <h3 id="salesInvoiceModalTitle">Buat Customer Invoice</h3>
-      <button class="modal-close" onclick="closeInvoiceModal()"><i data-feather="x"></i></button>
-    </div>
-    <div class="modal-body">
+<section class="page" id="page-invoice-form">
+  <div class="page-header">
+    <h2>
+      <button class="btn btn-outline btn-sm form-page-back-btn" onclick="closeInvoiceModal()"><i data-feather="arrow-left"></i> Kembali</button>
+      &nbsp;&nbsp;<span id="salesInvoiceModalTitle" style="font-size:20px">Buat Customer Invoice</span>
+    </h2>
+  </div>
+  <div class="form-page-body">
       <div class="form-row" style="grid-template-columns:2fr 1fr 1fr 1fr;gap:12px">
         <div class="form-group">
           <label>Customer <span style="color:red">*</span></label>
@@ -2580,7 +2581,7 @@
       </button>
       <div id="invFeeSummary" style="margin-top:12px;text-align:right"></div>
     </div>
-    <div class="modal-footer">
+    <div class="form-action-bar">
       <button class="btn btn-outline" onclick="closeInvoiceModal()">Batal</button>
       <button class="btn btn-danger" id="btnCancelInvoice" onclick="cancelInvoice(_editingInvId)" style="display:none">
         <i data-feather="x-circle"></i> Batalkan Invoice
@@ -2592,17 +2593,17 @@
         <i data-feather="check-circle"></i> Konfirmasi
       </button>
     </div>
-  </div>
-</div>
+</section>
 
 <!-- ===== SALES: Customer Payment Modal ===== -->
-<div class="modal-overlay" id="salesPaymentModal" style="display:none">
-  <div class="modal-box" style="max-width:700px;width:96vw">
-    <div class="modal-header">
-      <h3>Penerimaan dari Customer</h3>
-      <button class="modal-close" onclick="closeCustomerPaymentModal()"><i data-feather="x"></i></button>
-    </div>
-    <div class="modal-body">
+<section class="page" id="page-customer-payment-form">
+  <div class="page-header">
+    <h2>
+      <button class="btn btn-outline btn-sm form-page-back-btn" onclick="closeCustomerPaymentModal()"><i data-feather="arrow-left"></i> Kembali</button>
+      &nbsp;&nbsp;<span style="font-size:20px">Penerimaan dari Customer</span>
+    </h2>
+  </div>
+  <div class="form-page-body">
       <div class="form-row">
         <div class="form-group" style="grid-column:1/3">
           <label>Customer <span style="color:red">*</span></label>
@@ -2638,14 +2639,13 @@
         <p style="color:#6b7280;font-size:13px">Pilih customer untuk melihat invoice outstanding.</p>
       </div>
     </div>
-    <div class="modal-footer">
+    <div class="form-action-bar">
       <button class="btn btn-outline" onclick="closeCustomerPaymentModal()">Batal</button>
       <button class="btn btn-primary" onclick="saveCustomerPaymentFromModal()">
         <i data-feather="send"></i> Simpan Penerimaan
       </button>
     </div>
-  </div>
-</div>
+</section>
 
 <!-- ═══════════════════════════════════════════════════════════════ -->
 <!-- Sprint D: Sales Order / Purchase Order / Delivery Order / GR / RMA -->
@@ -2952,8 +2952,8 @@
 <script src="js/reports.js?v=7"></script>
 <script src="js/export.js?v=6"></script>
 <script src="js/pos.js?v=10"></script>
-<script src="js/purchase.js?v=12"></script>
-<script src="js/sales.js?v=6"></script>
+<script src="js/purchase.js?v=13"></script>
+<script src="js/sales.js?v=7"></script>
 <script src="js/inventory.js?v=2"></script>
 <script src="js/inventory-extras.js?v=1"></script>
 <script src="js/inventory-operations.js?v=4"></script>
@@ -2964,7 +2964,7 @@
 <script src="js/orders.js?v=2"></script>
 <script src="js/fulfillment.js?v=4"></script>
 <script src="js/manufacturing.js?v=4"></script>
-<script src="js/app.js?v=36"></script>
+<script src="js/app.js?v=37"></script>
 <!-- Feather Icons -->
 <script src="https://cdn.jsdelivr.net/npm/feather-icons/dist/feather.min.js"></script>
 <script>

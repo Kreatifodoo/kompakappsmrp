@@ -504,14 +504,14 @@ function showBillModal(id) {
   _renderBillLinesTable(isConfirmed);
   _recomputeAndRenderFeeSummary();
 
-  document.getElementById('purchaseBillModal').style.display = 'flex';
+  navigateTo('bill-form');
   if (typeof feather !== 'undefined') feather.replace();
 }
 
 function closeBillModal() {
-  document.getElementById('purchaseBillModal').style.display = 'none';
   _editingBillId = null;
   _billLines = [];
+  if (typeof navigateTo === 'function') navigateTo('purchase-bills');
 }
 
 function _addEmptyBillLine() {
@@ -975,13 +975,13 @@ function showPurchasePaymentModal(id) {
   document.getElementById('payNotes').value   = '';
   document.getElementById('payBillsList').innerHTML =
     '<p style="color:#6b7280;font-size:13px">Pilih vendor untuk melihat tagihan outstanding.</p>';
-  document.getElementById('purchasePaymentModal').style.display = 'flex';
+  navigateTo('vendor-payment-form');
   if (typeof feather !== 'undefined') feather.replace();
 }
 
 function closePurchasePaymentModal() {
-  document.getElementById('purchasePaymentModal').style.display = 'none';
   _editingPayId = null;
+  if (typeof navigateTo === 'function') navigateTo('purchase-payments');
 }
 
 function onPaymentVendorChange() {
