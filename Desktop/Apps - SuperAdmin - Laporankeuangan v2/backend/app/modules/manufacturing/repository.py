@@ -11,8 +11,11 @@ from datetime import date
 from app.modules.manufacturing.models import (
     BOM,
     BOMLine,
+    BOMOperation,
     ManufacturingOrder,
     MOComponent,
+    MOOperation,
+    WorkCenter,
 )
 
 
@@ -38,7 +41,7 @@ class ManufacturingRepository:
         stmt = (
             select(BOM)
             .where(*conds)
-            .options(selectinload(BOM.lines))
+            .options(selectinload(BOM.lines), selectinload(BOM.operations))
             .order_by(BOM.created_at.desc())
             .limit(limit)
             .offset(offset)
@@ -49,7 +52,7 @@ class ManufacturingRepository:
         stmt = (
             select(BOM)
             .where(BOM.id == bom_id, BOM.tenant_id == self.tenant_id)
-            .options(selectinload(BOM.lines))
+            .options(selectinload(BOM.lines), selectinload(BOM.operations))
         )
         return (await self.session.execute(stmt)).scalar_one_or_none()
 
@@ -61,7 +64,7 @@ class ManufacturingRepository:
                 BOM.item_id == item_id,
                 BOM.status == "active",
             )
-            .options(selectinload(BOM.lines))
+            .options(selectinload(BOM.lines), selectinload(BOM.operations))
         )
         return (await self.session.execute(stmt)).scalar_one_or_none()
 
@@ -99,7 +102,10 @@ class ManufacturingRepository:
         if date_to: conds.append(ManufacturingOrder.planned_start <= date_to)
         stmt = (
             select(ManufacturingOrder).where(*conds)
-            .options(selectinload(ManufacturingOrder.components))
+            .options(
+                selectinload(ManufacturingOrder.components),
+                selectinload(ManufacturingOrder.operations),
+            )
             .order_by(ManufacturingOrder.created_at.desc())
             .limit(limit).offset(offset)
         )
@@ -111,7 +117,10 @@ class ManufacturingRepository:
                 ManufacturingOrder.id == mo_id,
                 ManufacturingOrder.tenant_id == self.tenant_id,
             )
-            .options(selectinload(ManufacturingOrder.components))
+            .options(
+                selectinload(ManufacturingOrder.components),
+                selectinload(ManufacturingOrder.operations),
+            )
         )
         return (await self.session.execute(stmt)).scalar_one_or_none()
 
@@ -132,3 +141,27 @@ class ManufacturingRepository:
         )
         count = (await self.session.execute(stmt)).scalar_one() or 0
         return f"{prefix}{count + 1:05d}"
+
+    # ─── Work Center (Sprint M5) ────────────────────────
+    async def list_work_centers(self, *, is_active: bool | None = None) -> list[WorkCenter]:
+        conds = [WorkCenter.tenant_id == self.tenant_id]
+        if is_active is not None:
+            conds.append(WorkCenter.is_active == is_active)
+        stmt = select(WorkCenter).where(*conds).order_by(WorkCenter.code)
+        return list((await self.session.execute(stmt)).scalars().all())
+
+    async def get_work_center(self, wc_id: UUID) -> WorkCenter | None:
+        stmt = select(WorkCenter).where(
+            WorkCenter.id == wc_id,
+            WorkCenter.tenant_id == self.tenant_id,
+        )
+        return (await self.session.execute(stmt)).scalar_one_or_none()
+
+    async def add_work_center(self, wc: WorkCenter) -> WorkCenter:
+        self.session.add(wc)
+        await self.session.flush()
+        return wc
+
+    async def get_mo_operation(self, op_id: UUID) -> MOOperation | None:
+        stmt = select(MOOperation).where(MOOperation.id == op_id)
+        return (await self.session.execute(stmt)).scalar_one_or_none()

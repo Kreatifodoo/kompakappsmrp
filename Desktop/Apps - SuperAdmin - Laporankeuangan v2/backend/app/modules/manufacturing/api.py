@@ -22,11 +22,16 @@ from app.modules.manufacturing.schemas import (
     MOCompleteRequest,
     MOCreate,
     MOIssueRequest,
+    MOOperationsUpdateRequest,
     MOOut,
+    WorkCenterIn,
+    WorkCenterOut,
+    WorkCenterUpdate,
 )
 from app.modules.manufacturing.service import (
     BOMService,
     ManufacturingOrderService,
+    WorkCenterService,
 )
 
 router = APIRouter(tags=["manufacturing"])
@@ -233,5 +238,67 @@ async def cancel_mfg_order(
 ) -> MOOut:
     svc = ManufacturingOrderService(session, current.tenant_id, current.user_id)
     mo = await svc.cancel_mo(mo_id, payload.reason)
+    refreshed = await svc.repo.get_mo(mo.id)
+    return MOOut.model_validate(refreshed or mo)
+
+
+# ─── Work Centers (Sprint M5) ────────────────────────────
+@router.get("/work-centers", response_model=list[WorkCenterOut])
+async def list_work_centers(
+    is_active: bool | None = Query(default=None),
+    current: CurrentUser = Depends(require_permission("mfg.read")),
+    session: AsyncSession = Depends(get_write_session),
+) -> list[WorkCenterOut]:
+    repo = ManufacturingRepository(session, current.tenant_id)
+    rows = await repo.list_work_centers(is_active=is_active)
+    return [WorkCenterOut.model_validate(w) for w in rows]
+
+
+@router.get("/work-centers/{wc_id}", response_model=WorkCenterOut)
+async def get_work_center(
+    wc_id: UUID,
+    current: CurrentUser = Depends(require_permission("mfg.read")),
+    session: AsyncSession = Depends(get_write_session),
+) -> WorkCenterOut:
+    repo = ManufacturingRepository(session, current.tenant_id)
+    wc = await repo.get_work_center(wc_id)
+    if not wc:
+        raise NotFoundError("Work center not found")
+    return WorkCenterOut.model_validate(wc)
+
+
+@router.post("/work-centers", response_model=WorkCenterOut, status_code=201)
+async def create_work_center(
+    payload: WorkCenterIn,
+    current: CurrentUser = Depends(require_permission("mfg.write")),
+    session: AsyncSession = Depends(get_write_session),
+) -> WorkCenterOut:
+    svc = WorkCenterService(session, current.tenant_id, current.user_id)
+    wc = await svc.create(payload)
+    return WorkCenterOut.model_validate(wc)
+
+
+@router.patch("/work-centers/{wc_id}", response_model=WorkCenterOut)
+async def update_work_center(
+    wc_id: UUID,
+    payload: WorkCenterUpdate,
+    current: CurrentUser = Depends(require_permission("mfg.write")),
+    session: AsyncSession = Depends(get_write_session),
+) -> WorkCenterOut:
+    svc = WorkCenterService(session, current.tenant_id, current.user_id)
+    wc = await svc.update(wc_id, payload)
+    return WorkCenterOut.model_validate(wc)
+
+
+# ─── MO Operations update (Sprint M5) ────────────────────
+@router.post("/manufacturing-orders/{mo_id}/operations/update", response_model=MOOut)
+async def update_mo_operations(
+    mo_id: UUID,
+    payload: MOOperationsUpdateRequest,
+    current: CurrentUser = Depends(require_permission("mfg.post")),
+    session: AsyncSession = Depends(get_write_session),
+) -> MOOut:
+    svc = ManufacturingOrderService(session, current.tenant_id, current.user_id)
+    mo = await svc.update_mo_operations(mo_id, payload)
     refreshed = await svc.repo.get_mo(mo.id)
     return MOOut.model_validate(refreshed or mo)

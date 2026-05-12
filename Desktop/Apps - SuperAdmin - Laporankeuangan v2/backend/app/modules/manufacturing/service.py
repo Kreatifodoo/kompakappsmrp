@@ -30,8 +30,11 @@ from app.modules.inventory.service import InventoryService
 from app.modules.manufacturing.models import (
     BOM,
     BOMLine,
+    BOMOperation,
     ManufacturingOrder,
     MOComponent,
+    MOOperation,
+    WorkCenter,
 )
 from app.modules.manufacturing.repository import ManufacturingRepository
 from app.modules.manufacturing.schemas import (
@@ -39,6 +42,9 @@ from app.modules.manufacturing.schemas import (
     BOMUpdate,
     MOCreate,
     MOIssueRequest,
+    MOOperationsUpdateRequest,
+    WorkCenterIn,
+    WorkCenterUpdate,
 )
 from app.modules.periods.service import assert_period_open
 
@@ -105,7 +111,29 @@ class BOMService:
             )
             for idx, ln in enumerate(payload.lines)
         ]
+        # Sprint M5: optional routing
+        if payload.operations:
+            await self._validate_work_centers([op.work_center_id for op in payload.operations])
+            bom.operations = [
+                BOMOperation(
+                    seq=idx + 1,
+                    name=op.name,
+                    work_center_id=op.work_center_id,
+                    time_minutes=op.time_minutes,
+                    setup_minutes=op.setup_minutes,
+                    notes=op.notes,
+                )
+                for idx, op in enumerate(payload.operations)
+            ]
         return await self.repo.add_bom(bom)
+
+    async def _validate_work_centers(self, wc_ids: list[UUID]) -> None:
+        for wid in set(wc_ids):
+            wc = await self.repo.get_work_center(wid)
+            if not wc:
+                raise ValidationError(f"Work center {wid} not found")
+            if not wc.is_active:
+                raise ValidationError(f"Work center '{wc.code}' is inactive")
 
     # ─── Update (draft only) ──────────────────────────────
     async def update_bom(self, bom_id: UUID, payload: BOMUpdate) -> BOM:
@@ -141,6 +169,22 @@ class BOMService:
                     notes=ln.notes,
                 )
                 for idx, ln in enumerate(payload.lines)
+            ]
+
+        # Sprint M5: replace operations if provided (empty list = clear)
+        if payload.operations is not None:
+            if payload.operations:
+                await self._validate_work_centers([op.work_center_id for op in payload.operations])
+            bom.operations = [
+                BOMOperation(
+                    seq=idx + 1,
+                    name=op.name,
+                    work_center_id=op.work_center_id,
+                    time_minutes=op.time_minutes,
+                    setup_minutes=op.setup_minutes,
+                    notes=op.notes,
+                )
+                for idx, op in enumerate(payload.operations)
             ]
 
         await self.session.flush()
@@ -319,6 +363,27 @@ class ManufacturingOrderService:
             created_by=self.user_id,
         )
         mo.components = components
+
+        # Sprint M5: snapshot routing operations
+        ops: list[MOOperation] = []
+        for idx, bom_op in enumerate(bom.operations or []):
+            wc = await self.repo.get_work_center(bom_op.work_center_id)
+            cph = wc.cost_per_hour if wc else Decimal("0")
+            # planned_time_min = (per-unit × qty_planned) + setup_once
+            planned = (
+                bom_op.time_minutes * payload.qty_planned + bom_op.setup_minutes
+            ).quantize(Decimal("0.01"))
+            ops.append(MOOperation(
+                bom_operation_id=bom_op.id,
+                seq=idx + 1,
+                name=bom_op.name,
+                work_center_id=bom_op.work_center_id,
+                planned_time_min=planned,
+                actual_time_min=Decimal("0"),
+                cost_per_hour_snapshot=cph,
+                status="pending",
+            ))
+        mo.operations = ops
         return await self.repo.add_mo(mo)
 
     # ─── Confirm ──────────────────────────────────────────
@@ -517,16 +582,54 @@ class ManufacturingOrderService:
         # Total WIP cost = sum(component.qty_issued × component.unit_cost)
         # Re-read components after potential issue
         mo_refreshed = await self.repo.get_mo(mo.id)
-        total_wip = sum(
+        total_wip_material = sum(
             ((c.qty_issued or Decimal("0")) * (c.unit_cost or Decimal("0")))
             for c in mo_refreshed.components
         ).quantize(CENT) if mo_refreshed.components else Decimal("0")
+
+        # Sprint M5: Labor cost from MO operations. Each op contributes
+        # actual_time_min × cost_per_hour_snapshot / 60. Operations without
+        # any actual_time recorded contribute nothing.
+        total_labor = Decimal("0")
+        for op in (mo_refreshed.operations or []):
+            actual = op.actual_time_min or Decimal("0")
+            if actual > 0:
+                total_labor += (actual * op.cost_per_hour_snapshot / Decimal("60")).quantize(CENT)
+
+        total_wip = (total_wip_material + total_labor).quantize(CENT)
 
         if total_wip <= 0:
             raise ValidationError(
                 "Cannot complete MO with zero WIP cost — issue at least one component first "
                 "(or enable backflush)."
             )
+
+        # Sprint M5: post labor journal BEFORE FG receipt so WIP carries
+        # the labor charge into the receipt entry.
+        if total_labor > 0:
+            labor_map = await self.acct_repo.get_mapping("mfg_labor_applied")
+            if not labor_map:
+                raise ValidationError(
+                    "Labor cost detected but mapping 'mfg_labor_applied' is not "
+                    "configured. Set it under Account Mappings before completing MOs "
+                    "with operations time recorded."
+                )
+            labor_entry = await self.acct_svc.post_system_journal(
+                entry_date=cdate,
+                description=f"MO {mo.mo_no} labor applied to WIP",
+                lines=[
+                    (wip.account_id, total_labor, Decimal("0")),
+                    (labor_map.account_id, Decimal("0"), total_labor),
+                ],
+                source="mfg_labor",
+                source_id=mo.id,
+            )
+            mo.labor_journal_entry_id = labor_entry.id
+            mo.labor_total_cost = total_labor
+            # Auto-mark any pending operation with actual_time>0 as done
+            for op in (mo_refreshed.operations or []):
+                if (op.actual_time_min or Decimal("0")) > 0 and op.status != "done":
+                    op.status = "done"
 
         # Sprint M4: determine costing mode. If MO has std_total_cost set
         # AND every component has std_unit_cost, run STANDARD costing.
@@ -538,14 +641,18 @@ class ManufacturingOrderService:
 
         if use_std:
             # Standard cost per produced unit = std_total_cost / qty_planned
-            # (std_total_cost was computed at MO create from qty_planned)
+            # (std_total_cost was computed at MO create from qty_planned, materials only)
             std_per_unit = (mo.std_total_cost / mo.qty_planned).quantize(QTY4)
-            fg_standard_value = (std_per_unit * qty_produced).quantize(CENT)
-            unit_fg_cost = std_per_unit
-            # Variance: actual - standard. Positive = unfavorable (more cost).
-            variance = (total_wip - fg_standard_value).quantize(CENT)
+            # Variance: material_actual - material_std. Labor goes into WIP at
+            # actual on both sides, so it doesn't contribute to variance.
+            material_std_value = (std_per_unit * qty_produced).quantize(CENT)
+            # FG value combines material_std + labor_actual; this is what the
+            # FG inventory line is debited with.
+            fg_value = (material_std_value + total_labor).quantize(CENT)
+            unit_fg_cost = (fg_value / qty_produced).quantize(QTY4)
+            variance = (total_wip_material - material_std_value).quantize(CENT)
         else:
-            fg_standard_value = total_wip   # actual
+            fg_value = total_wip   # actual (material + labor)
             unit_fg_cost = (total_wip / qty_produced).quantize(QTY4)
             variance = Decimal("0")
 
@@ -566,13 +673,13 @@ class ManufacturingOrderService:
 
         # Journal lines:
         #   Standard mode (variance != 0):
-        #     Dr Inv FG (fg_standard_value)
-        #     Cr WIP    (total_wip)
+        #     Dr Inv FG (material_std + labor)
+        #     Cr WIP    (total_wip = material_actual + labor)
         #     + balance to Variance account: Dr if unfavorable, Cr if favorable.
         #   Actual mode (variance == 0):
         #     Dr Inv FG / Cr WIP @ total_wip
         journal_lines: list[tuple[UUID, Decimal, Decimal]] = []
-        journal_lines.append((inv_acc.account_id, fg_standard_value, Decimal("0")))
+        journal_lines.append((inv_acc.account_id, fg_value, Decimal("0")))
         journal_lines.append((wip.account_id, Decimal("0"), total_wip))
         if variance != 0:
             var_map = await self.acct_repo.get_mapping("mfg_variance")
@@ -618,6 +725,7 @@ class ManufacturingOrderService:
                 "mo_no": mo.mo_no,
                 "qty_produced": float(qty_produced),
                 "total_cost": float(total_wip),
+                "labor_cost": float(total_labor),
                 "unit_cost": float(unit_fg_cost),
                 "variance": float(variance),
                 "costing_mode": "standard" if use_std else "actual",
@@ -689,3 +797,79 @@ class ManufacturingOrderService:
         except Exception:
             pass
         return mo
+
+    # ─── MO operations update (Sprint M5) ────────────────
+    async def update_mo_operations(
+        self, mo_id: UUID, payload: MOOperationsUpdateRequest
+    ) -> ManufacturingOrder:
+        mo = await self.repo.get_mo(mo_id)
+        if not mo:
+            raise NotFoundError("MO not found")
+        if mo.status not in ("confirmed", "in_progress"):
+            raise ValidationError(
+                f"Can only update operations on confirmed/in_progress MO (current: {mo.status})"
+            )
+        op_map = {op.id: op for op in (mo.operations or [])}
+        for upd in payload.operations:
+            op = op_map.get(upd.id)
+            if not op:
+                raise ValidationError(f"Operation {upd.id} not in this MO")
+            if upd.actual_time_min is not None:
+                op.actual_time_min = upd.actual_time_min
+            if upd.status is not None:
+                op.status = upd.status
+            if upd.notes is not None:
+                op.notes = upd.notes
+        await self.session.flush()
+        return mo
+
+
+# ═══════════════════════════════════════════════════════════════════
+# Work Center Service (Sprint M5)
+# ═══════════════════════════════════════════════════════════════════
+
+class WorkCenterService:
+    def __init__(self, session: AsyncSession, tenant_id: UUID, user_id: UUID):
+        self.session = session
+        self.tenant_id = tenant_id
+        self.user_id = user_id
+        self.repo = ManufacturingRepository(session, tenant_id)
+
+    async def create(self, payload: WorkCenterIn) -> WorkCenter:
+        # Check unique code
+        existing = await self.repo.list_work_centers()
+        if any(w.code == payload.code for w in existing):
+            raise ConflictError(f"Work center code '{payload.code}' already exists")
+        wc = WorkCenter(
+            tenant_id=self.tenant_id,
+            code=payload.code,
+            name=payload.name,
+            cost_per_hour=payload.cost_per_hour,
+            capacity_hours_per_day=payload.capacity_hours_per_day,
+            is_active=payload.is_active,
+            notes=payload.notes,
+            created_by=self.user_id,
+        )
+        return await self.repo.add_work_center(wc)
+
+    async def update(self, wc_id: UUID, payload: WorkCenterUpdate) -> WorkCenter:
+        wc = await self.repo.get_work_center(wc_id)
+        if not wc:
+            raise NotFoundError("Work center not found")
+        if payload.code is not None and payload.code != wc.code:
+            existing = await self.repo.list_work_centers()
+            if any(w.code == payload.code and w.id != wc_id for w in existing):
+                raise ConflictError(f"Work center code '{payload.code}' already exists")
+            wc.code = payload.code
+        if payload.name is not None:
+            wc.name = payload.name
+        if payload.cost_per_hour is not None:
+            wc.cost_per_hour = payload.cost_per_hour
+        if payload.capacity_hours_per_day is not None:
+            wc.capacity_hours_per_day = payload.capacity_hours_per_day
+        if payload.is_active is not None:
+            wc.is_active = payload.is_active
+        if payload.notes is not None:
+            wc.notes = payload.notes
+        await self.session.flush()
+        return wc

@@ -32,6 +32,26 @@ class BOMLineOut(BaseModel):
     notes: str | None
 
 
+class BOMOperationIn(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    work_center_id: UUID
+    time_minutes: Decimal = Field(default=Decimal("0"), ge=0)
+    setup_minutes: Decimal = Field(default=Decimal("0"), ge=0)
+    notes: str | None = Field(default=None, max_length=500)
+
+
+class BOMOperationOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    seq: int
+    name: str
+    work_center_id: UUID
+    time_minutes: Decimal
+    setup_minutes: Decimal
+    notes: str | None
+
+
 class BOMCreate(BaseModel):
     bom_code: str | None = Field(default=None, max_length=40)
     item_id: UUID
@@ -39,6 +59,7 @@ class BOMCreate(BaseModel):
     version: int = Field(default=1, ge=1)
     notes: str | None = Field(default=None, max_length=1000)
     lines: list[BOMLineIn] = Field(min_length=1)
+    operations: list[BOMOperationIn] = Field(default_factory=list)
 
 
 class BOMUpdate(BaseModel):
@@ -48,6 +69,7 @@ class BOMUpdate(BaseModel):
     version: int | None = Field(default=None, ge=1)
     notes: str | None = Field(default=None, max_length=1000)
     lines: list[BOMLineIn] | None = None
+    operations: list[BOMOperationIn] | None = None
 
 
 class BOMOut(BaseModel):
@@ -62,6 +84,7 @@ class BOMOut(BaseModel):
     notes: str | None
     created_at: datetime
     lines: list[BOMLineOut]
+    operations: list[BOMOperationOut] = []
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -137,9 +160,81 @@ class MOOut(BaseModel):
     std_total_cost: Decimal | None
     variance_amount: Decimal | None
     variance_journal_entry_id: UUID | None
+    # Sprint M5: labor cost
+    labor_total_cost: Decimal | None
+    labor_journal_entry_id: UUID | None
     created_at: datetime
     confirmed_at: datetime | None
     done_at: datetime | None
     cancelled_at: datetime | None
     cancel_reason: str | None
     components: list[MOComponentOut]
+    operations: list["MOOperationOut"] = []
+
+
+# ═══════════════════════════════════════════════════════════════════
+# Work Center + MO Operations (Sprint M5)
+# ═══════════════════════════════════════════════════════════════════
+
+class WorkCenterIn(BaseModel):
+    code: str = Field(min_length=1, max_length=40)
+    name: str = Field(min_length=1, max_length=200)
+    cost_per_hour: Decimal = Field(default=Decimal("0"), ge=0)
+    capacity_hours_per_day: Decimal = Field(default=Decimal("8"), gt=0)
+    is_active: bool = True
+    notes: str | None = Field(default=None, max_length=500)
+
+
+class WorkCenterUpdate(BaseModel):
+    code: str | None = Field(default=None, max_length=40)
+    name: str | None = Field(default=None, max_length=200)
+    cost_per_hour: Decimal | None = Field(default=None, ge=0)
+    capacity_hours_per_day: Decimal | None = Field(default=None, gt=0)
+    is_active: bool | None = None
+    notes: str | None = Field(default=None, max_length=500)
+
+
+class WorkCenterOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    code: str
+    name: str
+    cost_per_hour: Decimal
+    capacity_hours_per_day: Decimal
+    is_active: bool
+    notes: str | None
+    created_at: datetime
+
+
+MOOpStatus = Literal["pending", "in_progress", "done"]
+
+
+class MOOperationOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    bom_operation_id: UUID | None
+    seq: int
+    name: str
+    work_center_id: UUID
+    planned_time_min: Decimal
+    actual_time_min: Decimal
+    cost_per_hour_snapshot: Decimal
+    status: MOOpStatus
+    notes: str | None
+
+
+class MOOperationUpdateLine(BaseModel):
+    id: UUID
+    actual_time_min: Decimal | None = Field(default=None, ge=0)
+    status: MOOpStatus | None = None
+    notes: str | None = Field(default=None, max_length=500)
+
+
+class MOOperationsUpdateRequest(BaseModel):
+    operations: list[MOOperationUpdateLine] = Field(min_length=1)
+
+
+# Resolve forward references (MOOut -> MOOperationOut)
+MOOut.model_rebuild()

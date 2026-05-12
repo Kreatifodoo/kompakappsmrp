@@ -75,6 +75,11 @@ class BOM(Base):
         cascade="all, delete-orphan",
         order_by="BOMLine.line_no",
     )
+    operations: Mapped[list["BOMOperation"]] = relationship(
+        back_populates="bom",
+        cascade="all, delete-orphan",
+        order_by="BOMOperation.seq",
+    )
 
 
 class BOMLine(Base):
@@ -174,6 +179,9 @@ class ManufacturingOrder(Base):
     std_total_cost: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
     variance_amount: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
     variance_journal_entry_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    # Sprint M5: labor cost
+    labor_total_cost: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
+    labor_journal_entry_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
     created_by: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
     )
@@ -188,6 +196,11 @@ class ManufacturingOrder(Base):
     components: Mapped[list["MOComponent"]] = relationship(
         back_populates="mo",
         cascade="all, delete-orphan",
+    )
+    operations: Mapped[list["MOOperation"]] = relationship(
+        back_populates="mo",
+        cascade="all, delete-orphan",
+        order_by="MOOperation.seq",
     )
 
 
@@ -226,3 +239,124 @@ class MOComponent(Base):
     std_unit_cost: Mapped[Decimal | None] = mapped_column(Numeric(18, 4))
 
     mo: Mapped[ManufacturingOrder] = relationship(back_populates="components")
+
+
+# ═══════════════════════════════════════════════════════════════════
+# Work Center + Operations (Sprint M5)
+# ═══════════════════════════════════════════════════════════════════
+
+from sqlalchemy import Boolean as _Boolean  # local alias if not imported above
+
+
+class WorkCenter(Base):
+    __tablename__ = "work_centers"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "code", name="uq_wc_tenant_code"),
+        Index("ix_wc_tenant_active", "tenant_id", "is_active"),
+        CheckConstraint("cost_per_hour >= 0", name="ck_wc_cph_nonneg"),
+        CheckConstraint("capacity_hours_per_day > 0", name="ck_wc_capacity_positive"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("tenants.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    code: Mapped[str] = mapped_column(String(40), nullable=False)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    cost_per_hour: Mapped[Decimal] = mapped_column(
+        Numeric(18, 2), nullable=False, default=Decimal("0")
+    )
+    capacity_hours_per_day: Mapped[Decimal] = mapped_column(
+        Numeric(8, 2), nullable=False, default=Decimal("8")
+    )
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    notes: Mapped[str | None] = mapped_column(String(500))
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class BOMOperation(Base):
+    __tablename__ = "bom_operations"
+    __table_args__ = (
+        Index("ix_bomop_bom", "bom_id"),
+        CheckConstraint("time_minutes >= 0", name="ck_bomop_time_nonneg"),
+        CheckConstraint("setup_minutes >= 0", name="ck_bomop_setup_nonneg"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    bom_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("boms.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    seq: Mapped[int] = mapped_column(Integer, nullable=False)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    work_center_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("work_centers.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    time_minutes: Mapped[Decimal] = mapped_column(
+        Numeric(10, 2), nullable=False, default=Decimal("0")
+    )
+    setup_minutes: Mapped[Decimal] = mapped_column(
+        Numeric(10, 2), nullable=False, default=Decimal("0")
+    )
+    notes: Mapped[str | None] = mapped_column(String(500))
+
+    bom: Mapped[BOM] = relationship(back_populates="operations")
+
+
+class MOOperation(Base):
+    __tablename__ = "mo_operations"
+    __table_args__ = (
+        Index("ix_moop_mo", "mo_id"),
+        CheckConstraint(
+            "status IN ('pending','in_progress','done')", name="ck_moop_status"
+        ),
+        CheckConstraint("planned_time_min >= 0", name="ck_moop_planned_nonneg"),
+        CheckConstraint("actual_time_min >= 0", name="ck_moop_actual_nonneg"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    mo_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("manufacturing_orders.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    bom_operation_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("bom_operations.id", ondelete="SET NULL"),
+    )
+    seq: Mapped[int] = mapped_column(Integer, nullable=False)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    work_center_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("work_centers.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    planned_time_min: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
+    actual_time_min: Mapped[Decimal] = mapped_column(
+        Numeric(10, 2), nullable=False, default=Decimal("0")
+    )
+    cost_per_hour_snapshot: Mapped[Decimal] = mapped_column(
+        Numeric(18, 2), nullable=False
+    )
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="pending"
+    )
+    notes: Mapped[str | None] = mapped_column(String(500))
+
+    mo: Mapped[ManufacturingOrder] = relationship(back_populates="operations")
