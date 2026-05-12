@@ -126,7 +126,7 @@ async function renderBOMPage() {
 let _bomLines = [];
 
 function showBOMModal() {
-  _bomLines = [{ item_id: '', qty_required: 1, scrap_pct: 0, notes: '' }];
+  _bomLines = [{ item_id: '', qty_required: 1, scrap_pct: 0, std_unit_cost: '', notes: '' }];
   const stockItems = MfgState.items.filter(i => i.type === 'stock');
   const itemOpts = stockItems.map(i => `<option value="${i.id}">${_mfgEsc(i.name)} (${_mfgEsc(i.sku || '-')})</option>`).join('');
 
@@ -150,11 +150,16 @@ function showBOMModal() {
           </div>
         </div>
         <h4 style="margin:12px 0 8px">Komponen (Bahan Baku)</h4>
+        <p style="font-size:12px;color:#6b7280;margin-bottom:8px">
+          💡 Isi <strong>Std Unit Cost</strong> di SEMUA baris untuk mengaktifkan
+          standard costing + variance journal. Kosongkan semua untuk mode actual cost (default).
+        </p>
         <table class="data-table">
           <thead><tr>
-            <th style="width:40%">Item</th>
-            <th style="width:100px">Qty Required</th>
-            <th style="width:90px">Scrap %</th>
+            <th style="width:32%">Item</th>
+            <th style="width:90px">Qty Required</th>
+            <th style="width:75px">Scrap %</th>
+            <th style="width:120px">Std Unit Cost</th>
             <th>Notes</th>
             <th></th>
           </tr></thead>
@@ -184,13 +189,14 @@ function _bomRenderLines() {
       <td><select class="form-control" onchange="_bomUpdateLine(${idx},'item_id',this.value)"><option value="">— pilih —</option>${itemOpts.replace(`value="${ln.item_id}"`, `value="${ln.item_id}" selected`)}</select></td>
       <td><input type="number" step="0.01" value="${ln.qty_required}" class="form-control" onchange="_bomUpdateLine(${idx},'qty_required',parseFloat(this.value)||0)"></td>
       <td><input type="number" step="0.1" value="${ln.scrap_pct}" min="0" max="99" class="form-control" onchange="_bomUpdateLine(${idx},'scrap_pct',parseFloat(this.value)||0)"></td>
+      <td><input type="number" step="100" value="${ln.std_unit_cost ?? ''}" placeholder="opsional" class="form-control" onchange="_bomUpdateLine(${idx},'std_unit_cost',this.value === '' ? null : (parseFloat(this.value)||0))"></td>
       <td><input type="text" value="${_mfgEsc(ln.notes || '')}" class="form-control" onchange="_bomUpdateLine(${idx},'notes',this.value)"></td>
       <td><button class="btn btn-sm btn-danger" onclick="_bomRemoveLine(${idx})">×</button></td>
     </tr>`).join('');
 }
 
 function _bomUpdateLine(idx, field, value) { _bomLines[idx][field] = value; }
-function _bomAddLine() { _bomLines.push({ item_id:'', qty_required:1, scrap_pct:0, notes:'' }); _bomRenderLines(); }
+function _bomAddLine() { _bomLines.push({ item_id:'', qty_required:1, scrap_pct:0, std_unit_cost:'', notes:'' }); _bomRenderLines(); }
 function _bomRemoveLine(idx) { _bomLines.splice(idx,1); if (!_bomLines.length) _bomAddLine(); else _bomRenderLines(); }
 function closeBOMModal() { document.getElementById('bomModalBackdrop')?.remove(); }
 
@@ -207,6 +213,15 @@ async function saveBOM(activate) {
     showToast('Output item tidak boleh muncul sebagai komponen sendiri', 'error');
     return;
   }
+  // Sprint M4: all-or-nothing std_unit_cost validation client-side
+  const withStd    = valid.filter(l => l.std_unit_cost !== null && l.std_unit_cost !== '' && !isNaN(parseFloat(l.std_unit_cost)));
+  const withoutStd = valid.filter(l => !(l.std_unit_cost !== null && l.std_unit_cost !== '' && !isNaN(parseFloat(l.std_unit_cost))));
+  if (withStd.length && withoutStd.length) {
+    showToast('Standard cost harus diisi di SEMUA baris atau KOSONG semua. Saat ini: '
+              + `${withStd.length} dengan std, ${withoutStd.length} tanpa.`, 'error');
+    return;
+  }
+
   const payload = {
     item_id, qty_output, notes: notes || null,
     bom_code: bom_code || null,
@@ -214,6 +229,8 @@ async function saveBOM(activate) {
       item_id: l.item_id,
       qty_required: l.qty_required,
       scrap_pct: l.scrap_pct || 0,
+      std_unit_cost: (l.std_unit_cost === null || l.std_unit_cost === '' || isNaN(parseFloat(l.std_unit_cost)))
+        ? null : parseFloat(l.std_unit_cost),
       notes: l.notes || null,
     })),
   };
@@ -262,13 +279,18 @@ async function showBOMDetail(id) {
         <td>${_mfgEsc(itemMap[ln.item_id] || ln.item_id?.slice(0,8))}</td>
         <td style="text-align:right">${ln.qty_required}</td>
         <td style="text-align:right">${ln.scrap_pct}%</td>
+        <td style="text-align:right">${ln.std_unit_cost != null ? _mfgFmtRp(ln.std_unit_cost) : '<span style="color:#9ca3af">—</span>'}</td>
         <td>${_mfgEsc(ln.notes || '-')}</td>
       </tr>`).join('');
+    const hasStd = (b.lines || []).every(l => l.std_unit_cost != null);
+    const costingBadge = hasStd
+      ? '<span style="display:inline-block;padding:2px 8px;background:#06b6d420;color:#06b6d4;border-radius:6px;font-size:11px;font-weight:600">📊 Standard Cost</span>'
+      : '<span style="display:inline-block;padding:2px 8px;background:#6b728020;color:#6b7280;border-radius:6px;font-size:11px;font-weight:600">Actual Cost</span>';
     const html = `
     <div class="modal-backdrop" id="bomDetailBackdrop" onclick="if(event.target===this)this.remove()">
       <div class="modal-content" style="max-width:780px">
         <div class="modal-header">
-          <h3>${_mfgEsc(b.bom_code)} — ${_bomStatusBadge(b.status)}</h3>
+          <h3>${_mfgEsc(b.bom_code)} — ${_bomStatusBadge(b.status)} ${costingBadge}</h3>
           <button class="modal-close" onclick="document.getElementById('bomDetailBackdrop').remove()">×</button>
         </div>
         <div class="modal-body">
@@ -279,7 +301,7 @@ async function showBOMDetail(id) {
             <div><strong>Created:</strong> ${(b.created_at || '').slice(0,10)}</div>
           </div>
           <table class="data-table">
-            <thead><tr><th>#</th><th>Komponen</th><th>Qty Required</th><th>Scrap%</th><th>Notes</th></tr></thead>
+            <thead><tr><th>#</th><th>Komponen</th><th>Qty Required</th><th>Scrap%</th><th>Std Unit Cost</th><th>Notes</th></tr></thead>
             <tbody>${linesHtml}</tbody>
           </table>
           ${b.notes ? `<p style="margin-top:12px"><strong>Notes:</strong> ${_mfgEsc(b.notes)}</p>` : ''}
@@ -594,18 +616,31 @@ async function showMODetail(id) {
     const m = await Api.manufacturingOrders.get(id);
     const itemMap = Object.fromEntries(MfgState.items.map(i => [i.id, i.name]));
     const whMap   = Object.fromEntries(MfgState.warehouses.map(w => [w.id, w.name]));
-    const rows = (m.components || []).map((c, idx) => `
+    const hasStd = (m.components || []).every(c => c.std_unit_cost != null);
+    const rows = (m.components || []).map((c, idx) => {
+      const actTotal = parseFloat(c.qty_issued||0) * parseFloat(c.unit_cost||0);
+      const stdTotal = c.std_unit_cost != null
+        ? parseFloat(c.qty_issued||0) * parseFloat(c.std_unit_cost)
+        : null;
+      return `
       <tr>
         <td>${idx+1}</td>
         <td>${_mfgEsc(itemMap[c.item_id] || c.item_id?.slice(0,8))}</td>
         <td style="text-align:right">${c.qty_planned}</td>
         <td style="text-align:right">${c.qty_issued || 0}</td>
         <td style="text-align:right">${_mfgFmtRp(c.unit_cost)}</td>
-        <td style="text-align:right">${_mfgFmtRp((parseFloat(c.qty_issued||0) * parseFloat(c.unit_cost||0)))}</td>
-      </tr>`).join('');
+        <td style="text-align:right">${c.std_unit_cost != null ? _mfgFmtRp(c.std_unit_cost) : '—'}</td>
+        <td style="text-align:right">${_mfgFmtRp(actTotal)}</td>
+        <td style="text-align:right">${stdTotal != null ? _mfgFmtRp(stdTotal) : '—'}</td>
+      </tr>`;
+    }).join('');
     const totalWip = (m.components || []).reduce(
       (s, c) => s + parseFloat(c.qty_issued||0) * parseFloat(c.unit_cost||0), 0
     );
+    const variance   = m.variance_amount != null ? parseFloat(m.variance_amount) : null;
+    const stdTotal   = m.std_total_cost != null  ? parseFloat(m.std_total_cost)  : null;
+    const varColor   = variance == null ? '#6b7280' : (variance > 0 ? '#ef4444' : '#10b981');
+    const varLabel   = variance == null ? '' : (variance > 0 ? ' (unfavorable)' : variance < 0 ? ' (favorable)' : '');
     const html = `
     <div class="modal-backdrop" id="moDetailBackdrop" onclick="if(event.target===this)this.remove()">
       <div class="modal-content" style="max-width:880px">
@@ -625,12 +660,30 @@ async function showMODetail(id) {
             <div><strong>Done At:</strong> ${m.done_at ? new Date(m.done_at).toLocaleString() : '-'}</div>
             <div><strong>Issue Journal:</strong> ${m.issue_journal_entry_id ? `<code>${_mfgEsc(m.issue_journal_entry_id.slice(0,8))}</code>` : '-'}</div>
             <div><strong>Receipt Journal:</strong> ${m.receipt_journal_entry_id ? `<code>${_mfgEsc(m.receipt_journal_entry_id.slice(0,8))}</code>` : '-'}</div>
+            ${m.variance_journal_entry_id ? `<div><strong>Variance Journal:</strong> <code>${_mfgEsc(m.variance_journal_entry_id.slice(0,8))}</code></div>` : ''}
           </div>
-          <h4>Komponen</h4>
+          <h4>Komponen ${hasStd ? '<span style="font-size:11px;color:#06b6d4">📊 Standard Cost mode</span>' : '<span style="font-size:11px;color:#6b7280">Actual Cost mode</span>'}</h4>
           <table class="data-table">
-            <thead><tr><th>#</th><th>Item</th><th>Plan</th><th>Issued</th><th>Unit Cost</th><th>Total</th></tr></thead>
+            <thead><tr>
+              <th>#</th><th>Item</th><th>Plan</th><th>Issued</th>
+              <th>Actual Unit</th><th>Std Unit</th>
+              <th>Actual Total</th><th>Std Total</th>
+            </tr></thead>
             <tbody>${rows}</tbody>
-            <tfoot><tr><th colspan="5" style="text-align:right">Total WIP</th><th style="text-align:right">${_mfgFmtRp(totalWip)}</th></tr></tfoot>
+            <tfoot>
+              <tr>
+                <th colspan="6" style="text-align:right">Total Actual (WIP)</th>
+                <th colspan="2" style="text-align:right">${_mfgFmtRp(totalWip)}</th>
+              </tr>
+              ${stdTotal != null ? `<tr>
+                <th colspan="6" style="text-align:right">Total Standard</th>
+                <th colspan="2" style="text-align:right">${_mfgFmtRp(stdTotal)}</th>
+              </tr>` : ''}
+              ${variance != null ? `<tr>
+                <th colspan="6" style="text-align:right;color:${varColor}">Variance${varLabel}</th>
+                <th colspan="2" style="text-align:right;color:${varColor};font-weight:700">${variance >= 0 ? '+' : ''}${_mfgFmtRp(variance)}</th>
+              </tr>` : ''}
+            </tfoot>
           </table>
           ${m.cancel_reason ? `<p style="margin-top:12px;color:#ef4444"><strong>Cancel reason:</strong> ${_mfgEsc(m.cancel_reason)}</p>` : ''}
           ${m.notes ? `<p style="margin-top:12px"><strong>Notes:</strong> ${_mfgEsc(m.notes)}</p>` : ''}
