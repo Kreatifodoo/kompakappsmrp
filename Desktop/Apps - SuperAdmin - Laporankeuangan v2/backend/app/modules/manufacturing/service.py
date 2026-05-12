@@ -100,6 +100,7 @@ class BOMService:
                 item_id=ln.item_id,
                 qty_required=ln.qty_required,
                 scrap_pct=ln.scrap_pct,
+                std_unit_cost=ln.std_unit_cost,
                 notes=ln.notes,
             )
             for idx, ln in enumerate(payload.lines)
@@ -136,6 +137,7 @@ class BOMService:
                     item_id=ln.item_id,
                     qty_required=ln.qty_required,
                     scrap_pct=ln.scrap_pct,
+                    std_unit_cost=ln.std_unit_cost,
                     notes=ln.notes,
                 )
                 for idx, ln in enumerate(payload.lines)
@@ -155,6 +157,15 @@ class BOMService:
             raise ValidationError("Obsolete BOM cannot be reactivated; clone it instead")
         if not bom.lines:
             raise ValidationError("Cannot activate a BOM with no lines")
+
+        # Sprint M4: standard cost must be all-or-nothing across lines.
+        with_std    = [ln for ln in bom.lines if ln.std_unit_cost is not None]
+        without_std = [ln for ln in bom.lines if ln.std_unit_cost is None]
+        if with_std and without_std:
+            raise ValidationError(
+                "Standard cost must be set on ALL lines or NONE — mixed BOMs not allowed. "
+                f"Lines with std_unit_cost: {len(with_std)}, without: {len(without_std)}"
+            )
 
         # Auto-obsolete any other active BOM for the same item (single
         # statement; the partial unique index would otherwise reject)
@@ -266,14 +277,26 @@ class ManufacturingOrderService:
         #                       * (1 + scrap_pct / 100)
         ratio = (payload.qty_planned / bom.qty_output).quantize(QTY4)
         components: list[MOComponent] = []
+        # Sprint M4: aggregate standard cost. If any line has std_unit_cost
+        # set, ALL must (enforced at activate); otherwise None propagates.
+        std_total = Decimal("0")
+        any_std = False
+        all_std = True
         for ln in bom.lines:
             scrap_mult = Decimal("1") + (ln.scrap_pct / Decimal("100"))
             qty = (ln.qty_required * ratio * scrap_mult).quantize(QTY4)
+            if ln.std_unit_cost is not None:
+                any_std = True
+                std_total += (qty * ln.std_unit_cost).quantize(CENT)
+            else:
+                all_std = False
             components.append(MOComponent(
                 bom_line_id=ln.id,
                 item_id=ln.item_id,
                 qty_planned=qty,
+                std_unit_cost=ln.std_unit_cost,
             ))
+        std_total_cost = std_total.quantize(CENT) if (any_std and all_std) else None
 
         # MO no
         year = (payload.planned_start or date.today()).year
@@ -292,6 +315,7 @@ class ManufacturingOrderService:
             status="draft",
             backflush=payload.backflush,
             notes=payload.notes,
+            std_total_cost=std_total_cost,
             created_by=self.user_id,
         )
         mo.components = components
@@ -504,8 +528,28 @@ class ManufacturingOrderService:
                 "(or enable backflush)."
             )
 
-        # Stock-in finished goods at total_wip / qty_produced
-        unit_fg_cost = (total_wip / qty_produced).quantize(QTY4)
+        # Sprint M4: determine costing mode. If MO has std_total_cost set
+        # AND every component has std_unit_cost, run STANDARD costing.
+        use_std = (
+            mo.std_total_cost is not None
+            and mo_refreshed.components
+            and all(c.std_unit_cost is not None for c in mo_refreshed.components)
+        )
+
+        if use_std:
+            # Standard cost per produced unit = std_total_cost / qty_planned
+            # (std_total_cost was computed at MO create from qty_planned)
+            std_per_unit = (mo.std_total_cost / mo.qty_planned).quantize(QTY4)
+            fg_standard_value = (std_per_unit * qty_produced).quantize(CENT)
+            unit_fg_cost = std_per_unit
+            # Variance: actual - standard. Positive = unfavorable (more cost).
+            variance = (total_wip - fg_standard_value).quantize(CENT)
+        else:
+            fg_standard_value = total_wip   # actual
+            unit_fg_cost = (total_wip / qty_produced).quantize(QTY4)
+            variance = Decimal("0")
+
+        # Stock-in finished goods at the chosen FG unit cost
         await self.inv_svc.post_movement(
             StockMovementCreate(
                 item_id=mo.item_id,
@@ -520,18 +564,46 @@ class ManufacturingOrderService:
             source_id=mo.id,
         )
 
-        # Journal: Dr Inventory FG / Cr WIP @ total_wip
+        # Journal lines:
+        #   Standard mode (variance != 0):
+        #     Dr Inv FG (fg_standard_value)
+        #     Cr WIP    (total_wip)
+        #     + balance to Variance account: Dr if unfavorable, Cr if favorable.
+        #   Actual mode (variance == 0):
+        #     Dr Inv FG / Cr WIP @ total_wip
+        journal_lines: list[tuple[UUID, Decimal, Decimal]] = []
+        journal_lines.append((inv_acc.account_id, fg_standard_value, Decimal("0")))
+        journal_lines.append((wip.account_id, Decimal("0"), total_wip))
+        if variance != 0:
+            var_map = await self.acct_repo.get_mapping("mfg_variance")
+            if not var_map:
+                raise ValidationError(
+                    "Variance detected but account mapping 'mfg_variance' is not "
+                    "configured. Set it under Account Mappings before completing "
+                    "standard-cost MOs."
+                )
+            if variance > 0:
+                # Unfavorable: actual > standard → debit variance (more cost recognized)
+                journal_lines.append((var_map.account_id, variance, Decimal("0")))
+            else:
+                # Favorable: actual < standard → credit variance
+                journal_lines.append((var_map.account_id, Decimal("0"), -variance))
+
         entry = await self.acct_svc.post_system_journal(
             entry_date=cdate,
-            description=f"MO {mo.mo_no} finished goods receipt",
-            lines=[
-                (inv_acc.account_id, total_wip, Decimal("0")),
-                (wip.account_id, Decimal("0"), total_wip),
-            ],
+            description=f"MO {mo.mo_no} finished goods receipt"
+                        + (f" (variance {variance:+})" if variance != 0 else ""),
+            lines=journal_lines,
             source="mfg_receipt",
             source_id=mo.id,
         )
         mo.receipt_journal_entry_id = entry.id
+        if variance != 0:
+            # In MVP we record one combined entry for both FG receipt and
+            # variance recognition; variance_journal_entry_id mirrors the
+            # receipt journal so reports can drill in without join.
+            mo.variance_journal_entry_id = entry.id
+            mo.variance_amount = variance
         mo.qty_produced = qty_produced
         mo.actual_end = datetime.now(UTC)
         mo.done_at = datetime.now(UTC)
@@ -547,6 +619,8 @@ class ManufacturingOrderService:
                 "qty_produced": float(qty_produced),
                 "total_cost": float(total_wip),
                 "unit_cost": float(unit_fg_cost),
+                "variance": float(variance),
+                "costing_mode": "standard" if use_std else "actual",
             })
         except Exception:
             pass

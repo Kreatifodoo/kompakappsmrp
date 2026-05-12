@@ -105,6 +105,9 @@ class BOMLine(Base):
     scrap_pct: Mapped[Decimal] = mapped_column(
         Numeric(5, 2), nullable=False, default=Decimal("0")
     )
+    # Sprint M4: optional standard unit cost. When set on ALL lines of a BOM,
+    # the MO uses standard costing with variance recognition on completion.
+    std_unit_cost: Mapped[Decimal | None] = mapped_column(Numeric(18, 4))
     notes: Mapped[str | None] = mapped_column(String(500))
 
     bom: Mapped[BOM] = relationship(back_populates="lines")
@@ -167,6 +170,10 @@ class ManufacturingOrder(Base):
     # journals partitioned — plain UUID
     issue_journal_entry_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
     receipt_journal_entry_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    # Sprint M4: standard costing & variance
+    std_total_cost: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
+    variance_amount: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
+    variance_journal_entry_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
     created_by: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
     )
@@ -215,5 +222,7 @@ class MOComponent(Base):
     unit_cost: Mapped[Decimal] = mapped_column(
         Numeric(18, 4), nullable=False, default=Decimal("0")
     )
+    # Sprint M4: snapshot from bom_line.std_unit_cost at MO confirm time
+    std_unit_cost: Mapped[Decimal | None] = mapped_column(Numeric(18, 4))
 
     mo: Mapped[ManufacturingOrder] = relationship(back_populates="components")

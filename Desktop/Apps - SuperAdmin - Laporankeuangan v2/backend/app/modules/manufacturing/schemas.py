@@ -15,6 +15,8 @@ class BOMLineIn(BaseModel):
     item_id: UUID
     qty_required: Decimal = Field(gt=0)
     scrap_pct: Decimal = Field(default=Decimal("0"), ge=0, lt=100)
+    # Sprint M4: optional standard unit cost for variance accounting
+    std_unit_cost: Decimal | None = Field(default=None, ge=0)
     notes: str | None = Field(default=None, max_length=500)
 
 
@@ -26,6 +28,7 @@ class BOMLineOut(BaseModel):
     item_id: UUID
     qty_required: Decimal
     scrap_pct: Decimal
+    std_unit_cost: Decimal | None
     notes: str | None
 
 
@@ -77,6 +80,7 @@ class MOComponentOut(BaseModel):
     qty_planned: Decimal
     qty_issued: Decimal
     unit_cost: Decimal
+    std_unit_cost: Decimal | None
 
 
 class MOCreate(BaseModel):
@@ -129,6 +133,10 @@ class MOOut(BaseModel):
     notes: str | None
     issue_journal_entry_id: UUID | None
     receipt_journal_entry_id: UUID | None
+    # Sprint M4: standard costing & variance
+    std_total_cost: Decimal | None
+    variance_amount: Decimal | None
+    variance_journal_entry_id: UUID | None
     created_at: datetime
     confirmed_at: datetime | None
     done_at: datetime | None

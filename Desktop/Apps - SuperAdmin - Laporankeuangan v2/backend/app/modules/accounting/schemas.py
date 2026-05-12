@@ -124,6 +124,7 @@ WELL_KNOWN_MAPPING_KEYS = {
     "cogs",  # expense account hit on stock-out for sold items
     "gr_clearing",  # liability: Goods Received Not Invoiced (intermediate GR↔PI)
     "wip",          # asset: Work-In-Process (manufacturing) — debited on material issue, credited on FG receipt
+    "mfg_variance", # P&L: manufacturing variance (actual vs standard cost) — debit if unfavorable, credit if favorable
     # Default contra accounts for inventory stock-operations (per operation type).
     # Used by the "Operasi Stok" form to pre-fill the contra dropdown.
     "inv_op_receipt_contra",          # Penerimaan Barang   (Cr) — biasanya AP / Kas / Modal
