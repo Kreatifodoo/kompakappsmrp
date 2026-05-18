@@ -165,3 +165,54 @@ class ManufacturingRepository:
     async def get_mo_operation(self, op_id: UUID) -> MOOperation | None:
         stmt = select(MOOperation).where(MOOperation.id == op_id)
         return (await self.session.execute(stmt)).scalar_one_or_none()
+
+    # ─── Scrap (Sprint M6) ───────────────────────────────
+    async def list_scraps(
+        self,
+        *,
+        status: str | None = None,
+        mo_id: UUID | None = None,
+        date_from: date | None = None,
+        date_to: date | None = None,
+        limit: int = 100,
+        offset: int = 0,
+    ):
+        from app.modules.manufacturing.models import MfgScrap
+        conds = [MfgScrap.tenant_id == self.tenant_id]
+        if status: conds.append(MfgScrap.status == status)
+        if mo_id: conds.append(MfgScrap.mo_id == mo_id)
+        if date_from: conds.append(MfgScrap.scrap_date >= date_from)
+        if date_to: conds.append(MfgScrap.scrap_date <= date_to)
+        stmt = (
+            select(MfgScrap).where(*conds)
+            .options(selectinload(MfgScrap.lines))
+            .order_by(MfgScrap.scrap_date.desc(), MfgScrap.scrap_no.desc())
+            .limit(limit).offset(offset)
+        )
+        return list((await self.session.execute(stmt)).scalars().all())
+
+    async def get_scrap(self, scrap_id: UUID):
+        from app.modules.manufacturing.models import MfgScrap
+        stmt = (
+            select(MfgScrap).where(
+                MfgScrap.id == scrap_id,
+                MfgScrap.tenant_id == self.tenant_id,
+            )
+            .options(selectinload(MfgScrap.lines))
+        )
+        return (await self.session.execute(stmt)).scalar_one_or_none()
+
+    async def add_scrap(self, scrap):
+        self.session.add(scrap)
+        await self.session.flush()
+        return scrap
+
+    async def next_scrap_no(self, year: int) -> str:
+        from app.modules.manufacturing.models import MfgScrap
+        prefix = f"SCR-{year}-"
+        stmt = select(func.count(MfgScrap.id)).where(
+            MfgScrap.tenant_id == self.tenant_id,
+            MfgScrap.scrap_no.like(f"{prefix}%"),
+        )
+        count = (await self.session.execute(stmt)).scalar_one() or 0
+        return f"{prefix}{count + 1:05d}"

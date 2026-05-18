@@ -873,3 +873,187 @@ class WorkCenterService:
             wc.notes = payload.notes
         await self.session.flush()
         return wc
+
+
+# ═══════════════════════════════════════════════════════════════════
+# Scrap Service (Sprint M6)
+# ═══════════════════════════════════════════════════════════════════
+
+class ScrapService:
+    """Records inventory loss (spoilage, defects, QC reject).
+
+    On post:
+      • For each line, stock-out via InventoryService (source='mfg_scrap')
+        and capture the resulting unit_cost from the inventory layer.
+      • Post one journal: Dr mfg_scrap_loss / Cr inventory @ total.
+
+    Standalone — no WIP involvement even when mo_id is set; mo_id is
+    purely informational so users can drill from an MO to its scraps.
+    """
+
+    def __init__(self, session: AsyncSession, tenant_id: UUID, user_id: UUID):
+        self.session = session
+        self.tenant_id = tenant_id
+        self.user_id = user_id
+        self.repo = ManufacturingRepository(session, tenant_id)
+        self.inv_repo = InventoryRepository(session, tenant_id)
+        self.inv_svc = InventoryService(session, tenant_id, user_id)
+        self.acct_repo = AccountingRepository(session, tenant_id)
+        self.acct_svc = AccountingService(session, tenant_id, user_id)
+
+    async def create_scrap(self, payload):
+        from app.modules.manufacturing.models import MfgScrap, MfgScrapLine
+        await assert_period_open(self.session, self.tenant_id, payload.scrap_date)
+
+        warehouse = await self.inv_repo.get_warehouse(payload.warehouse_id)
+        if not warehouse or not warehouse.is_active:
+            raise ValidationError("Warehouse not found or inactive")
+
+        if payload.mo_id:
+            mo = await self.repo.get_mo(payload.mo_id)
+            if not mo:
+                raise NotFoundError("Referenced MO not found")
+
+        # Validate items exist
+        for ln in payload.lines:
+            it = await self.inv_repo.get_item(ln.item_id)
+            if not it:
+                raise NotFoundError(f"Item {ln.item_id} not found")
+
+        scrap_no = payload.scrap_no or await self.repo.next_scrap_no(payload.scrap_date.year)
+        scrap = MfgScrap(
+            tenant_id=self.tenant_id,
+            scrap_no=scrap_no,
+            scrap_date=payload.scrap_date,
+            warehouse_id=warehouse.id,
+            mo_id=payload.mo_id,
+            reason=payload.reason,
+            notes=payload.notes,
+            status="draft",
+            created_by=self.user_id,
+        )
+        scrap.lines = [
+            MfgScrapLine(
+                item_id=ln.item_id,
+                qty=ln.qty,
+                unit_cost=ln.unit_cost or Decimal("0"),
+                notes=ln.notes,
+            )
+            for ln in payload.lines
+        ]
+        return await self.repo.add_scrap(scrap)
+
+    async def post_scrap(self, scrap_id: UUID):
+        scrap = await self.repo.get_scrap(scrap_id)
+        if not scrap:
+            raise NotFoundError("Scrap not found")
+        if scrap.status == "posted":
+            raise ConflictError("Scrap already posted")
+        if scrap.status == "void":
+            raise ValidationError("Voided scrap cannot be posted")
+        await assert_period_open(self.session, self.tenant_id, scrap.scrap_date)
+
+        inv_map = await self.acct_repo.get_mapping("inventory")
+        loss_map = await self.acct_repo.get_mapping("mfg_scrap_loss")
+        if not inv_map or not loss_map:
+            raise ValidationError(
+                "Account mappings missing: configure 'inventory' and 'mfg_scrap_loss' first."
+            )
+
+        total_cost = Decimal("0")
+        for ln in scrap.lines:
+            mvm = await self.inv_svc.post_movement(
+                StockMovementCreate(
+                    item_id=ln.item_id,
+                    warehouse_id=scrap.warehouse_id,
+                    movement_date=scrap.scrap_date,
+                    direction="out",
+                    qty=ln.qty,
+                    unit_cost=ln.unit_cost or Decimal("0"),
+                    notes=f"Scrap {scrap.scrap_no} line",
+                ),
+                source="mfg_scrap",
+                source_id=scrap.id,
+            )
+            # Capture actual unit_cost from inventory layer if user didn't override
+            if not ln.unit_cost or ln.unit_cost == 0:
+                ln.unit_cost = mvm.unit_cost
+            total_cost += (mvm.qty * mvm.unit_cost).quantize(CENT)
+
+        if total_cost > 0:
+            entry = await self.acct_svc.post_system_journal(
+                entry_date=scrap.scrap_date,
+                description=f"Scrap {scrap.scrap_no}"
+                            + (f" — {scrap.reason}" if scrap.reason else ""),
+                lines=[
+                    (loss_map.account_id, total_cost, Decimal("0")),
+                    (inv_map.account_id, Decimal("0"), total_cost),
+                ],
+                source="mfg_scrap",
+                source_id=scrap.id,
+            )
+            scrap.journal_entry_id = entry.id
+
+        scrap.status = "posted"
+        scrap.posted_at = datetime.now(UTC)
+        scrap.posted_by = self.user_id
+        await self.session.flush()
+
+        try:
+            from app.core.events import publish
+            await publish("mfg_scrap.posted", {
+                "tenant_id": str(self.tenant_id),
+                "scrap_id": str(scrap.id),
+                "scrap_no": scrap.scrap_no,
+                "mo_id": str(scrap.mo_id) if scrap.mo_id else None,
+                "total_cost": float(total_cost),
+            })
+        except Exception:
+            pass
+        return scrap
+
+    async def void_scrap(self, scrap_id: UUID, reason: str):
+        scrap = await self.repo.get_scrap(scrap_id)
+        if not scrap:
+            raise NotFoundError("Scrap not found")
+        if scrap.status == "void":
+            raise ConflictError("Scrap already void")
+        await assert_period_open(self.session, self.tenant_id, scrap.scrap_date)
+
+        if scrap.status == "posted":
+            # Reverse stock movements (re-stock at recorded unit_cost)
+            for ln in scrap.lines:
+                await self.inv_svc.post_movement(
+                    StockMovementCreate(
+                        item_id=ln.item_id,
+                        warehouse_id=scrap.warehouse_id,
+                        movement_date=scrap.scrap_date,
+                        direction="in",
+                        qty=ln.qty,
+                        unit_cost=ln.unit_cost or Decimal("0"),
+                        notes=f"Void Scrap {scrap.scrap_no}",
+                    ),
+                    source="mfg_scrap_void",
+                    source_id=scrap.id,
+                )
+            if scrap.journal_entry_id:
+                await self.acct_svc.void_system_journal(
+                    "mfg_scrap", scrap.id, f"Voided: {reason}"
+                )
+
+        scrap.status = "void"
+        scrap.voided_at = datetime.now(UTC)
+        scrap.void_reason = reason
+        await self.session.flush()
+
+        try:
+            from app.core.events import publish
+            await publish("mfg_scrap.voided", {
+                "tenant_id": str(self.tenant_id),
+                "scrap_id": str(scrap.id),
+                "scrap_no": scrap.scrap_no,
+                "reason": reason,
+            })
+        except Exception:
+            pass
+        return scrap

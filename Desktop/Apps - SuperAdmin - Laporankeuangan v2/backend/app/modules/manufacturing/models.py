@@ -360,3 +360,92 @@ class MOOperation(Base):
     notes: Mapped[str | None] = mapped_column(String(500))
 
     mo: Mapped[ManufacturingOrder] = relationship(back_populates="operations")
+
+
+# ═══════════════════════════════════════════════════════════════════
+# Scrap (Sprint M6)
+# ═══════════════════════════════════════════════════════════════════
+
+class MfgScrap(Base):
+    __tablename__ = "mfg_scraps"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "scrap_no", name="uq_scrap_tenant_no"),
+        Index("ix_scrap_tenant_status", "tenant_id", "status"),
+        Index("ix_scrap_mo", "mo_id"),
+        CheckConstraint(
+            "status IN ('draft','posted','void')", name="ck_scrap_status"
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("tenants.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    scrap_no: Mapped[str] = mapped_column(String(30), nullable=False)
+    scrap_date: Mapped[date] = mapped_column(Date, nullable=False)
+    warehouse_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("warehouses.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    mo_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("manufacturing_orders.id", ondelete="SET NULL"),
+    )
+    reason: Mapped[str | None] = mapped_column(String(500))
+    notes: Mapped[str | None] = mapped_column(String(1000))
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="draft"
+    )
+    # journal_entries partitioned — plain UUID
+    journal_entry_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    posted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    posted_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    voided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    void_reason: Mapped[str | None] = mapped_column(String(500))
+
+    lines: Mapped[list["MfgScrapLine"]] = relationship(
+        back_populates="scrap",
+        cascade="all, delete-orphan",
+    )
+
+
+class MfgScrapLine(Base):
+    __tablename__ = "mfg_scrap_lines"
+    __table_args__ = (
+        Index("ix_scrapl_scrap", "scrap_id"),
+        CheckConstraint("qty > 0", name="ck_scrapl_qty_positive"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    scrap_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("mfg_scraps.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    item_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("items.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    qty: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
+    unit_cost: Mapped[Decimal] = mapped_column(
+        Numeric(18, 4), nullable=False, default=Decimal("0")
+    )
+    notes: Mapped[str | None] = mapped_column(String(500))
+
+    scrap: Mapped[MfgScrap] = relationship(back_populates="lines")

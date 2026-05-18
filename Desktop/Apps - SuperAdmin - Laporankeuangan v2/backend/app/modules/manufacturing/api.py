@@ -302,3 +302,86 @@ async def update_mo_operations(
     mo = await svc.update_mo_operations(mo_id, payload)
     refreshed = await svc.repo.get_mo(mo.id)
     return MOOut.model_validate(refreshed or mo)
+
+
+# ─── Scrap (Sprint M6) ───────────────────────────────────
+from datetime import date as _date  # noqa: E402  (already imported, alias to avoid shadow)
+from app.modules.manufacturing.schemas import (  # noqa: E402
+    MfgScrapCreate,
+    MfgScrapOut,
+    MfgScrapVoidRequest,
+)
+from app.modules.manufacturing.service import ScrapService  # noqa: E402
+
+
+@router.get("/mfg-scraps", response_model=list[MfgScrapOut])
+async def list_scraps(
+    status: str | None = Query(default=None),
+    mo_id: UUID | None = Query(default=None),
+    date_from: _date | None = Query(default=None),
+    date_to: _date | None = Query(default=None),
+    limit: int = Query(default=100, le=500),
+    offset: int = Query(default=0, ge=0),
+    current: CurrentUser = Depends(require_permission("mfg.read")),
+    session: AsyncSession = Depends(get_write_session),
+) -> list[MfgScrapOut]:
+    repo = ManufacturingRepository(session, current.tenant_id)
+    rows = await repo.list_scraps(
+        status=status, mo_id=mo_id,
+        date_from=date_from, date_to=date_to,
+        limit=limit, offset=offset,
+    )
+    return [MfgScrapOut.model_validate(r) for r in rows]
+
+
+@router.get("/mfg-scraps/{scrap_id}", response_model=MfgScrapOut)
+async def get_scrap(
+    scrap_id: UUID,
+    current: CurrentUser = Depends(require_permission("mfg.read")),
+    session: AsyncSession = Depends(get_write_session),
+) -> MfgScrapOut:
+    repo = ManufacturingRepository(session, current.tenant_id)
+    scrap = await repo.get_scrap(scrap_id)
+    if not scrap:
+        raise NotFoundError("Scrap not found")
+    return MfgScrapOut.model_validate(scrap)
+
+
+@router.post("/mfg-scraps", response_model=MfgScrapOut, status_code=201)
+async def create_scrap(
+    payload: MfgScrapCreate,
+    post_now: bool = Query(default=False),
+    current: CurrentUser = Depends(require_permission("mfg.write")),
+    session: AsyncSession = Depends(get_write_session),
+) -> MfgScrapOut:
+    svc = ScrapService(session, current.tenant_id, current.user_id)
+    scrap = await svc.create_scrap(payload)
+    if post_now:
+        await svc.post_scrap(scrap.id)
+    refreshed = await svc.repo.get_scrap(scrap.id)
+    return MfgScrapOut.model_validate(refreshed or scrap)
+
+
+@router.post("/mfg-scraps/{scrap_id}/post", response_model=MfgScrapOut)
+async def post_scrap(
+    scrap_id: UUID,
+    current: CurrentUser = Depends(require_permission("mfg.post")),
+    session: AsyncSession = Depends(get_write_session),
+) -> MfgScrapOut:
+    svc = ScrapService(session, current.tenant_id, current.user_id)
+    scrap = await svc.post_scrap(scrap_id)
+    refreshed = await svc.repo.get_scrap(scrap.id)
+    return MfgScrapOut.model_validate(refreshed or scrap)
+
+
+@router.post("/mfg-scraps/{scrap_id}/void", response_model=MfgScrapOut)
+async def void_scrap(
+    scrap_id: UUID,
+    payload: MfgScrapVoidRequest,
+    current: CurrentUser = Depends(require_permission("mfg.cancel")),
+    session: AsyncSession = Depends(get_write_session),
+) -> MfgScrapOut:
+    svc = ScrapService(session, current.tenant_id, current.user_id)
+    scrap = await svc.void_scrap(scrap_id, payload.reason)
+    refreshed = await svc.repo.get_scrap(scrap.id)
+    return MfgScrapOut.model_validate(refreshed or scrap)

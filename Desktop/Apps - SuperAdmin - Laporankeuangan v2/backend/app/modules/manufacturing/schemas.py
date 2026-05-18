@@ -238,3 +238,62 @@ class MOOperationsUpdateRequest(BaseModel):
 
 # Resolve forward references (MOOut -> MOOperationOut)
 MOOut.model_rebuild()
+
+
+# ═══════════════════════════════════════════════════════════════════
+# Scrap (Sprint M6)
+# ═══════════════════════════════════════════════════════════════════
+
+ScrapStatus = Literal["draft", "posted", "void"]
+
+
+class MfgScrapLineIn(BaseModel):
+    item_id: UUID
+    qty: Decimal = Field(gt=0)
+    # unit_cost is optional on create — at post time the service captures
+    # the inventory's avg_cost. Setting a value here lets you override.
+    unit_cost: Decimal | None = Field(default=None, ge=0)
+    notes: str | None = Field(default=None, max_length=500)
+
+
+class MfgScrapLineOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    item_id: UUID
+    qty: Decimal
+    unit_cost: Decimal
+    notes: str | None
+
+
+class MfgScrapCreate(BaseModel):
+    scrap_no: str | None = Field(default=None, max_length=30)
+    scrap_date: date
+    warehouse_id: UUID
+    mo_id: UUID | None = None
+    reason: str | None = Field(default=None, max_length=500)
+    notes: str | None = Field(default=None, max_length=1000)
+    lines: list[MfgScrapLineIn] = Field(min_length=1)
+
+
+class MfgScrapOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    scrap_no: str
+    scrap_date: date
+    warehouse_id: UUID
+    mo_id: UUID | None
+    reason: str | None
+    notes: str | None
+    status: ScrapStatus
+    journal_entry_id: UUID | None
+    created_at: datetime
+    posted_at: datetime | None
+    voided_at: datetime | None
+    void_reason: str | None
+    lines: list[MfgScrapLineOut]
+
+
+class MfgScrapVoidRequest(BaseModel):
+    reason: str = Field(min_length=1, max_length=500)

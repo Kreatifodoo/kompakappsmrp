@@ -126,6 +126,7 @@ WELL_KNOWN_MAPPING_KEYS = {
     "wip",          # asset: Work-In-Process (manufacturing) — debited on material issue, credited on FG receipt
     "mfg_variance", # P&L: manufacturing variance (actual vs standard cost) — debit if unfavorable, credit if favorable
     "mfg_labor_applied", # P&L (credit-balance) or accrued labor: credited when MO operations consume labor time into WIP
+    "mfg_scrap_loss",    # P&L: scrap / spoilage write-off — debited when stock is scrapped via mfg_scraps
     # Default contra accounts for inventory stock-operations (per operation type).
     # Used by the "Operasi Stok" form to pre-fill the contra dropdown.
     "inv_op_receipt_contra",          # Penerimaan Barang   (Cr) — biasanya AP / Kas / Modal
