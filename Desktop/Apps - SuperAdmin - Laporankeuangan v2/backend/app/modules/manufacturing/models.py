@@ -449,3 +449,108 @@ class MfgScrapLine(Base):
     notes: Mapped[str | None] = mapped_column(String(500))
 
     scrap: Mapped[MfgScrap] = relationship(back_populates="lines")
+
+
+# ═══════════════════════════════════════════════════════════════════
+# Subcontracting / Maklon
+# ═══════════════════════════════════════════════════════════════════
+
+class SubcontractOrder(Base):
+    __tablename__ = "subcontract_orders"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "sco_no", name="uq_sco_tenant_no"),
+        Index("ix_sco_tenant_status", "tenant_id", "status"),
+        Index("ix_sco_supplier", "supplier_id"),
+        CheckConstraint(
+            "status IN ('draft','issued','received','cancelled')", name="ck_sco_status"
+        ),
+        CheckConstraint("qty_planned > 0", name="ck_sco_qty_planned_positive"),
+        CheckConstraint("fee_per_unit >= 0", name="ck_sco_fee_nonneg"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("tenants.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    sco_no: Mapped[str] = mapped_column(String(30), nullable=False)
+    sco_date: Mapped[date] = mapped_column(Date, nullable=False)
+    supplier_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("suppliers.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    output_item_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("items.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    warehouse_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("warehouses.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    qty_planned: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
+    qty_received: Mapped[Decimal] = mapped_column(
+        Numeric(18, 4), nullable=False, default=Decimal("0")
+    )
+    fee_per_unit: Mapped[Decimal] = mapped_column(
+        Numeric(18, 2), nullable=False, default=Decimal("0")
+    )
+    fee_total: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
+    expected_return_date: Mapped[date | None] = mapped_column(Date)
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="draft"
+    )
+    issue_journal_entry_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    receipt_journal_entry_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    notes: Mapped[str | None] = mapped_column(String(1000))
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    issued_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    received_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    cancel_reason: Mapped[str | None] = mapped_column(String(500))
+
+    components: Mapped[list["SubcontractComponent"]] = relationship(
+        back_populates="sco",
+        cascade="all, delete-orphan",
+    )
+
+
+class SubcontractComponent(Base):
+    __tablename__ = "subcontract_components"
+    __table_args__ = (
+        Index("ix_scoc_sco", "sco_id"),
+        CheckConstraint("qty_planned > 0", name="ck_scoc_qty_positive"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    sco_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("subcontract_orders.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    item_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("items.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    qty_planned: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
+    qty_issued: Mapped[Decimal] = mapped_column(
+        Numeric(18, 4), nullable=False, default=Decimal("0")
+    )
+    unit_cost: Mapped[Decimal] = mapped_column(
+        Numeric(18, 4), nullable=False, default=Decimal("0")
+    )
+
+    sco: Mapped[SubcontractOrder] = relationship(back_populates="components")

@@ -297,3 +297,74 @@ class MfgScrapOut(BaseModel):
 
 class MfgScrapVoidRequest(BaseModel):
     reason: str = Field(min_length=1, max_length=500)
+
+
+# ═══════════════════════════════════════════════════════════════════
+# Subcontracting / Maklon
+# ═══════════════════════════════════════════════════════════════════
+
+SCOStatus = Literal["draft", "issued", "received", "cancelled"]
+
+
+class SCOComponentIn(BaseModel):
+    item_id: UUID
+    qty_planned: Decimal = Field(gt=0)
+
+
+class SCOComponentOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    item_id: UUID
+    qty_planned: Decimal
+    qty_issued: Decimal
+    unit_cost: Decimal
+
+
+class SCOCreate(BaseModel):
+    sco_no: str | None = Field(default=None, max_length=30)
+    sco_date: date
+    supplier_id: UUID
+    output_item_id: UUID
+    warehouse_id: UUID
+    qty_planned: Decimal = Field(gt=0)
+    fee_per_unit: Decimal = Field(default=Decimal("0"), ge=0)
+    expected_return_date: date | None = None
+    notes: str | None = Field(default=None, max_length=1000)
+    components: list[SCOComponentIn] = Field(min_length=1)
+
+
+class SCOReceiveRequest(BaseModel):
+    qty_received: Decimal = Field(gt=0)
+    fee_per_unit: Decimal | None = Field(default=None, ge=0)  # override per receive
+    receipt_date: date | None = None
+
+
+class SCOCancelRequest(BaseModel):
+    reason: str = Field(min_length=1, max_length=500)
+
+
+class SCOOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    sco_no: str
+    sco_date: date
+    supplier_id: UUID
+    output_item_id: UUID
+    warehouse_id: UUID
+    qty_planned: Decimal
+    qty_received: Decimal
+    fee_per_unit: Decimal
+    fee_total: Decimal | None
+    expected_return_date: date | None
+    status: SCOStatus
+    issue_journal_entry_id: UUID | None
+    receipt_journal_entry_id: UUID | None
+    notes: str | None
+    created_at: datetime
+    issued_at: datetime | None
+    received_at: datetime | None
+    cancelled_at: datetime | None
+    cancel_reason: str | None
+    components: list[SCOComponentOut]

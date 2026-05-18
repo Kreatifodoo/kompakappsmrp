@@ -1155,3 +1155,288 @@ class MOCostAnalysisService:
                 "costing_mode":    "standard" if material_std is not None else "actual",
             })
         return out
+
+
+# ═══════════════════════════════════════════════════════════════════
+# Subcontracting / Maklon Service
+# ═══════════════════════════════════════════════════════════════════
+
+class SubcontractService:
+    """Maklon flow: ship raw → receive FG @ raw + fee → fee booked to AP.
+
+    Lifecycle: draft → issued → received | cancelled.
+
+    Journal postings:
+      • confirm-and-issue: Dr WIP / Cr Inventory (raw, total stock-out)
+      • receive: Dr Inventory FG / Cr WIP (raw portion) / Cr AP (fee portion)
+      • cancel from issued: reverse stock-out + void issue journal.
+    """
+
+    def __init__(self, session: AsyncSession, tenant_id: UUID, user_id: UUID):
+        self.session = session
+        self.tenant_id = tenant_id
+        self.user_id = user_id
+        self.repo = ManufacturingRepository(session, tenant_id)
+        self.inv_repo = InventoryRepository(session, tenant_id)
+        self.inv_svc = InventoryService(session, tenant_id, user_id)
+        self.acct_repo = AccountingRepository(session, tenant_id)
+        self.acct_svc = AccountingService(session, tenant_id, user_id)
+
+    async def create_sco(self, payload):
+        from app.modules.manufacturing.models import SubcontractOrder, SubcontractComponent
+        await assert_period_open(self.session, self.tenant_id, payload.sco_date)
+
+        warehouse = await self.inv_repo.get_warehouse(payload.warehouse_id)
+        if not warehouse or not warehouse.is_active:
+            raise ValidationError("Warehouse not found or inactive")
+
+        out_item = await self.inv_repo.get_item(payload.output_item_id)
+        if not out_item:
+            raise NotFoundError("Output item not found")
+
+        # Validate components items + no self-reference
+        if any(c.item_id == payload.output_item_id for c in payload.components):
+            raise ValidationError("Output item cannot appear as component")
+        for c in payload.components:
+            it = await self.inv_repo.get_item(c.item_id)
+            if not it:
+                raise NotFoundError(f"Component item {c.item_id} not found")
+
+        sco_no = payload.sco_no or await self.repo.next_sco_no(payload.sco_date.year)
+        sco = SubcontractOrder(
+            tenant_id=self.tenant_id,
+            sco_no=sco_no,
+            sco_date=payload.sco_date,
+            supplier_id=payload.supplier_id,
+            output_item_id=payload.output_item_id,
+            warehouse_id=warehouse.id,
+            qty_planned=payload.qty_planned,
+            fee_per_unit=payload.fee_per_unit,
+            expected_return_date=payload.expected_return_date,
+            notes=payload.notes,
+            status="draft",
+            created_by=self.user_id,
+        )
+        sco.components = [
+            SubcontractComponent(
+                item_id=c.item_id,
+                qty_planned=c.qty_planned,
+            )
+            for c in payload.components
+        ]
+        return await self.repo.add_sco(sco)
+
+    async def confirm_and_issue(self, sco_id: UUID):
+        sco = await self.repo.get_sco(sco_id)
+        if not sco:
+            raise NotFoundError("SCO not found")
+        if sco.status != "draft":
+            raise ValidationError(
+                f"Can only confirm-and-issue draft SCO (current: {sco.status})"
+            )
+        await assert_period_open(self.session, self.tenant_id, sco.sco_date)
+
+        wip = await self.acct_repo.get_mapping("wip")
+        inv_acc = await self.acct_repo.get_mapping("inventory")
+        if not wip or not inv_acc:
+            raise ValidationError(
+                "Account mappings missing: configure 'wip' and 'inventory' first."
+            )
+
+        total_cost = Decimal("0")
+        for c in sco.components:
+            mvm = await self.inv_svc.post_movement(
+                StockMovementCreate(
+                    item_id=c.item_id,
+                    warehouse_id=sco.warehouse_id,
+                    movement_date=sco.sco_date,
+                    direction="out",
+                    qty=c.qty_planned,
+                    unit_cost=Decimal("0"),  # use avg_cost
+                    notes=f"Subcontract {sco.sco_no} issue",
+                ),
+                source="subcontract_issue",
+                source_id=sco.id,
+            )
+            c.qty_issued = c.qty_planned
+            c.unit_cost = mvm.unit_cost
+            total_cost += (mvm.qty * mvm.unit_cost).quantize(CENT)
+
+        if total_cost > 0:
+            entry = await self.acct_svc.post_system_journal(
+                entry_date=sco.sco_date,
+                description=f"Subcontract {sco.sco_no} material issue to maklon",
+                lines=[
+                    (wip.account_id, total_cost, Decimal("0")),
+                    (inv_acc.account_id, Decimal("0"), total_cost),
+                ],
+                source="subcontract_issue",
+                source_id=sco.id,
+            )
+            sco.issue_journal_entry_id = entry.id
+
+        sco.status = "issued"
+        sco.issued_at = datetime.now(UTC)
+        await self.session.flush()
+
+        try:
+            from app.core.events import publish
+            await publish("subcontract.issued", {
+                "tenant_id": str(self.tenant_id),
+                "sco_id": str(sco.id),
+                "sco_no": sco.sco_no,
+                "supplier_id": str(sco.supplier_id),
+                "total_cost": float(total_cost),
+            })
+        except Exception:
+            pass
+        return sco
+
+    async def receive_sco(self, sco_id: UUID, payload):
+        sco = await self.repo.get_sco(sco_id)
+        if not sco:
+            raise NotFoundError("SCO not found")
+        if sco.status != "issued":
+            raise ValidationError(
+                f"Can only receive from issued SCO (current: {sco.status})"
+            )
+        qty_received = payload.qty_received
+        cdate = payload.receipt_date or sco.sco_date
+        await assert_period_open(self.session, self.tenant_id, cdate)
+
+        if qty_received <= 0:
+            raise ValidationError("qty_received must be positive")
+        if qty_received > sco.qty_planned * OVER_PRODUCE_TOLERANCE:
+            raise ValidationError(
+                f"qty_received {qty_received} exceeds 20% tolerance over plan {sco.qty_planned}"
+            )
+
+        # Allow override fee
+        fee_per_unit = payload.fee_per_unit if payload.fee_per_unit is not None else sco.fee_per_unit
+        fee_total = (fee_per_unit * qty_received).quantize(CENT)
+
+        wip = await self.acct_repo.get_mapping("wip")
+        inv_acc = await self.acct_repo.get_mapping("inventory")
+        ap = await self.acct_repo.get_mapping("ap")
+        if not wip or not inv_acc or not ap:
+            raise ValidationError(
+                "Account mappings missing: configure 'wip', 'inventory', and 'ap' first."
+            )
+
+        # Total raw material cost from components (already issued)
+        sco_refreshed = await self.repo.get_sco(sco.id)
+        total_raw = sum(
+            ((c.qty_issued or Decimal("0")) * (c.unit_cost or Decimal("0")))
+            for c in sco_refreshed.components
+        )
+        total_raw = total_raw.quantize(CENT) if isinstance(total_raw, Decimal) else Decimal(str(total_raw)).quantize(CENT)
+
+        fg_value = (total_raw + fee_total).quantize(CENT)
+        unit_fg_cost = (fg_value / qty_received).quantize(QTY4)
+
+        # Stock-in finished goods
+        await self.inv_svc.post_movement(
+            StockMovementCreate(
+                item_id=sco.output_item_id,
+                warehouse_id=sco.warehouse_id,
+                movement_date=cdate,
+                direction="in",
+                qty=qty_received,
+                unit_cost=unit_fg_cost,
+                notes=f"Subcontract {sco.sco_no} FG receipt",
+            ),
+            source="subcontract_receipt",
+            source_id=sco.id,
+        )
+
+        # Journal lines:
+        #   Dr Inv FG (fg_value)
+        #   Cr WIP (total_raw)
+        #   Cr AP (fee_total) — payable to maklon
+        journal_lines = [(inv_acc.account_id, fg_value, Decimal("0"))]
+        if total_raw > 0:
+            journal_lines.append((wip.account_id, Decimal("0"), total_raw))
+        if fee_total > 0:
+            journal_lines.append((ap.account_id, Decimal("0"), fee_total))
+
+        if fg_value > 0:
+            entry = await self.acct_svc.post_system_journal(
+                entry_date=cdate,
+                description=f"Subcontract {sco.sco_no} FG receipt + fee accrual",
+                lines=journal_lines,
+                source="subcontract_receipt",
+                source_id=sco.id,
+            )
+            sco.receipt_journal_entry_id = entry.id
+
+        sco.qty_received = qty_received
+        sco.fee_per_unit = fee_per_unit
+        sco.fee_total = fee_total
+        sco.status = "received"
+        sco.received_at = datetime.now(UTC)
+        await self.session.flush()
+
+        try:
+            from app.core.events import publish
+            await publish("subcontract.received", {
+                "tenant_id": str(self.tenant_id),
+                "sco_id": str(sco.id),
+                "sco_no": sco.sco_no,
+                "qty_received": float(qty_received),
+                "fee_total": float(fee_total),
+                "total_cost": float(fg_value),
+            })
+        except Exception:
+            pass
+        return sco
+
+    async def cancel_sco(self, sco_id: UUID, reason: str):
+        sco = await self.repo.get_sco(sco_id)
+        if not sco:
+            raise NotFoundError("SCO not found")
+        if sco.status == "cancelled":
+            raise ConflictError("SCO already cancelled")
+        if sco.status == "received":
+            raise ValidationError(
+                "Cannot cancel received SCO. Use Vendor Bill void or reverse manually."
+            )
+        await assert_period_open(self.session, self.tenant_id, sco.sco_date)
+
+        if sco.status == "issued":
+            # Reverse stock-outs
+            for c in sco.components:
+                if (c.qty_issued or Decimal("0")) > 0:
+                    await self.inv_svc.post_movement(
+                        StockMovementCreate(
+                            item_id=c.item_id,
+                            warehouse_id=sco.warehouse_id,
+                            movement_date=sco.sco_date,
+                            direction="in",
+                            qty=c.qty_issued,
+                            unit_cost=c.unit_cost or Decimal("0"),
+                            notes=f"Cancel Subcontract {sco.sco_no}",
+                        ),
+                        source="subcontract_issue_void",
+                        source_id=sco.id,
+                    )
+            if sco.issue_journal_entry_id:
+                await self.acct_svc.void_system_journal(
+                    "subcontract_issue", sco.id, f"Cancelled: {reason}"
+                )
+
+        sco.status = "cancelled"
+        sco.cancelled_at = datetime.now(UTC)
+        sco.cancel_reason = reason
+        await self.session.flush()
+
+        try:
+            from app.core.events import publish
+            await publish("subcontract.cancelled", {
+                "tenant_id": str(self.tenant_id),
+                "sco_id": str(sco.id),
+                "sco_no": sco.sco_no,
+                "reason": reason,
+            })
+        except Exception:
+            pass
+        return sco

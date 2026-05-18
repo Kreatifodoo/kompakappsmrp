@@ -420,3 +420,99 @@ async def mo_cost_analysis(
         "totals":    totals,
         "count":     len(rows),
     }
+
+
+# ─── Subcontracting / Maklon ─────────────────────────────
+from app.modules.manufacturing.schemas import (  # noqa: E402
+    SCOCancelRequest,
+    SCOCreate,
+    SCOOut,
+    SCOReceiveRequest,
+)
+from app.modules.manufacturing.service import SubcontractService  # noqa: E402
+
+
+@router.get("/subcontracts", response_model=list[SCOOut])
+async def list_subcontracts(
+    status: str | None = Query(default=None),
+    supplier_id: UUID | None = Query(default=None),
+    date_from: _date | None = Query(default=None),
+    date_to: _date | None = Query(default=None),
+    limit: int = Query(default=100, le=500),
+    offset: int = Query(default=0, ge=0),
+    current: CurrentUser = Depends(require_permission("mfg.read")),
+    session: AsyncSession = Depends(get_write_session),
+) -> list[SCOOut]:
+    repo = ManufacturingRepository(session, current.tenant_id)
+    rows = await repo.list_scos(
+        status=status, supplier_id=supplier_id,
+        date_from=date_from, date_to=date_to,
+        limit=limit, offset=offset,
+    )
+    return [SCOOut.model_validate(r) for r in rows]
+
+
+@router.get("/subcontracts/{sco_id}", response_model=SCOOut)
+async def get_subcontract(
+    sco_id: UUID,
+    current: CurrentUser = Depends(require_permission("mfg.read")),
+    session: AsyncSession = Depends(get_write_session),
+) -> SCOOut:
+    repo = ManufacturingRepository(session, current.tenant_id)
+    sco = await repo.get_sco(sco_id)
+    if not sco:
+        raise NotFoundError("Subcontract not found")
+    return SCOOut.model_validate(sco)
+
+
+@router.post("/subcontracts", response_model=SCOOut, status_code=201)
+async def create_subcontract(
+    payload: SCOCreate,
+    issue_now: bool = Query(default=False, description="Auto-issue after create"),
+    current: CurrentUser = Depends(require_permission("mfg.write")),
+    session: AsyncSession = Depends(get_write_session),
+) -> SCOOut:
+    svc = SubcontractService(session, current.tenant_id, current.user_id)
+    sco = await svc.create_sco(payload)
+    if issue_now:
+        await svc.confirm_and_issue(sco.id)
+    refreshed = await svc.repo.get_sco(sco.id)
+    return SCOOut.model_validate(refreshed or sco)
+
+
+@router.post("/subcontracts/{sco_id}/issue", response_model=SCOOut)
+async def issue_subcontract(
+    sco_id: UUID,
+    current: CurrentUser = Depends(require_permission("mfg.post")),
+    session: AsyncSession = Depends(get_write_session),
+) -> SCOOut:
+    svc = SubcontractService(session, current.tenant_id, current.user_id)
+    sco = await svc.confirm_and_issue(sco_id)
+    refreshed = await svc.repo.get_sco(sco.id)
+    return SCOOut.model_validate(refreshed or sco)
+
+
+@router.post("/subcontracts/{sco_id}/receive", response_model=SCOOut)
+async def receive_subcontract(
+    sco_id: UUID,
+    payload: SCOReceiveRequest,
+    current: CurrentUser = Depends(require_permission("mfg.post")),
+    session: AsyncSession = Depends(get_write_session),
+) -> SCOOut:
+    svc = SubcontractService(session, current.tenant_id, current.user_id)
+    sco = await svc.receive_sco(sco_id, payload)
+    refreshed = await svc.repo.get_sco(sco.id)
+    return SCOOut.model_validate(refreshed or sco)
+
+
+@router.post("/subcontracts/{sco_id}/cancel", response_model=SCOOut)
+async def cancel_subcontract(
+    sco_id: UUID,
+    payload: SCOCancelRequest,
+    current: CurrentUser = Depends(require_permission("mfg.cancel")),
+    session: AsyncSession = Depends(get_write_session),
+) -> SCOOut:
+    svc = SubcontractService(session, current.tenant_id, current.user_id)
+    sco = await svc.cancel_sco(sco_id, payload.reason)
+    refreshed = await svc.repo.get_sco(sco.id)
+    return SCOOut.model_validate(refreshed or sco)

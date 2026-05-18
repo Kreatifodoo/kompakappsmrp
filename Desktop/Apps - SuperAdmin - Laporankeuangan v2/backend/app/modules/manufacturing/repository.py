@@ -216,3 +216,54 @@ class ManufacturingRepository:
         )
         count = (await self.session.execute(stmt)).scalar_one() or 0
         return f"{prefix}{count + 1:05d}"
+
+    # ─── Subcontracting / Maklon ─────────────────────────
+    async def list_scos(
+        self,
+        *,
+        status: str | None = None,
+        supplier_id: UUID | None = None,
+        date_from: date | None = None,
+        date_to: date | None = None,
+        limit: int = 100,
+        offset: int = 0,
+    ):
+        from app.modules.manufacturing.models import SubcontractOrder
+        conds = [SubcontractOrder.tenant_id == self.tenant_id]
+        if status: conds.append(SubcontractOrder.status == status)
+        if supplier_id: conds.append(SubcontractOrder.supplier_id == supplier_id)
+        if date_from: conds.append(SubcontractOrder.sco_date >= date_from)
+        if date_to: conds.append(SubcontractOrder.sco_date <= date_to)
+        stmt = (
+            select(SubcontractOrder).where(*conds)
+            .options(selectinload(SubcontractOrder.components))
+            .order_by(SubcontractOrder.sco_date.desc(), SubcontractOrder.sco_no.desc())
+            .limit(limit).offset(offset)
+        )
+        return list((await self.session.execute(stmt)).scalars().all())
+
+    async def get_sco(self, sco_id: UUID):
+        from app.modules.manufacturing.models import SubcontractOrder
+        stmt = (
+            select(SubcontractOrder).where(
+                SubcontractOrder.id == sco_id,
+                SubcontractOrder.tenant_id == self.tenant_id,
+            )
+            .options(selectinload(SubcontractOrder.components))
+        )
+        return (await self.session.execute(stmt)).scalar_one_or_none()
+
+    async def add_sco(self, sco):
+        self.session.add(sco)
+        await self.session.flush()
+        return sco
+
+    async def next_sco_no(self, year: int) -> str:
+        from app.modules.manufacturing.models import SubcontractOrder
+        prefix = f"SCO-{year}-"
+        stmt = select(func.count(SubcontractOrder.id)).where(
+            SubcontractOrder.tenant_id == self.tenant_id,
+            SubcontractOrder.sco_no.like(f"{prefix}%"),
+        )
+        count = (await self.session.execute(stmt)).scalar_one() or 0
+        return f"{prefix}{count + 1:05d}"
