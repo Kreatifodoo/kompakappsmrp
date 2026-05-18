@@ -685,3 +685,120 @@ async function loadCostLayers() {
       </table>`;
   } catch (e) { _invErrBox(out, 'Gagal memuat: ' + e.message); }
 }
+
+
+// ════════════════════════════════════════════════════════════════
+// Lot / Batch list page (Sprint Lot)
+// ════════════════════════════════════════════════════════════════
+
+async function renderLotsPage() {
+  await _ensureInvMastersLoaded();
+  const wrap = document.getElementById('page-inv-lots');
+  if (!wrap) return;
+  wrap.innerHTML = `
+    <div class="page-header">
+      <h2>Lot / Batch <small style="font-size:11px;color:#15803d;font-weight:normal">⚡ live dari backend</small></h2>
+      <div class="page-actions">
+        <button class="btn btn-outline" onclick="renderLotsPage()"><i data-feather="refresh-cw"></i> Refresh</button>
+      </div>
+    </div>
+    <div class="report-filter-bar" style="margin-bottom:16px;flex-wrap:wrap;gap:8px">
+      <select id="lotFilterItem" class="j-select" onchange="_loadLotsTable()"><option value="">Semua Item</option></select>
+      <select id="lotFilterWh" class="j-select" onchange="_loadLotsTable()"><option value="">Semua Warehouse</option></select>
+      <select id="lotFilterExp" class="j-select" onchange="_loadLotsTable()">
+        <option value="">Semua Lot (aktif)</option>
+        <option value="7">Kedaluwarsa dalam 7 hari</option>
+        <option value="14">Kedaluwarsa dalam 14 hari</option>
+        <option value="30">Kedaluwarsa dalam 30 hari</option>
+        <option value="60">Kedaluwarsa dalam 60 hari</option>
+        <option value="all-depleted">Termasuk yang habis</option>
+      </select>
+    </div>
+    <div class="table-card"><div id="lotTableWrap"></div></div>
+  `;
+  // Populate filters with lot-tracked items only
+  const items = (window.__opAccountsCache && []) || (await Api.items.list({limit: 500})) || [];
+  const lotItems = items.filter(i => i.is_lot_tracked);
+  const itemSel = document.getElementById('lotFilterItem');
+  if (itemSel) {
+    itemSel.innerHTML = '<option value="">Semua Item (lot-tracked)</option>' +
+      lotItems.map(i => `<option value="${i.id}">${_escInv(i.name)} (${_escInv(i.sku || '-')})</option>`).join('');
+  }
+  const whs = await Api.warehouses.list();
+  const whSel = document.getElementById('lotFilterWh');
+  if (whSel) {
+    whSel.innerHTML = '<option value="">Semua Warehouse</option>' +
+      whs.map(w => `<option value="${w.id}">${_escInv(w.name)}</option>`).join('');
+  }
+  window._lotsItemsCache = items;
+  window._lotsWhsCache = whs;
+  _loadLotsTable();
+  if (typeof feather !== 'undefined') feather.replace();
+}
+
+async function _loadLotsTable() {
+  const wrap = document.getElementById('lotTableWrap');
+  if (!wrap) return;
+  const item_id      = document.getElementById('lotFilterItem')?.value || '';
+  const warehouse_id = document.getElementById('lotFilterWh')?.value || '';
+  const expFilter    = document.getElementById('lotFilterExp')?.value || '';
+
+  const params = { limit: 500 };
+  if (item_id) params.item_id = item_id;
+  if (warehouse_id) params.warehouse_id = warehouse_id;
+  if (expFilter === 'all-depleted') params.include_depleted = 'true';
+  else if (expFilter) params.expiring_within_days = expFilter;
+
+  let lots = [];
+  try {
+    lots = await Api.stockLots.list(params);
+  } catch (e) {
+    wrap.innerHTML = `<div style="padding:24px;color:#ef4444">Gagal load: ${e.message}</div>`;
+    return;
+  }
+  if (!lots.length) {
+    wrap.innerHTML = `<div style="padding:48px;text-align:center;color:#6b7280">Tidak ada lot dalam filter ini. Aktifkan <strong>Lot Tracking</strong> di Item master untuk mulai pakai.</div>`;
+    return;
+  }
+  const items = window._lotsItemsCache || [];
+  const whs   = window._lotsWhsCache || [];
+  const itemMap = Object.fromEntries(items.map(i => [i.id, i]));
+  const whMap   = Object.fromEntries(whs.map(w => [w.id, w.name]));
+  const today = new Date(); today.setHours(0,0,0,0);
+
+  const rows = lots.map(l => {
+    const it = itemMap[l.item_id];
+    let expCls = '';
+    let expBadge = '';
+    if (l.expiry_date) {
+      const d = new Date(l.expiry_date); d.setHours(0,0,0,0);
+      const days = Math.round((d - today) / (1000*60*60*24));
+      if (days < 0)      { expCls = 'color:#ef4444;font-weight:600'; expBadge = ` <span style="font-size:10px;color:#ef4444">⚠ kadaluwarsa ${-days}d lalu</span>`; }
+      else if (days <= 7)  { expCls = 'color:#ef4444';   expBadge = ` <span style="font-size:10px;color:#ef4444">${days}d lagi</span>`; }
+      else if (days <= 30) { expCls = 'color:#f59e0b'; expBadge = ` <span style="font-size:10px;color:#f59e0b">${days}d</span>`; }
+    }
+    return `
+      <tr>
+        <td><code>${_escInv(l.lot_no)}</code></td>
+        <td>${_escInv(it?.name || l.item_id?.slice(0,8))}<br><small style="color:#6b7280">${_escInv(it?.sku || '')}</small></td>
+        <td>${_escInv(whMap[l.warehouse_id] || '-')}</td>
+        <td>${l.mfg_date || '-'}</td>
+        <td style="${expCls}">${l.expiry_date || '-'}${expBadge}</td>
+        <td style="text-align:right">${l.qty_received}</td>
+        <td style="text-align:right;font-weight:600">${l.qty_remaining}</td>
+        <td>${(l.created_at || '').slice(0,10)}</td>
+      </tr>`;
+  }).join('');
+
+  wrap.innerHTML = `
+    <table class="data-table">
+      <thead><tr>
+        <th>Lot No</th><th>Item</th><th>Warehouse</th>
+        <th>Mfg Date</th><th>Expiry</th>
+        <th style="text-align:right">Qty Received</th>
+        <th style="text-align:right">Qty Remaining</th>
+        <th>Created</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}

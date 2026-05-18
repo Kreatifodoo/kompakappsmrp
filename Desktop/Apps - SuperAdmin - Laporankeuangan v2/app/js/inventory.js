@@ -282,6 +282,20 @@ async function showItemModal(id) {
             <div class="form-group"><label>Harga Jual (default)</label>
               <input class="form-control" id="iSalePrice" type="number" min="0" step="0.01" value="${item?.default_unit_price||0}"></div>
           </div>
+          <hr style="margin:16px 0;border:0;border-top:1px solid #e5e7eb">
+          <div class="form-row">
+            <div class="form-group" style="flex:1">
+              <label style="display:flex;align-items:center;gap:8px">
+                <input type="checkbox" id="iLotTracked" ${item?.is_lot_tracked?'checked':''}>
+                <span>Lot / Batch tracked</span>
+              </label>
+              <small style="color:#6b7280;font-size:11px">Setiap penerimaan otomatis buat lot; outflow pakai FEFO.</small>
+            </div>
+            <div class="form-group" style="flex:1">
+              <label>Shelf Life (hari) <small style="color:#6b7280">— opsional</small></label>
+              <input class="form-control" id="iShelfLife" type="number" min="0" step="1" value="${item?.shelf_life_days ?? ''}" placeholder="cth: 7 (auto-set expiry saat receipt)">
+            </div>
+          </div>
           <div id="iErr" class="form-error" style="display:none"></div>
         </div>
         <div class="modal-footer">
@@ -307,14 +321,18 @@ async function saveItem(id) {
   const unit  = document.getElementById('iUnit').value.trim() || 'pcs';
   const cost  = parseFloat(document.getElementById('iPurchasePrice').value) || 0;
   const price = parseFloat(document.getElementById('iSalePrice').value) || 0;
+  const isLot = document.getElementById('iLotTracked').checked;
+  const shelfRaw = document.getElementById('iShelfLife').value;
+  const shelf = shelfRaw === '' ? null : (parseInt(shelfRaw, 10) || null);
 
   try {
     if (id) {
-      // Update: partial body (sku & type cannot change)
       await Api.items.update(id, {
         name, unit,
         default_unit_price: price,
         default_unit_cost:  cost,
+        is_lot_tracked:     isLot,
+        shelf_life_days:    shelf,
       });
     } else {
       const type = document.getElementById('iType').value || 'stock';
@@ -322,6 +340,8 @@ async function saveItem(id) {
         sku, name, type, unit,
         default_unit_price: price,
         default_unit_cost:  cost,
+        is_lot_tracked:     isLot,
+        shelf_life_days:    shelf,
       });
     }
     showToast('Item berhasil disimpan', 'success');

@@ -213,6 +213,11 @@ const Api = {
   stockBalances: {
     list:   (params) => Api.get('/stock-balances' + _qs(params)),
   },
+  // Lot / Batch
+  stockLots: {
+    list:   (params) => Api.get('/stock-lots' + _qs(params)),
+    get:    (id)     => Api.get(`/stock-lots/${id}`),
+  },
   stockTransfers: {
     list:   (params) => Api.get('/stock-transfers' + _qs(params)),
     get:    (id)     => Api.get(`/stock-transfers/${id}`),

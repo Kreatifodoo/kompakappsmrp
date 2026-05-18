@@ -184,6 +184,7 @@ const FLYOUT_GROUPS = {
       { page: 'inv-stockcard',        icon: 'file-text',       label: 'Kartu Stok' },
       { page: 'inv-reorder',          icon: 'alert-circle',    label: 'Reorder Report' },
       { page: 'inv-slowmoving',       icon: 'clock',           label: 'Slow-Moving' },
+      { page: 'inv-lots',             icon: 'tag',             label: 'Lot / Batch' },
       { page: 'inv-costing',          icon: 'layers',          label: 'Costing Method' },
     ]
   },
@@ -271,7 +272,7 @@ function updateGroupActiveState(page) {
                           'subcontracts', 'subcontract-form'];
   const inventoryPages = ['inventory', 'inventory-movements', 'inventory-transfers', 'inv-ops',
                           'inv-op-master', 'inv-onhand', 'inv-valuation', 'inv-stockcard',
-                          'inv-reorder', 'inv-slowmoving', 'inv-costing',
+                          'inv-reorder', 'inv-slowmoving', 'inv-costing', 'inv-lots',
                           'transfer-form', 'custom-op-form'];
   const group = salesPages.includes(page) ? 'sales'
     : purchasePages.includes(page) ? 'purchase'
@@ -362,6 +363,7 @@ function navigateTo(page) {
     'inv-reorder':           'Reorder Report',
     'inv-slowmoving':        'Slow-Moving Items',
     'inv-costing':           'Costing Method',
+    'inv-lots':              'Lot / Batch',
     'payments':              'Pembayaran',
     'payments-in':           'Penerimaan',
     'payments-out':          'Pengeluaran',
@@ -434,6 +436,7 @@ function navigateTo(page) {
   if (page === 'inv-reorder')        { if (typeof renderReorderPage       === 'function') renderReorderPage(); }
   if (page === 'inv-slowmoving')     { if (typeof renderSlowMovingPage    === 'function') renderSlowMovingPage(); }
   if (page === 'inv-costing')        { if (typeof renderCostingMethodPage === 'function') renderCostingMethodPage(); }
+  if (page === 'inv-lots')           { if (typeof renderLotsPage          === 'function') renderLotsPage(); }
   if (page === 'inv-ops')            { if (typeof renderStockOpsPage === 'function') renderStockOpsPage(); }
   if (page === 'inv-op-master')      { if (typeof renderStockOpsMasterPage === 'function') renderStockOpsMasterPage(); }
   if (page === 'account-mappings')   { if (typeof renderAccountMappingsPage === 'function') renderAccountMappingsPage(); }
