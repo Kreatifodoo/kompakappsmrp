@@ -122,10 +122,10 @@ def upgrade() -> None:
     op.execute(
         "ALTER TABLE stock_movements ADD CONSTRAINT ck_stock_movements_source CHECK ("
         "source IN ("
-        "'manual','sales_invoice','purchase_invoice','delivery_order','goods_receipt',"
+        "'manual','adjustment','sales_invoice','purchase_invoice','delivery_order','goods_receipt',"
         "'customer_return','supplier_return',"
         "'inv_op_receipt','inv_op_delivery','inv_op_usage','inv_op_adjust_in','inv_op_adjust_out',"
-        "'inv_op_return_receipt','inv_op_return_delivery','stock_transfer',"
+        "'inv_op_return_receipt','inv_op_return_delivery','stock_transfer','void_stock_transfer',"
         "'custom_op','delivery_order_void','goods_receipt_void',"
         "'customer_return_void','supplier_return_void','void_sales_invoice','void_purchase_invoice',"
         "'mfg_issue','mfg_receipt','mfg_issue_void','mfg_receipt_void',"
