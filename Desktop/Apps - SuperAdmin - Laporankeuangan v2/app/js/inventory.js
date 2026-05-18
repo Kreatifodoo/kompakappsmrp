@@ -172,51 +172,46 @@ async function showMovementModal() {
   const whOpts = InventoryState.warehouses
     .map(w => `<option value="${w.id}">${_escInv(w.code)} — ${_escInv(w.name)}</option>`).join('');
 
-  const html = `
-    <div class="modal-backdrop" id="movModal" onclick="if(event.target===this)closeMovementModal()">
-      <div class="modal-dialog" style="max-width:520px">
-        <div class="modal-header">
-          <h3>Movement Manual</h3>
-          <button class="modal-close" onclick="closeMovementModal()">×</button>
-        </div>
-        <div class="modal-body">
-          <div class="form-group"><label>Item *</label>
-            <select class="form-control" id="mvItem"><option value="">— Pilih item (stock-type) —</option>${itemOpts}</select></div>
-          <div class="form-group"><label>Gudang *</label>
-            <select class="form-control" id="mvWh"><option value="">— Pilih gudang —</option>${whOpts}</select></div>
-          <div class="form-row">
-            <div class="form-group"><label>Tanggal *</label>
-              <input class="form-control" type="date" id="mvDate" value="${today}"></div>
-            <div class="form-group"><label>Direction *</label>
-              <select class="form-control" id="mvDir">
-                <option value="in">In (terima barang / opening)</option>
-                <option value="out">Out (keluar non-invoice)</option>
-                <option value="adjust_in">Adjust In (cycle count surplus)</option>
-                <option value="adjust_out">Adjust Out (cycle count loss)</option>
-              </select></div>
-          </div>
-          <div class="form-row">
-            <div class="form-group"><label>Qty *</label>
-              <input class="form-control" type="number" min="0.001" step="0.001" id="mvQty" value="1"></div>
-            <div class="form-group"><label>Unit Cost</label>
-              <input class="form-control" type="number" min="0" step="0.01" id="mvCost" value="0">
-              <small style="color:#6b7280">Hanya dipakai untuk in/adjust_in. Out pakai avg_cost otomatis.</small>
-            </div>
-          </div>
-          <div class="form-group"><label>Catatan</label>
-            <input class="form-control" id="mvNotes" placeholder="opsional"></div>
-          <div id="mvErr" class="form-error" style="display:none"></div>
-        </div>
-        <div class="modal-footer">
-          <button class="btn btn-outline" onclick="closeMovementModal()">Batal</button>
-          <button class="btn btn-primary" onclick="saveMovement()">Simpan & Post</button>
-        </div>
+  document.getElementById('movFormTitle').textContent = 'Pergerakan Stok Manual';
+  document.getElementById('movFormSaveBtn').textContent = 'Simpan & Post';
+  const body = document.getElementById('movFormBody');
+  if (!body) { showToast('Form movement tidak tersedia', 'error'); return; }
+  body.innerHTML = `
+    <div class="form-group"><label>Item *</label>
+      <select class="form-control" id="mvItem"><option value="">— Pilih item (stock-type) —</option>${itemOpts}</select></div>
+    <div class="form-group"><label>Gudang *</label>
+      <select class="form-control" id="mvWh"><option value="">— Pilih gudang —</option>${whOpts}</select></div>
+    <div class="form-row">
+      <div class="form-group"><label>Tanggal *</label>
+        <input class="form-control" type="date" id="mvDate" value="${today}"></div>
+      <div class="form-group"><label>Direction *</label>
+        <select class="form-control" id="mvDir">
+          <option value="in">In (terima barang / opening)</option>
+          <option value="out">Out (keluar non-invoice)</option>
+          <option value="adjust_in">Adjust In (cycle count surplus)</option>
+          <option value="adjust_out">Adjust Out (cycle count loss)</option>
+        </select></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>Qty *</label>
+        <input class="form-control" type="number" min="0.001" step="0.001" id="mvQty" value="1"></div>
+      <div class="form-group"><label>Unit Cost</label>
+        <input class="form-control" type="number" min="0" step="0.01" id="mvCost" value="0">
+        <small style="color:#6b7280">Hanya dipakai untuk in/adjust_in. Out pakai avg_cost otomatis.</small>
       </div>
-    </div>`;
-  document.body.insertAdjacentHTML('beforeend', html);
+    </div>
+    <div class="form-group"><label>Catatan</label>
+      <input class="form-control" id="mvNotes" placeholder="opsional"></div>
+    <div id="mvErr" class="form-error" style="display:none"></div>
+  `;
+  navigateTo('movement-form');
+  if (typeof feather !== 'undefined') feather.replace();
 }
 
-function closeMovementModal() { document.getElementById('movModal')?.remove(); }
+function saveMovementFromForm() { return saveMovement(); }
+function closeMovementModal() {
+  if (typeof navigateTo === 'function') navigateTo('inventory-movements');
+}
 
 async function saveMovement() {
   const errEl = document.getElementById('mvErr');
@@ -256,60 +251,53 @@ async function showItemModal(id) {
   if (id) {
     try { item = await Api.items.get(id); } catch { showToast('Gagal memuat item', 'error'); return; }
   }
-
-  const html = `
-    <div class="modal-backdrop" id="invItemModal" onclick="if(event.target===this)closeItemModal()">
-      <div class="modal-dialog" style="max-width:480px">
-        <div class="modal-header">
-          <h3>${item ? 'Edit Item' : 'Tambah Item'}</h3>
-          <button class="modal-close" onclick="closeItemModal()">×</button>
-        </div>
-        <div class="modal-body">
-          <div class="form-group"><label>SKU *</label>
-            <input class="form-control" id="iCode" value="${_escInv(item?.sku)}" placeholder="ITM-001" ${id?'disabled':''}></div>
-          <div class="form-group"><label>Nama *</label>
-            <input class="form-control" id="iName" value="${_escInv(item?.name)}" placeholder="Nama item"></div>
-          <div class="form-group"><label>Satuan</label>
-            <input class="form-control" id="iUnit" value="${_escInv(item?.unit||'pcs')}" placeholder="pcs / kg / box"></div>
-          <div class="form-group"><label>Tipe</label>
-            <select class="form-control" id="iType" ${id?'disabled':''}>
-              <option value="stock"   ${item?.type==='stock'  ?'selected':''}>Stok (kelola persediaan)</option>
-              <option value="service" ${item?.type==='service'?'selected':''}>Jasa / Service</option>
-            </select></div>
-          <div class="form-row">
-            <div class="form-group"><label>Harga Beli (default)</label>
-              <input class="form-control" id="iPurchasePrice" type="number" min="0" step="0.01" value="${item?.default_unit_cost||0}"></div>
-            <div class="form-group"><label>Harga Jual (default)</label>
-              <input class="form-control" id="iSalePrice" type="number" min="0" step="0.01" value="${item?.default_unit_price||0}"></div>
-          </div>
-          <hr style="margin:16px 0;border:0;border-top:1px solid #e5e7eb">
-          <div class="form-row">
-            <div class="form-group" style="flex:1">
-              <label style="display:flex;align-items:center;gap:8px">
-                <input type="checkbox" id="iLotTracked" ${item?.is_lot_tracked?'checked':''}>
-                <span>Lot / Batch tracked</span>
-              </label>
-              <small style="color:#6b7280;font-size:11px">Setiap penerimaan otomatis buat lot; outflow pakai FEFO.</small>
-            </div>
-            <div class="form-group" style="flex:1">
-              <label>Shelf Life (hari) <small style="color:#6b7280">— opsional</small></label>
-              <input class="form-control" id="iShelfLife" type="number" min="0" step="1" value="${item?.shelf_life_days ?? ''}" placeholder="cth: 7 (auto-set expiry saat receipt)">
-            </div>
-          </div>
-          <div id="iErr" class="form-error" style="display:none"></div>
-        </div>
-        <div class="modal-footer">
-          <button class="btn btn-outline" onclick="closeItemModal()">Batal</button>
-          <button class="btn btn-primary" onclick="saveItem('${id||''}')">Simpan</button>
-        </div>
+  window._itemFormEditId = id || '';
+  document.getElementById('itemFormTitle').textContent = item ? 'Edit Item' : 'Tambah Item';
+  const body = document.getElementById('itemFormBody');
+  if (!body) { showToast('Form item tidak tersedia', 'error'); return; }
+  body.innerHTML = `
+    <div class="form-group"><label>SKU *</label>
+      <input class="form-control" id="iCode" value="${_escInv(item?.sku)}" placeholder="ITM-001" ${id?'disabled':''}></div>
+    <div class="form-group"><label>Nama *</label>
+      <input class="form-control" id="iName" value="${_escInv(item?.name)}" placeholder="Nama item"></div>
+    <div class="form-group"><label>Satuan</label>
+      <input class="form-control" id="iUnit" value="${_escInv(item?.unit||'pcs')}" placeholder="pcs / kg / box"></div>
+    <div class="form-group"><label>Tipe</label>
+      <select class="form-control" id="iType" ${id?'disabled':''}>
+        <option value="stock"   ${item?.type==='stock'  ?'selected':''}>Stok (kelola persediaan)</option>
+        <option value="service" ${item?.type==='service'?'selected':''}>Jasa / Service</option>
+      </select></div>
+    <div class="form-row">
+      <div class="form-group"><label>Harga Beli (default)</label>
+        <input class="form-control" id="iPurchasePrice" type="number" min="0" step="0.01" value="${item?.default_unit_cost||0}"></div>
+      <div class="form-group"><label>Harga Jual (default)</label>
+        <input class="form-control" id="iSalePrice" type="number" min="0" step="0.01" value="${item?.default_unit_price||0}"></div>
+    </div>
+    <hr style="margin:16px 0;border:0;border-top:1px solid #e5e7eb">
+    <div class="form-row">
+      <div class="form-group" style="flex:1">
+        <label style="display:flex;align-items:center;gap:8px">
+          <input type="checkbox" id="iLotTracked" ${item?.is_lot_tracked?'checked':''}>
+          <span>Lot / Batch tracked</span>
+        </label>
+        <small style="color:#6b7280;font-size:11px">Setiap penerimaan otomatis buat lot; outflow pakai FEFO.</small>
       </div>
-    </div>`;
-  document.body.insertAdjacentHTML('beforeend', html);
+      <div class="form-group" style="flex:1">
+        <label>Shelf Life (hari) <small style="color:#6b7280">— opsional</small></label>
+        <input class="form-control" id="iShelfLife" type="number" min="0" step="1" value="${item?.shelf_life_days ?? ''}" placeholder="cth: 7">
+      </div>
+    </div>
+    <div id="iErr" class="form-error" style="display:none"></div>
+  `;
+  navigateTo('item-form');
   if (typeof feather !== 'undefined') feather.replace();
 }
 
+function saveItemFromForm() { return saveItem(window._itemFormEditId || ''); }
+
 function closeItemModal() {
-  document.getElementById('invItemModal')?.remove();
+  window._itemFormEditId = null;
+  if (typeof navigateTo === 'function') navigateTo('inventory');
 }
 
 async function saveItem(id) {
@@ -352,42 +340,35 @@ async function saveItem(id) {
   }
 }
 
-// ─── Modal: Warehouse ─────────────────────────────────────────
+// ─── Warehouse form page (Sprint F6) ─────────────────────
 async function showWarehouseModal(id) {
   let wh = null;
   if (id) {
     try { wh = await Api.warehouses.get(id); } catch { showToast('Gagal memuat gudang', 'error'); return; }
   }
-
-  const html = `
-    <div class="modal-backdrop" id="invWhModal" onclick="if(event.target===this)closeWhModal()">
-      <div class="modal-dialog" style="max-width:420px">
-        <div class="modal-header">
-          <h3>${wh ? 'Edit Gudang' : 'Tambah Gudang'}</h3>
-          <button class="modal-close" onclick="closeWhModal()">×</button>
-        </div>
-        <div class="modal-body">
-          <div class="form-group"><label>Kode *</label>
-            <input class="form-control" id="whCode" value="${_escInv(wh?.code)}" placeholder="WH-01" ${id?'disabled':''}></div>
-          <div class="form-group"><label>Nama *</label>
-            <input class="form-control" id="whName" value="${_escInv(wh?.name)}" placeholder="Gudang Utama"></div>
-          <div class="form-group">
-            <label><input type="checkbox" id="whDefault" ${wh?.is_default?'checked':''}> Set sebagai gudang default</label>
-          </div>
-          <div id="whErr" class="form-error" style="display:none"></div>
-        </div>
-        <div class="modal-footer">
-          <button class="btn btn-outline" onclick="closeWhModal()">Batal</button>
-          <button class="btn btn-primary" onclick="saveWarehouse('${id||''}')">Simpan</button>
-        </div>
-      </div>
-    </div>`;
-  document.body.insertAdjacentHTML('beforeend', html);
+  window._whFormEditId = id || '';
+  document.getElementById('whFormTitle').textContent = wh ? 'Edit Gudang' : 'Tambah Gudang';
+  const body = document.getElementById('whFormBody');
+  if (!body) { showToast('Form gudang tidak tersedia', 'error'); return; }
+  body.innerHTML = `
+    <div class="form-group"><label>Kode *</label>
+      <input class="form-control" id="whCode" value="${_escInv(wh?.code)}" placeholder="WH-01" ${id?'disabled':''}></div>
+    <div class="form-group"><label>Nama *</label>
+      <input class="form-control" id="whName" value="${_escInv(wh?.name)}" placeholder="Gudang Utama"></div>
+    <div class="form-group">
+      <label><input type="checkbox" id="whDefault" ${wh?.is_default?'checked':''}> Set sebagai gudang default</label>
+    </div>
+    <div id="whErr" class="form-error" style="display:none"></div>
+  `;
+  navigateTo('warehouse-form');
   if (typeof feather !== 'undefined') feather.replace();
 }
 
+function saveWarehouseFromForm() { return saveWarehouse(window._whFormEditId || ''); }
+
 function closeWhModal() {
-  document.getElementById('invWhModal')?.remove();
+  window._whFormEditId = null;
+  if (typeof navigateTo === 'function') navigateTo('inventory');
 }
 
 async function saveWarehouse(id) {

@@ -189,83 +189,74 @@ async function showPaymentModal(id) {
     .sort((a,b) => a.code.localeCompare(b.code))
     .map(a => `<option value="${a.id}">${_escPay(a.code)} — ${_escPay(a.name)}</option>`).join('');
 
-  const html = `
-    <div class="modal-backdrop" id="payNewModal" onclick="if(event.target===this)closePayModal()">
-      <div class="modal-dialog" style="max-width:720px">
-        <div class="modal-header">
-          <h3>Buat Pembayaran Baru</h3>
-          <button class="modal-close" onclick="closePayModal()">×</button>
-        </div>
-        <div class="modal-body">
-          <div class="form-row">
-            <div class="form-group" style="flex:1"><label>Direction *</label>
-              <select class="form-control" id="payDirection" onchange="onPayDirectionChange()">
-                <option value="receipt">📥 Receipt (Penerimaan dari Customer)</option>
-                <option value="disbursement">📤 Disbursement (Bayar Supplier)</option>
-                <option value="customer_refund">↩️ Customer Refund (Kembalikan ke Customer)</option>
-                <option value="supplier_refund">↪️ Supplier Refund (Terima dari Supplier)</option>
-              </select></div>
-            <div class="form-group" style="flex:1"><label>Tanggal *</label>
-              <input class="form-control" id="payDate" type="date" value="${new Date().toISOString().slice(0,10)}"></div>
-          </div>
+  document.getElementById('paymentFormTitle').textContent = 'Buat Pembayaran Baru';
+  document.getElementById('paymentFormSaveBtn').innerHTML = '💾 Simpan';
+  const body = document.getElementById('paymentFormBody');
+  if (!body) { showToast('Form pembayaran tidak tersedia', 'error'); return; }
+  body.innerHTML = `
+    <div class="form-row">
+      <div class="form-group" style="flex:1"><label>Direction *</label>
+        <select class="form-control" id="payDirection" onchange="onPayDirectionChange()">
+          <option value="receipt">📥 Receipt (Penerimaan dari Customer)</option>
+          <option value="disbursement">📤 Disbursement (Bayar Supplier)</option>
+          <option value="customer_refund">↩️ Customer Refund (Kembalikan ke Customer)</option>
+          <option value="supplier_refund">↪️ Supplier Refund (Terima dari Supplier)</option>
+        </select></div>
+      <div class="form-group" style="flex:1"><label>Tanggal *</label>
+        <input class="form-control" id="payDate" type="date" value="${new Date().toISOString().slice(0,10)}"></div>
+    </div>
 
-          <div class="form-row">
-            <div class="form-group" style="flex:1"><label id="payPartyLabel">Customer *</label>
-              <select class="form-control" id="payParty"><option value="">— Pilih —</option></select></div>
-            <div class="form-group" style="flex:1"><label>Akun Kas *</label>
-              <select class="form-control" id="payCash">
-                ${cashAccounts.length === 0
-                  ? '<option value="">⚠ Belum ada akun is_cash=true</option>'
-                  : '<option value="">— Pilih akun kas —</option>' + cashOptions}
-              </select>
-              ${cashAccounts.length === 0
-                ? '<small style="color:#b91c1c">Set <code>is_cash=true</code> di akun via COA</small>'
-                : ''}
-            </div>
-          </div>
-
-          <div class="form-row">
-            <div class="form-group" style="flex:1"><label>Jumlah *</label>
-              <input class="form-control" id="payAmount" type="number" min="0" step="0.01" oninput="updateAllocationSum()"></div>
-            <div class="form-group" style="flex:1"><label>Reference</label>
-              <input class="form-control" id="payRef" placeholder="No. cek / no. transfer / dst"></div>
-          </div>
-
-          <!-- Allocations (only for receipt/disbursement) -->
-          <div id="payAllocSection" class="form-group">
-            <label>
-              <span id="payAllocTitle">Alokasi ke Invoice</span>
-              <small style="color:#6b7280">(opsional — sisa = unallocated credit ke party)</small>
-            </label>
-            <div id="payAllocLines"></div>
-            <button type="button" class="btn btn-sm btn-outline" onclick="addPayAllocation()" style="margin-top:6px">+ Tambah Alokasi</button>
-            <div id="payAllocSummary" style="font-size:12px;color:#6b7280;margin-top:4px"></div>
-          </div>
-
-          <div class="form-group"><label>Catatan</label>
-            <input class="form-control" id="payDesc" placeholder="Opsional"></div>
-
-          <div class="form-group">
-            <label><input type="checkbox" id="payPostNow" checked> Post langsung (kalau di-uncheck → simpan sebagai Draft, post manual nanti)</label>
-          </div>
-
-          <div id="payErr" class="form-error" style="display:none"></div>
-        </div>
-        <div class="modal-footer">
-          <button class="btn btn-outline" onclick="closePayModal()">Batal</button>
-          <button class="btn btn-primary" onclick="savePayment()">💾 Simpan</button>
-        </div>
+    <div class="form-row">
+      <div class="form-group" style="flex:1"><label id="payPartyLabel">Customer *</label>
+        <select class="form-control" id="payParty"><option value="">— Pilih —</option></select></div>
+      <div class="form-group" style="flex:1"><label>Akun Kas *</label>
+        <select class="form-control" id="payCash">
+          ${cashAccounts.length === 0
+            ? '<option value="">⚠ Belum ada akun is_cash=true</option>'
+            : '<option value="">— Pilih akun kas —</option>' + cashOptions}
+        </select>
+        ${cashAccounts.length === 0
+          ? '<small style="color:#b91c1c">Set <code>is_cash=true</code> di akun via COA</small>'
+          : ''}
       </div>
-    </div>`;
-  document.body.insertAdjacentHTML('beforeend', html);
-  // Init: trigger direction change to populate party + alloc section
+    </div>
+
+    <div class="form-row">
+      <div class="form-group" style="flex:1"><label>Jumlah *</label>
+        <input class="form-control" id="payAmount" type="number" min="0" step="0.01" oninput="updateAllocationSum()"></div>
+      <div class="form-group" style="flex:1"><label>Reference</label>
+        <input class="form-control" id="payRef" placeholder="No. cek / no. transfer / dst"></div>
+    </div>
+
+    <div id="payAllocSection" class="form-group">
+      <label>
+        <span id="payAllocTitle">Alokasi ke Invoice</span>
+        <small style="color:#6b7280">(opsional — sisa = unallocated credit ke party)</small>
+      </label>
+      <div id="payAllocLines"></div>
+      <button type="button" class="btn btn-sm btn-outline" onclick="addPayAllocation()" style="margin-top:6px">+ Tambah Alokasi</button>
+      <div id="payAllocSummary" style="font-size:12px;color:#6b7280;margin-top:4px"></div>
+    </div>
+
+    <div class="form-group"><label>Catatan</label>
+      <input class="form-control" id="payDesc" placeholder="Opsional"></div>
+
+    <div class="form-group">
+      <label><input type="checkbox" id="payPostNow" checked> Post langsung (kalau di-uncheck → simpan sebagai Draft, post manual nanti)</label>
+    </div>
+
+    <div id="payErr" class="form-error" style="display:none"></div>
+  `;
+  navigateTo('payment-form');
   onPayDirectionChange();
   if (typeof feather !== 'undefined') feather.replace();
 }
 
+function savePayFromForm() { return savePayment(); }
+
 function closePayModal() {
-  document.getElementById('payNewModal')?.remove();
   _payAllocations = [];
+  if (typeof navigateTo === 'function') navigateTo('payments');
 }
 
 // Triggered when direction picker changes — refresh party dropdown + alloc section

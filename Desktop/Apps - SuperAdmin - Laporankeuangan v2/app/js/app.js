@@ -269,11 +269,13 @@ function updateGroupActiveState(page) {
                           'bill-form', 'vendor-payment-form', 'vendor-form'];
   const mfgPages       = ['bom-master', 'mfg-orders', 'work-centers', 'bom-form', 'mo-form',
                           'mfg-scraps', 'scrap-form', 'mo-cost-report',
-                          'subcontracts', 'subcontract-form'];
+                          'subcontracts', 'subcontract-form',
+                          'wc-form'];
   const inventoryPages = ['inventory', 'inventory-movements', 'inventory-transfers', 'inv-ops',
                           'inv-op-master', 'inv-onhand', 'inv-valuation', 'inv-stockcard',
                           'inv-reorder', 'inv-slowmoving', 'inv-costing', 'inv-lots',
-                          'transfer-form', 'custom-op-form'];
+                          'transfer-form', 'custom-op-form',
+                          'item-form', 'warehouse-form', 'movement-form'];
   const group = salesPages.includes(page) ? 'sales'
     : purchasePages.includes(page) ? 'purchase'
     : mfgPages.includes(page) ? 'manufacturing'
@@ -399,6 +401,11 @@ function navigateTo(page) {
     'mo-cost-report':        'MO Cost Analysis',
     'subcontracts':          'Subcontracting / Maklon',
     'subcontract-form':      'Subcontract Form',
+    'item-form':             'Item Form',
+    'warehouse-form':        'Gudang Form',
+    'wc-form':               'Work Center Form',
+    'payment-form':          'Pembayaran Form',
+    'movement-form':         'Pergerakan Stok Form',
   };
   document.getElementById('pageTitle').textContent = titles[page] || page;
   AppState.currentPage = page;

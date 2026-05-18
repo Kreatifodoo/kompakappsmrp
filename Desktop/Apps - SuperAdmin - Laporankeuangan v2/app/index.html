@@ -2751,6 +2751,78 @@
 
 <!-- ═════ Sprint F5: Inventory transaction form pages ═════ -->
 
+<!-- ═════ Sprint F6: Remaining form pages ═════ -->
+
+<section class="page" id="page-item-form">
+  <div class="page-header">
+    <h2>
+      <button class="btn btn-outline btn-sm form-page-back-btn" onclick="closeItemModal()"><i data-feather="arrow-left"></i> Kembali</button>
+      &nbsp;&nbsp;<span id="itemFormTitle" style="font-size:20px">Tambah Item</span>
+    </h2>
+  </div>
+  <div class="form-page-body" id="itemFormBody"></div>
+  <div class="form-action-bar">
+    <button class="btn btn-outline" onclick="closeItemModal()">Batal</button>
+    <button class="btn btn-primary" id="itemFormSaveBtn" onclick="saveItemFromForm()">Simpan</button>
+  </div>
+</section>
+
+<section class="page" id="page-warehouse-form">
+  <div class="page-header">
+    <h2>
+      <button class="btn btn-outline btn-sm form-page-back-btn" onclick="closeWhModal()"><i data-feather="arrow-left"></i> Kembali</button>
+      &nbsp;&nbsp;<span id="whFormTitle" style="font-size:20px">Tambah Gudang</span>
+    </h2>
+  </div>
+  <div class="form-page-body" id="whFormBody"></div>
+  <div class="form-action-bar">
+    <button class="btn btn-outline" onclick="closeWhModal()">Batal</button>
+    <button class="btn btn-primary" id="whFormSaveBtn" onclick="saveWarehouseFromForm()">Simpan</button>
+  </div>
+</section>
+
+<section class="page" id="page-wc-form">
+  <div class="page-header">
+    <h2>
+      <button class="btn btn-outline btn-sm form-page-back-btn" onclick="exitWorkCenterForm()"><i data-feather="arrow-left"></i> Kembali</button>
+      &nbsp;&nbsp;<span id="wcFormTitle" style="font-size:20px">Buat Work Center</span>
+    </h2>
+  </div>
+  <div class="form-page-body" id="wcFormBody"></div>
+  <div class="form-action-bar">
+    <button class="btn btn-outline" onclick="exitWorkCenterForm()">Batal</button>
+    <button class="btn btn-primary" id="wcFormSaveBtn" onclick="saveWorkCenterFromForm()">Simpan</button>
+  </div>
+</section>
+
+<section class="page" id="page-payment-form">
+  <div class="page-header">
+    <h2>
+      <button class="btn btn-outline btn-sm form-page-back-btn" onclick="closePayModal()"><i data-feather="arrow-left"></i> Kembali</button>
+      &nbsp;&nbsp;<span id="paymentFormTitle" style="font-size:20px">Buat Pembayaran</span>
+    </h2>
+  </div>
+  <div class="form-page-body" id="paymentFormBody"></div>
+  <div class="form-action-bar">
+    <button class="btn btn-outline" onclick="closePayModal()">Batal</button>
+    <button class="btn btn-primary" id="paymentFormSaveBtn" onclick="savePayFromForm()">Simpan</button>
+  </div>
+</section>
+
+<section class="page" id="page-movement-form">
+  <div class="page-header">
+    <h2>
+      <button class="btn btn-outline btn-sm form-page-back-btn" onclick="closeMovementModal()"><i data-feather="arrow-left"></i> Kembali</button>
+      &nbsp;&nbsp;<span id="movFormTitle" style="font-size:20px">Pergerakan Stok</span>
+    </h2>
+  </div>
+  <div class="form-page-body" id="movFormBody"></div>
+  <div class="form-action-bar">
+    <button class="btn btn-outline" onclick="closeMovementModal()">Batal</button>
+    <button class="btn btn-primary" id="movFormSaveBtn" onclick="saveMovementFromForm()">Simpan</button>
+  </div>
+</section>
+
 <section class="page" id="page-transfer-form">
   <div class="page-header">
     <h2>
@@ -3080,17 +3152,17 @@
 <script src="js/pos.js?v=10"></script>
 <script src="js/purchase.js?v=14"></script>
 <script src="js/sales.js?v=8"></script>
-<script src="js/inventory.js?v=3"></script>
+<script src="js/inventory.js?v=4"></script>
 <script src="js/inventory-extras.js?v=4"></script>
 <script src="js/inventory-operations.js?v=5"></script>
 <script src="js/accounting-extras.js?v=2"></script>
 <script src="js/reports-extras.js?v=1"></script>
 <script src="js/identity-extras.js?v=2"></script>
-<script src="js/payments.js?v=2"></script>
+<script src="js/payments.js?v=3"></script>
 <script src="js/orders.js?v=2"></script>
 <script src="js/fulfillment.js?v=4"></script>
-<script src="js/manufacturing.js?v=7"></script>
-<script src="js/app.js?v=43"></script>
+<script src="js/manufacturing.js?v=8"></script>
+<script src="js/app.js?v=44"></script>
 <!-- Feather Icons -->
 <script src="https://cdn.jsdelivr.net/npm/feather-icons/dist/feather.min.js"></script>
 <script>

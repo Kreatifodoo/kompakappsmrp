@@ -779,29 +779,28 @@ async function renderWorkCenterPage() {
 
 function showWorkCenterModal(id) {
   const wc = id ? MfgState.workCenters.find(w => w.id === id) : null;
-  const html = `
-  <div class="modal-backdrop" id="wcModalBackdrop" onclick="if(event.target===this)this.remove()">
-    <div class="modal-content" style="max-width:560px">
-      <div class="modal-header">
-        <h3>${id ? 'Edit' : 'Buat'} Work Center</h3>
-        <button class="modal-close" onclick="document.getElementById('wcModalBackdrop').remove()">×</button>
-      </div>
-      <div class="modal-body">
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-          <div><label>Code</label><input type="text" id="wcCode" value="${_mfgEsc(wc?.code || '')}" class="form-control" ${id?'readonly':''}></div>
-          <div><label>Name</label><input type="text" id="wcName" value="${_mfgEsc(wc?.name || '')}" class="form-control"></div>
-          <div><label>Cost per Hour (Rp)</label><input type="number" step="500" id="wcCost" value="${wc?.cost_per_hour || 0}" class="form-control"></div>
-          <div><label>Capacity (jam/hari)</label><input type="number" step="0.5" id="wcCap" value="${wc?.capacity_hours_per_day || 8}" class="form-control"></div>
-        </div>
-        <div style="margin-top:12px"><label>Notes</label><textarea id="wcNotes" rows="2" class="form-control">${_mfgEsc(wc?.notes || '')}</textarea></div>
-      </div>
-      <div class="modal-footer">
-        <button class="btn btn-outline" onclick="document.getElementById('wcModalBackdrop').remove()">Tutup</button>
-        <button class="btn btn-primary" onclick="saveWorkCenter('${id || ''}')">Simpan</button>
-      </div>
+  window._wcFormEditId = id || '';
+  document.getElementById('wcFormTitle').textContent = (id ? 'Edit' : 'Buat') + ' Work Center';
+  const body = document.getElementById('wcFormBody');
+  if (!body) { showToast('Form work center tidak tersedia', 'error'); return; }
+  body.innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div><label>Code</label><input type="text" id="wcCode" value="${_mfgEsc(wc?.code || '')}" class="form-control" ${id?'readonly':''}></div>
+      <div><label>Name</label><input type="text" id="wcName" value="${_mfgEsc(wc?.name || '')}" class="form-control"></div>
+      <div><label>Cost per Hour (Rp)</label><input type="number" step="500" id="wcCost" value="${wc?.cost_per_hour || 0}" class="form-control"></div>
+      <div><label>Capacity (jam/hari)</label><input type="number" step="0.5" id="wcCap" value="${wc?.capacity_hours_per_day || 8}" class="form-control"></div>
     </div>
-  </div>`;
-  document.body.insertAdjacentHTML('beforeend', html);
+    <div style="margin-top:12px"><label>Notes</label><textarea id="wcNotes" rows="2" class="form-control">${_mfgEsc(wc?.notes || '')}</textarea></div>
+  `;
+  navigateTo('wc-form');
+  if (typeof feather !== 'undefined') feather.replace();
+}
+
+function saveWorkCenterFromForm() { return saveWorkCenter(window._wcFormEditId || ''); }
+
+function exitWorkCenterForm() {
+  window._wcFormEditId = null;
+  if (typeof navigateTo === 'function') navigateTo('work-centers');
 }
 
 async function saveWorkCenter(id) {
@@ -819,8 +818,8 @@ async function saveWorkCenter(id) {
       await Api.workCenters.create({ code, name, cost_per_hour: cost, capacity_hours_per_day: cap, notes: notes || null });
       showToast('Work center dibuat', 'success');
     }
-    document.getElementById('wcModalBackdrop')?.remove();
-    renderWorkCenterPage();
+    window._wcFormEditId = null;
+    navigateTo('work-centers');
   } catch (e) { showToast('Gagal: ' + e.message, 'error'); }
 }
 
