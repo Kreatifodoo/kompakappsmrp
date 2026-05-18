@@ -2748,6 +2748,36 @@
 
 <!-- ═════ Sprint F2: Form pages for SO/PO/DO/GR/RMA ═════ -->
 
+<!-- ═════ Sprint F5: Inventory transaction form pages ═════ -->
+
+<section class="page" id="page-transfer-form">
+  <div class="page-header">
+    <h2>
+      <button class="btn btn-outline btn-sm form-page-back-btn" onclick="closeTransferModal()"><i data-feather="arrow-left"></i> Kembali</button>
+      &nbsp;&nbsp;<span id="transferFormTitle" style="font-size:20px">Transfer Stok Baru</span>
+    </h2>
+  </div>
+  <div class="form-page-body" id="transferFormBody"></div>
+  <div class="form-action-bar">
+    <button class="btn btn-outline" onclick="closeTransferModal()">Batal</button>
+    <button class="btn btn-primary" onclick="saveTransfer()">Simpan & Post</button>
+  </div>
+</section>
+
+<section class="page" id="page-custom-op-form">
+  <div class="page-header">
+    <h2>
+      <button class="btn btn-outline btn-sm form-page-back-btn" onclick="closeCustomOpModal()"><i data-feather="arrow-left"></i> Kembali</button>
+      &nbsp;&nbsp;<span id="customOpFormTitle" style="font-size:20px">Operasi Custom</span>
+    </h2>
+  </div>
+  <div class="form-page-body" id="customOpFormBody"></div>
+  <div class="form-action-bar">
+    <button class="btn btn-outline" onclick="closeCustomOpModal()">Batal</button>
+    <button class="btn btn-primary" id="customOpFormSaveBtn" onclick="saveCustomOpFromForm()">Simpan</button>
+  </div>
+</section>
+
 <section class="page" id="page-so-form">
   <div class="page-header">
     <h2>
@@ -2955,8 +2985,8 @@
 <script src="js/purchase.js?v=14"></script>
 <script src="js/sales.js?v=8"></script>
 <script src="js/inventory.js?v=2"></script>
-<script src="js/inventory-extras.js?v=1"></script>
-<script src="js/inventory-operations.js?v=4"></script>
+<script src="js/inventory-extras.js?v=2"></script>
+<script src="js/inventory-operations.js?v=5"></script>
 <script src="js/accounting-extras.js?v=2"></script>
 <script src="js/reports-extras.js?v=1"></script>
 <script src="js/identity-extras.js?v=2"></script>
@@ -2964,7 +2994,7 @@
 <script src="js/orders.js?v=2"></script>
 <script src="js/fulfillment.js?v=4"></script>
 <script src="js/manufacturing.js?v=4"></script>
-<script src="js/app.js?v=38"></script>
+<script src="js/app.js?v=39"></script>
 <!-- Feather Icons -->
 <script src="https://cdn.jsdelivr.net/npm/feather-icons/dist/feather.min.js"></script>
 <script>

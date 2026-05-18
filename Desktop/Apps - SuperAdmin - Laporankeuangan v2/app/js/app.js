@@ -264,9 +264,14 @@ function updateGroupActiveState(page) {
                           'po-form', 'gr-form',
                           'bill-form', 'vendor-payment-form', 'vendor-form'];
   const mfgPages       = ['bom-master', 'mfg-orders', 'work-centers', 'bom-form', 'mo-form'];
+  const inventoryPages = ['inventory', 'inventory-movements', 'inventory-transfers', 'inv-ops',
+                          'inv-op-master', 'inv-onhand', 'inv-valuation', 'inv-stockcard',
+                          'inv-reorder', 'inv-slowmoving', 'inv-costing',
+                          'transfer-form', 'custom-op-form'];
   const group = salesPages.includes(page) ? 'sales'
     : purchasePages.includes(page) ? 'purchase'
     : mfgPages.includes(page) ? 'manufacturing'
+    : inventoryPages.includes(page) ? 'inventory'
     : 'accounting';
   document.querySelectorAll('.nav-group-btn').forEach(b => b.classList.remove('active-group'));
   const btn = document.querySelector(`.nav-group-btn[data-group="${group}"]`);
@@ -380,6 +385,8 @@ function navigateTo(page) {
     'coa-form':              'Akun Form',
     'user-form':             'User Form',
     'role-form':             'Role Form',
+    'transfer-form':         'Transfer Stok Form',
+    'custom-op-form':        'Operasi Custom Form',
   };
   document.getElementById('pageTitle').textContent = titles[page] || page;
   AppState.currentPage = page;

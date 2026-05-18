@@ -594,64 +594,66 @@ async function showCustomOpModal(opId) {
   const acctOpts = accts.sort((a,b)=>a.code.localeCompare(b.code))
     .map(a => `<option value="${a.id}" data-type="${a.type}" ${existing?.default_contra_account_id===a.id?'selected':''}>${_escInv(a.code)} — ${_escInv(a.name)} (${a.type})</option>`).join('');
 
-  const html = `
-    <div class="modal-backdrop" id="customOpModal" onclick="if(event.target===this)closeCustomOpModal()">
-      <div class="modal-dialog" style="max-width:620px">
-        <div class="modal-header">
-          <h3>${existing ? 'Edit' : 'Tambah'} Operasi Custom</h3>
-          <button class="modal-close" onclick="closeCustomOpModal()">×</button>
-        </div>
-        <div class="modal-body">
-          <div class="form-row">
-            <div class="form-group" style="flex:1"><label>Key (slug) *</label>
-              <input class="form-control" id="coKey" value="${_escInv(existing?.key||'')}" placeholder="production_consumption" ${existing?'disabled':''}>
-              <small style="color:#6b7280">Lowercase, alphanumeric + underscore. Tidak bisa diubah setelah dibuat.</small></div>
-            <div class="form-group" style="width:80px;flex:0"><label>Icon</label>
-              <input class="form-control" id="coIcon" value="${_escInv(existing?.icon||'')}" placeholder="🏭" maxlength="4"></div>
-          </div>
-          <div class="form-group"><label>Label *</label>
-            <input class="form-control" id="coLabel" value="${_escInv(existing?.label||'')}" placeholder="Pemakaian Bahan Produksi"></div>
-          <div class="form-group"><label>Description</label>
-            <textarea class="form-control" id="coDesc" rows="2" placeholder="Misal: pakai bahan baku untuk lini produksi A">${_escInv(existing?.description||'')}</textarea></div>
-          <div class="form-row">
-            <div class="form-group" style="flex:1"><label>Direction *</label>
-              <select class="form-control" id="coDir">${dirOpts}</select></div>
-            <div class="form-group" style="flex:1"><label>Qty Label</label>
-              <input class="form-control" id="coQtyLabel" value="${_escInv(existing?.qty_label||'')}" placeholder="Qty Dipakai"></div>
-          </div>
-          <div class="form-group">
-            <label>Allowed Contra Account Types * (boleh pilih lebih dari satu)</label>
-            <div>${typeChips}</div>
-          </div>
-          <div class="form-group">
-            <label><input type="checkbox" id="coRequiresCost" ${existing?.requires_unit_cost?'checked':''}> Wajib isi Unit Cost (untuk inflow yang punya nilai)</label>
-          </div>
-          <div class="form-group"><label>Default Contra Account (opsional)</label>
-            <select class="form-control" id="coDefaultContra">
-              <option value="">— Tidak ada default —</option>
-              ${acctOpts}
-            </select>
-            <small style="color:#6b7280">Akan ter-pre-select di form Operasi Stok saat user pilih operasi ini</small>
-          </div>
-          <div class="form-row">
-            <div class="form-group" style="flex:1"><label>Display Order</label>
-              <input class="form-control" id="coOrder" type="number" value="${existing?.display_order||100}" min="0" max="999"></div>
-            <div class="form-group" style="flex:1">
-              <label><input type="checkbox" id="coActive" ${existing===null||existing?.is_active!==false?'checked':''}> Aktif</label>
-            </div>
-          </div>
-          <div id="coErr" class="form-error" style="display:none"></div>
-        </div>
-        <div class="modal-footer">
-          <button class="btn btn-outline" onclick="closeCustomOpModal()">Batal</button>
-          <button class="btn btn-primary" onclick="saveCustomOp('${existing?.id||''}')">Simpan</button>
-        </div>
+  // Sprint F5: render into static page section (was modal)
+  window._customOpEditId = existing?.id || '';
+  const titleEl = document.getElementById('customOpFormTitle');
+  if (titleEl) titleEl.textContent = `${existing ? 'Edit' : 'Tambah'} Operasi Custom`;
+  const body = document.getElementById('customOpFormBody');
+  if (!body) { showToast('Form operasi custom tidak tersedia', 'error'); return; }
+  body.innerHTML = `
+    <div class="form-row">
+      <div class="form-group" style="flex:1"><label>Key (slug) *</label>
+        <input class="form-control" id="coKey" value="${_escInv(existing?.key||'')}" placeholder="production_consumption" ${existing?'disabled':''}>
+        <small style="color:#6b7280">Lowercase, alphanumeric + underscore. Tidak bisa diubah setelah dibuat.</small></div>
+      <div class="form-group" style="width:80px;flex:0"><label>Icon</label>
+        <input class="form-control" id="coIcon" value="${_escInv(existing?.icon||'')}" placeholder="🏭" maxlength="4"></div>
+    </div>
+    <div class="form-group"><label>Label *</label>
+      <input class="form-control" id="coLabel" value="${_escInv(existing?.label||'')}" placeholder="Pemakaian Bahan Produksi"></div>
+    <div class="form-group"><label>Description</label>
+      <textarea class="form-control" id="coDesc" rows="2" placeholder="Misal: pakai bahan baku untuk lini produksi A">${_escInv(existing?.description||'')}</textarea></div>
+    <div class="form-row">
+      <div class="form-group" style="flex:1"><label>Direction *</label>
+        <select class="form-control" id="coDir">${dirOpts}</select></div>
+      <div class="form-group" style="flex:1"><label>Qty Label</label>
+        <input class="form-control" id="coQtyLabel" value="${_escInv(existing?.qty_label||'')}" placeholder="Qty Dipakai"></div>
+    </div>
+    <div class="form-group">
+      <label>Allowed Contra Account Types * (boleh pilih lebih dari satu)</label>
+      <div>${typeChips}</div>
+    </div>
+    <div class="form-group">
+      <label><input type="checkbox" id="coRequiresCost" ${existing?.requires_unit_cost?'checked':''}> Wajib isi Unit Cost (untuk inflow yang punya nilai)</label>
+    </div>
+    <div class="form-group"><label>Default Contra Account (opsional)</label>
+      <select class="form-control" id="coDefaultContra">
+        <option value="">— Tidak ada default —</option>
+        ${acctOpts}
+      </select>
+      <small style="color:#6b7280">Akan ter-pre-select di form Operasi Stok saat user pilih operasi ini</small>
+    </div>
+    <div class="form-row">
+      <div class="form-group" style="flex:1"><label>Display Order</label>
+        <input class="form-control" id="coOrder" type="number" value="${existing?.display_order||100}" min="0" max="999"></div>
+      <div class="form-group" style="flex:1">
+        <label><input type="checkbox" id="coActive" ${existing===null||existing?.is_active!==false?'checked':''}> Aktif</label>
       </div>
-    </div>`;
-  document.body.insertAdjacentHTML('beforeend', html);
+    </div>
+    <div id="coErr" class="form-error" style="display:none"></div>
+  `;
+  navigateTo('custom-op-form');
+  if (typeof feather !== 'undefined') feather.replace();
 }
 
-function closeCustomOpModal() { document.getElementById('customOpModal')?.remove(); }
+// Sprint F5: wrapper for action-bar button to call saveCustomOp with cached edit id
+function saveCustomOpFromForm() {
+  return saveCustomOp(window._customOpEditId || '');
+}
+
+function closeCustomOpModal() {
+  window._customOpEditId = null;
+  if (typeof navigateTo === 'function') navigateTo('inv-op-master');
+}
 
 async function saveCustomOp(opId) {
   const errEl = document.getElementById('coErr');

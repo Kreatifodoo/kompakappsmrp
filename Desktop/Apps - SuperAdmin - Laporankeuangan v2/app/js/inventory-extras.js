@@ -126,45 +126,36 @@ async function showTransferModal() {
   await _ensureInvMastersLoaded();
   _trfLines = [_trfNewLine()];
   const today = new Date().toISOString().slice(0, 10);
-  const html = `
-    <div class="modal-backdrop" id="trfModal" onclick="if(event.target===this)closeTransferModal()">
-      <div class="modal-dialog" style="max-width:680px">
-        <div class="modal-header">
-          <h3>Transfer Stok Baru</h3>
-          <button class="modal-close" onclick="closeTransferModal()">×</button>
-        </div>
-        <div class="modal-body">
-          <div class="form-row">
-            <div class="form-group"><label>Tanggal *</label>
-              <input class="form-control" type="date" id="trfDate" value="${today}"></div>
-            <div class="form-group"><label>No. Transfer (opsional)</label>
-              <input class="form-control" id="trfNo" placeholder="Auto-generate kalau kosong"></div>
-          </div>
-          <div class="form-row">
-            <div class="form-group"><label>Dari Gudang *</label>
-              <select class="form-control" id="trfSrc">${_whPickerOptions('', false)}</select></div>
-            <div class="form-group"><label>Ke Gudang *</label>
-              <select class="form-control" id="trfDst">${_whPickerOptions('', false)}</select></div>
-          </div>
-          <div class="form-group"><label>Catatan</label>
-            <input class="form-control" id="trfNotes" placeholder="Opsional"></div>
+  // Sprint F5: render into static page section (was modal)
+  const body = document.getElementById('transferFormBody');
+  if (!body) { showToast('Form transfer tidak tersedia', 'error'); return; }
+  body.innerHTML = `
+    <div class="form-row">
+      <div class="form-group"><label>Tanggal *</label>
+        <input class="form-control" type="date" id="trfDate" value="${today}"></div>
+      <div class="form-group"><label>No. Transfer (opsional)</label>
+        <input class="form-control" id="trfNo" placeholder="Auto-generate kalau kosong"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>Dari Gudang *</label>
+        <select class="form-control" id="trfSrc">${_whPickerOptions('', false)}</select></div>
+      <div class="form-group"><label>Ke Gudang *</label>
+        <select class="form-control" id="trfDst">${_whPickerOptions('', false)}</select></div>
+    </div>
+    <div class="form-group"><label>Catatan</label>
+      <input class="form-control" id="trfNotes" placeholder="Opsional"></div>
 
-          <div class="form-group">
-            <label>Item & Qty *</label>
-            <div id="trfLinesWrap"></div>
-            <button class="btn btn-sm btn-outline" type="button" onclick="addTrfLine()" style="margin-top:8px">+ Tambah Item</button>
-          </div>
+    <div class="form-group">
+      <label>Item & Qty *</label>
+      <div id="trfLinesWrap"></div>
+      <button class="btn btn-sm btn-outline" type="button" onclick="addTrfLine()" style="margin-top:8px">+ Tambah Item</button>
+    </div>
 
-          <div id="trfErr" class="form-error" style="display:none"></div>
-        </div>
-        <div class="modal-footer">
-          <button class="btn btn-outline" onclick="closeTransferModal()">Batal</button>
-          <button class="btn btn-primary" onclick="saveTransfer()">Simpan & Post</button>
-        </div>
-      </div>
-    </div>`;
-  document.body.insertAdjacentHTML('beforeend', html);
+    <div id="trfErr" class="form-error" style="display:none"></div>
+  `;
   _renderTrfLines();
+  navigateTo('transfer-form');
+  if (typeof feather !== 'undefined') feather.replace();
 }
 
 function _renderTrfLines() {
@@ -195,7 +186,10 @@ function _renderTrfLines() {
 function addTrfLine()        { _trfLines.push(_trfNewLine()); _renderTrfLines(); }
 function removeTrfLine(id)   { _trfLines = _trfLines.filter(l => l.tempId !== id); _renderTrfLines(); }
 function updateTrfLine(id, k, v) { const l = _trfLines.find(x => x.tempId === id); if (l) l[k] = v; }
-function closeTransferModal() { document.getElementById('trfModal')?.remove(); _trfLines = []; }
+function closeTransferModal() {
+  _trfLines = [];
+  if (typeof navigateTo === 'function') navigateTo('inventory-transfers');
+}
 
 async function saveTransfer() {
   const errEl = document.getElementById('trfErr');
