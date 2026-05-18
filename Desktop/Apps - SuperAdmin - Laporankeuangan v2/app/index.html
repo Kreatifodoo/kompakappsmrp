@@ -645,6 +645,7 @@
           <h2>Chart of Accounts</h2>
           <p class="page-subtitle">Daftar akun standar untuk PT Global Kreatif Inovasi</p>
         </div>
+        <button class="btn-secondary" onclick="openImportWizard(IMPORT_CONFIGS.account)" style="margin-right:8px"><i data-feather="upload"></i> Import</button>
         <button class="btn-primary" onclick="openCOAModal()">+ Tambah Akun</button>
       </div>
 
@@ -1372,6 +1373,9 @@
       <div class="page-header">
         <h2>Master Vendor</h2>
         <div class="page-actions">
+          <button class="btn btn-outline" onclick="openImportWizard(IMPORT_CONFIGS.supplier)">
+            <i data-feather="upload"></i> Import
+          </button>
           <button class="btn btn-primary" onclick="showVendorModal(null)">
             <i data-feather="plus"></i> Tambah Vendor
           </button>
@@ -1469,6 +1473,9 @@
       <div class="page-header">
         <h2>Master Customer</h2>
         <div class="page-actions">
+          <button class="btn btn-outline" onclick="openImportWizard(IMPORT_CONFIGS.customer)">
+            <i data-feather="upload"></i> Import
+          </button>
           <button class="btn btn-primary" onclick="showCustomerModal(null)">
             <i data-feather="plus"></i> Tambah Customer
           </button>
@@ -1565,6 +1572,12 @@
       <div class="page-header">
         <h2>Inventory</h2>
         <div class="page-actions">
+          <button class="btn btn-outline" id="invImportBtn" onclick="
+            if(InventoryState.activeTab==='items') openImportWizard(IMPORT_CONFIGS.item);
+            else if(InventoryState.activeTab==='warehouses') openImportWizard(IMPORT_CONFIGS.warehouse);
+          ">
+            <i data-feather="upload"></i> Import
+          </button>
           <button class="btn btn-primary" id="invAddBtn" onclick="
             if(InventoryState.activeTab==='items') showItemModal(null);
             else if(InventoryState.activeTab==='warehouses') showWarehouseModal(null);
@@ -3057,6 +3070,7 @@
     <h2>Work Center <small style="font-size:11px;color:#15803d;font-weight:normal">⚡ live dari backend</small></h2>
     <div class="page-actions">
       <button class="btn btn-outline" onclick="renderWorkCenterPage()"><i data-feather="refresh-cw"></i> Refresh</button>
+      <button class="btn btn-outline" onclick="openImportWizard(IMPORT_CONFIGS.workCenter)"><i data-feather="upload"></i> Import</button>
       <button class="btn btn-primary" onclick="showWorkCenterModal(null)"><i data-feather="plus"></i> Buat Work Center</button>
     </div>
   </div>
@@ -3138,6 +3152,8 @@
 
 <!-- Scripts -->
 <script src="js/api.js?v=17"></script>
+<script src="js/import-wizard.js?v=1"></script>
+<script src="js/import-configs.js?v=1"></script>
 <script src="js/backend-sync.js?v=4"></script>
 <script src="js/backend-loader.js?v=2"></script>
 <script src="js/realtime.js?v=3"></script>

@@ -425,6 +425,7 @@ async function renderWarehouseMaster() {
       <h2>Master Gudang <small style="font-size:11px;color:#15803d;font-weight:normal">⚡ live dari backend</small></h2>
       <div class="page-actions">
         <button class="btn btn-outline" onclick="renderWarehouseMaster()"><i data-feather="refresh-cw"></i> Refresh</button>
+        <button class="btn btn-outline" onclick="openImportWizard(IMPORT_CONFIGS.warehouse)"><i data-feather="upload"></i> Import</button>
         <button class="btn btn-primary" onclick="showWarehouseModal(null)"><i data-feather="plus"></i> Tambah Gudang</button>
       </div>
     </div>
