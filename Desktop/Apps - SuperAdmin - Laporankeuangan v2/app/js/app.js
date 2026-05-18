@@ -193,6 +193,7 @@ const FLYOUT_GROUPS = {
       { page: 'work-centers', icon: 'sliders',    label: 'Work Center' },
       { page: 'bom-master',   icon: 'list',       label: 'BOM Master' },
       { page: 'mfg-orders',   icon: 'cpu',        label: 'Manufacturing Order' },
+      { page: 'mfg-scraps',   icon: 'trash-2',    label: 'Scrap / Spoilage' },
     ]
   },
   payments: {
@@ -263,7 +264,8 @@ function updateGroupActiveState(page) {
                           'purchase-orders', 'goods-receipts',
                           'po-form', 'gr-form',
                           'bill-form', 'vendor-payment-form', 'vendor-form'];
-  const mfgPages       = ['bom-master', 'mfg-orders', 'work-centers', 'bom-form', 'mo-form'];
+  const mfgPages       = ['bom-master', 'mfg-orders', 'work-centers', 'bom-form', 'mo-form',
+                          'mfg-scraps', 'scrap-form'];
   const inventoryPages = ['inventory', 'inventory-movements', 'inventory-transfers', 'inv-ops',
                           'inv-op-master', 'inv-onhand', 'inv-valuation', 'inv-stockcard',
                           'inv-reorder', 'inv-slowmoving', 'inv-costing',
@@ -387,6 +389,8 @@ function navigateTo(page) {
     'role-form':             'Role Form',
     'transfer-form':         'Transfer Stok Form',
     'custom-op-form':        'Operasi Custom Form',
+    'mfg-scraps':            'Scrap / Spoilage',
+    'scrap-form':            'Scrap Form',
   };
   document.getElementById('pageTitle').textContent = titles[page] || page;
   AppState.currentPage = page;
@@ -454,6 +458,8 @@ function navigateTo(page) {
   if (page === 'bom-master')        { if (typeof renderBOMPage             === 'function') renderBOMPage(); }
   if (page === 'mfg-orders')        { if (typeof renderMfgOrderPage        === 'function') renderMfgOrderPage(); }
   if (page === 'work-centers')      { if (typeof renderWorkCenterPage      === 'function') renderWorkCenterPage(); }
+  if (page === 'mfg-scraps')        { if (typeof renderScrapPage           === 'function') renderScrapPage(); }
+  if (page === 'scrap-form')        { if (typeof renderScrapForm           === 'function') renderScrapForm(); }
   // Sprint F1: separate form pages for Manufacturing
   if (page === 'bom-form')          { if (typeof renderBOMForm             === 'function') renderBOMForm(); }
   if (page === 'mo-form')           { if (typeof renderMOForm              === 'function') renderMOForm(); }

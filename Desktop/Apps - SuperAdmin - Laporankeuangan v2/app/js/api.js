@@ -380,6 +380,15 @@ const Api = {
     updateOperations: (id, body) => Api.post(`/manufacturing-orders/${id}/operations/update`, body),
   },
 
+  // ── Manufacturing: Scrap (Sprint M6) ──────────────────────
+  mfgScraps: {
+    list:   (params) => Api.get('/mfg-scraps' + _qs(params)),
+    get:    (id)     => Api.get(`/mfg-scraps/${id}`),
+    create: (body, opts) => Api.post('/mfg-scraps' + _qs(opts), body),
+    post:   (id)     => Api.post(`/mfg-scraps/${id}/post`),
+    void:   (id, b)  => Api.post(`/mfg-scraps/${id}/void`, b || {reason:'Voided from UI'}),
+  },
+
   // ── Manufacturing: Work Centers ───────────────────────────
   workCenters: {
     list:   (params) => Api.get('/work-centers' + _qs(params)),

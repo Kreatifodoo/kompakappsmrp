@@ -2883,6 +2883,40 @@
   </div>
 </section>
 
+<section class="page" id="page-mfg-scraps">
+  <div class="page-header">
+    <h2>Scrap / Spoilage <small style="font-size:11px;color:#15803d;font-weight:normal">⚡ live dari backend</small></h2>
+    <div class="page-actions">
+      <button class="btn btn-outline" onclick="renderScrapPage()"><i data-feather="refresh-cw"></i> Refresh</button>
+      <button class="btn btn-primary" onclick="showScrapForm()"><i data-feather="plus"></i> Buat Scrap</button>
+    </div>
+  </div>
+  <div class="report-filter-bar" style="margin-bottom:16px;gap:8px">
+    <select id="scrapFilterStatus" class="j-select" onchange="renderScrapPage()">
+      <option value="">Semua Status</option>
+      <option value="draft">Draft</option>
+      <option value="posted">Posted</option>
+      <option value="void">Void</option>
+    </select>
+  </div>
+  <div class="table-card"><div id="scrapTableWrap"></div></div>
+</section>
+
+<section class="page" id="page-scrap-form">
+  <div class="page-header">
+    <h2>
+      <button class="btn btn-outline btn-sm form-page-back-btn" onclick="exitScrapForm()"><i data-feather="arrow-left"></i> Kembali</button>
+      &nbsp;&nbsp;<span id="scrapFormTitle" style="font-size:20px">Buat Scrap</span>
+    </h2>
+  </div>
+  <div class="form-page-body" id="scrapFormBody"></div>
+  <div class="form-action-bar">
+    <button class="btn btn-outline" onclick="exitScrapForm()">Batal</button>
+    <button class="btn btn-primary" onclick="submitScrapForm(false)">Simpan Draft</button>
+    <button class="btn btn-success" onclick="submitScrapForm(true)">Simpan + Post</button>
+  </div>
+</section>
+
 <section class="page" id="page-work-centers">
   <div class="page-header">
     <h2>Work Center <small style="font-size:11px;color:#15803d;font-weight:normal">⚡ live dari backend</small></h2>
@@ -2968,7 +3002,7 @@
 <div id="sidebar-tooltip"></div>
 
 <!-- Scripts -->
-<script src="js/api.js?v=11"></script>
+<script src="js/api.js?v=12"></script>
 <script src="js/backend-sync.js?v=4"></script>
 <script src="js/backend-loader.js?v=2"></script>
 <script src="js/realtime.js?v=3"></script>
@@ -2993,8 +3027,8 @@
 <script src="js/payments.js?v=2"></script>
 <script src="js/orders.js?v=2"></script>
 <script src="js/fulfillment.js?v=4"></script>
-<script src="js/manufacturing.js?v=4"></script>
-<script src="js/app.js?v=39"></script>
+<script src="js/manufacturing.js?v=5"></script>
+<script src="js/app.js?v=40"></script>
 <!-- Feather Icons -->
 <script src="https://cdn.jsdelivr.net/npm/feather-icons/dist/feather.min.js"></script>
 <script>

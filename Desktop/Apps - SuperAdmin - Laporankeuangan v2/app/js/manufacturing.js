@@ -1289,3 +1289,228 @@ async function submitMOForm(confirmNow) {
 // ── Update BOM detail "Edit" handler to go to form page ───
 //     Old `showBOMDetail` stays as read-only viewer; "Edit" button
 //     inside detail (for draft) is wired via _bomFormEditId.
+
+
+// ════════════════════════════════════════════════════════════════
+// SCRAP / SPOILAGE (Sprint M6)
+// ════════════════════════════════════════════════════════════════
+
+let _scrapLines = [];
+
+async function renderScrapPage() {
+  await _mfgEnsureMasters();
+  const status = document.getElementById('scrapFilterStatus')?.value || '';
+  let list = [];
+  try {
+    list = await Api.mfgScraps.list({ status: status || undefined, limit: 200 });
+  } catch (e) {
+    showToast('Gagal load Scrap: ' + e.message, 'error');
+  }
+  const wrap = document.getElementById('scrapTableWrap');
+  if (!wrap) return;
+  if (!list.length) {
+    wrap.innerHTML = `<div style="padding:48px;text-align:center;color:#6b7280">Belum ada Scrap. Klik <strong>"Buat Scrap"</strong>.</div>`;
+    return;
+  }
+  const itemMap = Object.fromEntries(MfgState.items.map(i => [i.id, i.name]));
+  const whMap   = Object.fromEntries(MfgState.warehouses.map(w => [w.id, w.name]));
+  wrap.innerHTML = `
+    <table class="data-table">
+      <thead><tr>
+        <th>No</th><th>Tanggal</th><th>Warehouse</th>
+        <th style="text-align:right">Lines</th>
+        <th>Reason</th><th>MO</th>
+        <th>Status</th><th style="text-align:center">Aksi</th>
+      </tr></thead>
+      <tbody>
+      ${list.map(s => `
+        <tr>
+          <td><code>${_mfgEsc(s.scrap_no)}</code></td>
+          <td>${s.scrap_date || '-'}</td>
+          <td>${_mfgEsc(whMap[s.warehouse_id] || '-')}</td>
+          <td style="text-align:right">${(s.lines || []).length}</td>
+          <td>${_mfgEsc(s.reason || '-')}</td>
+          <td>${s.mo_id ? `<code>${_mfgEsc(s.mo_id.slice(0,8))}</code>` : '-'}</td>
+          <td>${_ffStatusBadge ? _ffStatusBadge(s.status) : s.status}</td>
+          <td style="text-align:center;white-space:nowrap">
+            <button class="btn btn-sm btn-outline" onclick="showScrapDetail('${s.id}')">Detail</button>
+            ${s.status === 'draft'  ? `<button class="btn btn-sm btn-primary" style="margin-left:4px" onclick="postScrap('${s.id}')">Post</button>` : ''}
+            ${s.status !== 'void'   ? `<button class="btn btn-sm btn-danger"  style="margin-left:4px" onclick="voidScrap('${s.id}')">Void</button>` : ''}
+          </td>
+        </tr>`).join('')}
+      </tbody>
+    </table>`;
+}
+
+// shim for status badge (fulfillment.js exposes _ffStatusBadge; if unavailable use inline)
+if (typeof _ffStatusBadge !== 'function') {
+  window._ffStatusBadge = function(status) {
+    const map = { draft:['#6b7280','Draft'], posted:['#10b981','Posted'], void:['#ef4444','Void'] };
+    const [c,l] = map[status] || ['#6b7280',status||'-'];
+    return `<span style="display:inline-block;padding:2px 8px;background:${c}20;color:${c};border-radius:6px;font-size:11px;font-weight:600">${l}</span>`;
+  };
+}
+
+function showScrapForm() {
+  _scrapLines = [{ item_id: '', qty: 1, unit_cost: '', notes: '' }];
+  navigateTo('scrap-form');
+}
+
+function exitScrapForm() {
+  if (_scrapLines.some(l => l.item_id) && !confirm('Perubahan belum disimpan. Yakin keluar?')) return;
+  _scrapLines = [];
+  navigateTo('mfg-scraps');
+}
+
+async function renderScrapForm() {
+  await _mfgEnsureMasters();
+  let mos = [];
+  try { mos = await Api.manufacturingOrders.list({limit: 100}); } catch {}
+  const itemOpts = MfgState.items.filter(i => i.type === 'stock')
+    .map(i => `<option value="${i.id}">${_mfgEsc(i.name)} (${_mfgEsc(i.sku || '-')})</option>`).join('');
+  const whOpts = MfgState.warehouses.map(w => `<option value="${w.id}">${_mfgEsc(w.name)}</option>`).join('');
+  const moOpts = mos.map(m => `<option value="${m.id}">${_mfgEsc(m.mo_no)} — status ${m.status}</option>`).join('');
+
+  document.getElementById('scrapFormTitle').textContent = 'Buat Scrap / Spoilage';
+  const body = document.getElementById('scrapFormBody');
+  if (!body) return;
+  body.innerHTML = `
+    <p style="font-size:12px;color:#6b7280;margin-bottom:12px">
+      💡 Saat di-post: stock berkurang + journal otomatis <strong>Dr Beban Scrap / Cr Persediaan</strong>.
+      Unit cost otomatis diambil dari avg cost inventory bila dikosongkan.
+    </p>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:16px">
+      <div><label>Tanggal</label><input type="date" id="scrapDate" value="${_mfgToday()}" class="form-control"></div>
+      <div><label>Warehouse</label>
+        <select id="scrapWarehouse" class="form-control">${whOpts}</select>
+      </div>
+      <div><label>MO terkait <small style="color:#6b7280">(opsional)</small></label>
+        <select id="scrapMo" class="form-control"><option value="">— tidak terkait MO —</option>${moOpts}</select>
+      </div>
+    </div>
+    <div style="margin-bottom:12px"><label>Reason</label>
+      <input type="text" id="scrapReason" class="form-control" placeholder="cth: Rusak saat handling / QC reject">
+    </div>
+    <h4>Items yang di-scrap</h4>
+    <table class="data-table">
+      <thead><tr>
+        <th style="width:36%">Item</th>
+        <th style="width:90px">Qty</th>
+        <th style="width:130px">Unit Cost <small>(opsional)</small></th>
+        <th>Notes</th>
+        <th></th>
+      </tr></thead>
+      <tbody id="scrapLinesBody"></tbody>
+    </table>
+    <button class="btn btn-sm btn-outline" onclick="_scrapAddLine()" style="margin-top:8px">+ Tambah baris</button>
+    <div style="margin-top:16px"><label>Notes (header)</label><textarea id="scrapNotes" class="form-control" rows="2"></textarea></div>
+  `;
+  _scrapRenderLines(itemOpts);
+  if (typeof feather !== 'undefined') feather.replace();
+}
+
+function _scrapRenderLines(itemOpts) {
+  const opts = itemOpts || MfgState.items.filter(i => i.type === 'stock')
+    .map(i => `<option value="${i.id}">${_mfgEsc(i.name)}</option>`).join('');
+  const body = document.getElementById('scrapLinesBody');
+  if (!body) return;
+  body.innerHTML = _scrapLines.map((ln, idx) => `
+    <tr>
+      <td><select class="form-control" onchange="_scrapUpdLine(${idx},'item_id',this.value)"><option value="">— pilih —</option>${opts.replace(`value="${ln.item_id}"`, `value="${ln.item_id}" selected`)}</select></td>
+      <td><input type="number" step="0.01" value="${ln.qty}" class="form-control" onchange="_scrapUpdLine(${idx},'qty',parseFloat(this.value)||0)"></td>
+      <td><input type="number" step="100" value="${ln.unit_cost ?? ''}" placeholder="auto" class="form-control" onchange="_scrapUpdLine(${idx},'unit_cost',this.value === '' ? null : (parseFloat(this.value)||0))"></td>
+      <td><input type="text" value="${_mfgEsc(ln.notes || '')}" class="form-control" onchange="_scrapUpdLine(${idx},'notes',this.value)"></td>
+      <td><button class="btn btn-sm btn-danger" onclick="_scrapRmLine(${idx})">×</button></td>
+    </tr>`).join('');
+}
+
+function _scrapUpdLine(i, k, v) { _scrapLines[i][k] = v; }
+function _scrapAddLine() { _scrapLines.push({item_id:'', qty:1, unit_cost:'', notes:''}); _scrapRenderLines(); }
+function _scrapRmLine(i)  { _scrapLines.splice(i,1); if (!_scrapLines.length) _scrapAddLine(); else _scrapRenderLines(); }
+
+async function submitScrapForm(postNow) {
+  const scrap_date   = document.getElementById('scrapDate').value;
+  const warehouse_id = document.getElementById('scrapWarehouse').value;
+  const mo_id        = document.getElementById('scrapMo').value || null;
+  const reason       = document.getElementById('scrapReason').value;
+  const notes        = document.getElementById('scrapNotes').value;
+  if (!scrap_date || !warehouse_id) { showToast('Tanggal & warehouse wajib', 'error'); return; }
+  const valid = _scrapLines.filter(l => l.item_id && l.qty > 0);
+  if (!valid.length) { showToast('Minimal 1 baris valid', 'error'); return; }
+
+  const payload = {
+    scrap_date, warehouse_id, mo_id,
+    reason: reason || null, notes: notes || null,
+    lines: valid.map(l => ({
+      item_id: l.item_id, qty: l.qty,
+      unit_cost: (l.unit_cost === null || l.unit_cost === '' || isNaN(parseFloat(l.unit_cost))) ? null : parseFloat(l.unit_cost),
+      notes: l.notes || null,
+    })),
+  };
+  try {
+    const res = await Api.mfgScraps.create(payload, postNow ? {post_now: 'true'} : {});
+    showToast(`Scrap ${res.scrap_no} ${postNow?'di-post':'tersimpan'}`, 'success');
+    _scrapLines = [];
+    navigateTo('mfg-scraps');
+  } catch (e) { showToast('Gagal: ' + e.message, 'error'); }
+}
+
+async function postScrap(id) {
+  if (!confirm('Post scrap ini? Stock akan keluar + journal Dr Scrap-Loss / Cr Inventory.')) return;
+  try {
+    await Api.mfgScraps.post(id);
+    showToast('Scrap di-post', 'success');
+    renderScrapPage();
+  } catch (e) { showToast('Gagal: ' + e.message, 'error'); }
+}
+
+async function voidScrap(id) {
+  const reason = prompt('Alasan void?');
+  if (!reason) return;
+  try {
+    await Api.mfgScraps.void(id, {reason});
+    showToast('Scrap di-void', 'warning');
+    renderScrapPage();
+  } catch (e) { showToast('Gagal: ' + e.message, 'error'); }
+}
+
+async function showScrapDetail(id) {
+  try {
+    const s = await Api.mfgScraps.get(id);
+    const itemMap = Object.fromEntries(MfgState.items.map(i => [i.id, i.name]));
+    const rows = (s.lines || []).map((ln, idx) => `
+      <tr>
+        <td>${idx+1}</td>
+        <td>${_mfgEsc(itemMap[ln.item_id] || ln.item_id?.slice(0,8))}</td>
+        <td style="text-align:right">${ln.qty}</td>
+        <td style="text-align:right">${_mfgFmtRp(ln.unit_cost)}</td>
+        <td style="text-align:right">${_mfgFmtRp((parseFloat(ln.qty)||0) * (parseFloat(ln.unit_cost)||0))}</td>
+        <td>${_mfgEsc(ln.notes || '-')}</td>
+      </tr>`).join('');
+    const total = (s.lines || []).reduce((acc,l) => acc + (parseFloat(l.qty)||0)*(parseFloat(l.unit_cost)||0), 0);
+    const html = `
+    <div class="modal-backdrop" id="scrapDetailBackdrop" onclick="if(event.target===this)this.remove()">
+      <div class="modal-content" style="max-width:760px">
+        <div class="modal-header">
+          <h3>${_mfgEsc(s.scrap_no)} — ${_ffStatusBadge(s.status)}</h3>
+          <button class="modal-close" onclick="document.getElementById('scrapDetailBackdrop').remove()">×</button>
+        </div>
+        <div class="modal-body">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+            <div><strong>Date:</strong> ${s.scrap_date}</div>
+            <div><strong>MO:</strong> ${s.mo_id ? `<code>${_mfgEsc(s.mo_id.slice(0,8))}</code>` : '-'}</div>
+            <div><strong>Reason:</strong> ${_mfgEsc(s.reason || '-')}</div>
+            <div><strong>Journal:</strong> ${s.journal_entry_id ? `<code>${_mfgEsc(s.journal_entry_id.slice(0,8))}</code>` : '-'}</div>
+          </div>
+          <table class="data-table">
+            <thead><tr><th>#</th><th>Item</th><th>Qty</th><th>Unit Cost</th><th>Total</th><th>Notes</th></tr></thead>
+            <tbody>${rows}</tbody>
+            <tfoot><tr><th colspan="4" style="text-align:right">Total Loss</th><th colspan="2" style="text-align:right">${_mfgFmtRp(total)}</th></tr></tfoot>
+          </table>
+          ${s.void_reason ? `<p style="margin-top:12px;color:#ef4444"><strong>Void:</strong> ${_mfgEsc(s.void_reason)}</p>` : ''}
+        </div>
+      </div>
+    </div>`;
+    document.body.insertAdjacentHTML('beforeend', html);
+  } catch (e) { showToast('Gagal: ' + e.message, 'error'); }
+}
