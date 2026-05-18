@@ -808,3 +808,127 @@ async def lot_traceability(
         "inflows":  inflows,
         "outflows": outflows,
     }
+
+
+# ─── Warehouse Locations ─────────────────────────────────
+from app.modules.inventory.models import WarehouseLocation, Warehouse
+from app.modules.inventory.schemas import (
+    WarehouseLocationCreate, WarehouseLocationOut, WarehouseLocationUpdate,
+)
+
+
+@router.get("/warehouses/{warehouse_id}/locations", response_model=list[WarehouseLocationOut])
+async def list_locations(
+    warehouse_id: UUID,
+    is_active: bool | None = Query(default=None),
+    current: CurrentUser = Depends(require_permission("inventory.read")),
+    session: AsyncSession = Depends(get_write_session),
+) -> list[WarehouseLocationOut]:
+    # Verify warehouse belongs to tenant
+    wh_stmt = _sel(Warehouse).where(
+        Warehouse.id == warehouse_id, Warehouse.tenant_id == current.tenant_id
+    )
+    wh = (await session.execute(wh_stmt)).scalar_one_or_none()
+    if not wh:
+        raise NotFoundError("Warehouse not found")
+    conds = [
+        WarehouseLocation.tenant_id == current.tenant_id,
+        WarehouseLocation.warehouse_id == warehouse_id,
+    ]
+    if is_active is not None:
+        conds.append(WarehouseLocation.is_active == is_active)
+    stmt = _sel(WarehouseLocation).where(*conds).order_by(WarehouseLocation.code)
+    rows = (await session.execute(stmt)).scalars().all()
+    return [WarehouseLocationOut.model_validate(r) for r in rows]
+
+
+@router.post("/warehouses/{warehouse_id}/locations", response_model=WarehouseLocationOut, status_code=201)
+async def create_location(
+    warehouse_id: UUID,
+    payload: WarehouseLocationCreate,
+    current: CurrentUser = Depends(require_permission("inventory.write")),
+    session: AsyncSession = Depends(get_write_session),
+) -> WarehouseLocationOut:
+    wh_stmt = _sel(Warehouse).where(
+        Warehouse.id == warehouse_id, Warehouse.tenant_id == current.tenant_id
+    )
+    wh = (await session.execute(wh_stmt)).scalar_one_or_none()
+    if not wh:
+        raise NotFoundError("Warehouse not found")
+    # Reject duplicate code within the same warehouse
+    dup = (await session.execute(
+        _sel(WarehouseLocation).where(
+            WarehouseLocation.warehouse_id == warehouse_id,
+            WarehouseLocation.code == payload.code,
+        )
+    )).scalar_one_or_none()
+    if dup:
+        from app.core.exceptions import ConflictError
+        raise ConflictError(f"Location code '{payload.code}' already exists in this warehouse")
+    loc = WarehouseLocation(
+        tenant_id=current.tenant_id,
+        warehouse_id=warehouse_id,
+        code=payload.code,
+        name=payload.name,
+        is_active=payload.is_active,
+        notes=payload.notes,
+    )
+    session.add(loc)
+    await session.flush()
+    return WarehouseLocationOut.model_validate(loc)
+
+
+@router.patch("/warehouses/{warehouse_id}/locations/{loc_id}", response_model=WarehouseLocationOut)
+async def update_location(
+    warehouse_id: UUID,
+    loc_id: UUID,
+    payload: WarehouseLocationUpdate,
+    current: CurrentUser = Depends(require_permission("inventory.write")),
+    session: AsyncSession = Depends(get_write_session),
+) -> WarehouseLocationOut:
+    stmt = _sel(WarehouseLocation).where(
+        WarehouseLocation.id == loc_id,
+        WarehouseLocation.warehouse_id == warehouse_id,
+        WarehouseLocation.tenant_id == current.tenant_id,
+    )
+    loc = (await session.execute(stmt)).scalar_one_or_none()
+    if not loc:
+        raise NotFoundError("Location not found")
+    # Dup check if code changing
+    if payload.code is not None and payload.code != loc.code:
+        dup = (await session.execute(
+            _sel(WarehouseLocation).where(
+                WarehouseLocation.warehouse_id == warehouse_id,
+                WarehouseLocation.code == payload.code,
+                WarehouseLocation.id != loc_id,
+            )
+        )).scalar_one_or_none()
+        if dup:
+            from app.core.exceptions import ConflictError
+            raise ConflictError(f"Location code '{payload.code}' already exists")
+        loc.code = payload.code
+    if payload.name is not None:      loc.name = payload.name
+    if payload.is_active is not None: loc.is_active = payload.is_active
+    if payload.notes is not None:     loc.notes = payload.notes
+    await session.flush()
+    return WarehouseLocationOut.model_validate(loc)
+
+
+@router.delete("/warehouses/{warehouse_id}/locations/{loc_id}", status_code=204)
+async def delete_location(
+    warehouse_id: UUID,
+    loc_id: UUID,
+    current: CurrentUser = Depends(require_permission("inventory.write")),
+    session: AsyncSession = Depends(get_write_session),
+) -> None:
+    stmt = _sel(WarehouseLocation).where(
+        WarehouseLocation.id == loc_id,
+        WarehouseLocation.warehouse_id == warehouse_id,
+        WarehouseLocation.tenant_id == current.tenant_id,
+    )
+    loc = (await session.execute(stmt)).scalar_one_or_none()
+    if not loc:
+        raise NotFoundError("Location not found")
+    await session.delete(loc)
+    await session.flush()
+    return None

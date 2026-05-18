@@ -408,3 +408,34 @@ class StockLot(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+
+
+# ═══════════════════════════════════════════════════════════════════
+# WarehouseLocation — sub-locations within a warehouse (rak / bin / zone)
+# ═══════════════════════════════════════════════════════════════════
+
+class WarehouseLocation(Base):
+    __tablename__ = "warehouse_locations"
+    __table_args__ = (
+        UniqueConstraint("warehouse_id", "code", name="uq_wh_loc_wh_code"),
+        Index("ix_wh_loc_wh", "warehouse_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("tenants.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    warehouse_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("warehouses.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    code: Mapped[str] = mapped_column(String(40), nullable=False)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    notes: Mapped[str | None] = mapped_column(String(500))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )

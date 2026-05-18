@@ -449,3 +449,30 @@ class StockLotOut(BaseModel):
     qty_remaining: Decimal
     notes: str | None
     created_at: datetime
+
+
+# ─── Warehouse Locations ──────────────────────────────────
+class WarehouseLocationCreate(BaseModel):
+    code: str = Field(min_length=1, max_length=40)
+    name: str = Field(min_length=1, max_length=200)
+    is_active: bool = True
+    notes: str | None = Field(default=None, max_length=500)
+
+
+class WarehouseLocationUpdate(BaseModel):
+    code: str | None = Field(default=None, max_length=40)
+    name: str | None = Field(default=None, min_length=1, max_length=200)
+    is_active: bool | None = None
+    notes: str | None = Field(default=None, max_length=500)
+
+
+class WarehouseLocationOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    warehouse_id: UUID
+    code: str
+    name: str
+    is_active: bool
+    notes: str | None
+    created_at: datetime
