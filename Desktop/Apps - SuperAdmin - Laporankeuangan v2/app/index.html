@@ -676,13 +676,14 @@
     </section>
 
     <!-- ===== MODAL: COA ADD/EDIT ===== -->
-    <div class="modal-overlay" id="coaModal" style="display:none">
-      <div class="modal-box">
-        <div class="modal-header">
-          <h3 id="coaModalTitle">Tambah Akun</h3>
-          <button class="modal-close" onclick="closeCOAModal()"><i data-feather="x"></i></button>
-        </div>
-        <div class="modal-body">
+    <section class="page" id="page-coa-form">
+      <div class="page-header">
+        <h2>
+          <button class="btn btn-outline btn-sm form-page-back-btn" onclick="closeCOAModal()"><i data-feather="arrow-left"></i> Kembali</button>
+          &nbsp;&nbsp;<span id="coaModalTitle" style="font-size:20px">Tambah Akun</span>
+        </h2>
+      </div>
+      <div class="form-page-body">
           <div class="form-row">
             <div class="form-group">
               <label>Kode Akun <span style="color:red">*</span></label>
@@ -723,12 +724,11 @@
           </div>
           <p id="coaError" style="color:#dc2626;font-size:12px;margin:4px 0 0;display:none"></p>
         </div>
-        <div class="modal-footer">
+        <div class="form-action-bar">
           <button class="btn-secondary" onclick="closeCOAModal()">Batal</button>
           <button class="btn-primary" onclick="saveCOAAccount()">Simpan</button>
         </div>
-      </div>
-    </div>
+    </section>
 
     <!-- ===== PAGE: INCOME STATEMENT ===== -->
     <section class="page" id="page-income">
@@ -1650,13 +1650,14 @@
     </section>
 
 <!-- ===== MODAL: ADD/EDIT USER ===== -->
-<div class="modal-overlay" id="userModal" style="display:none">
-  <div class="modal-box">
-    <div class="modal-header">
-      <h3 id="userModalTitle">Tambah Pengguna</h3>
-      <button class="modal-close" onclick="closeUserModal()"><i data-feather="x"></i></button>
-    </div>
-    <div class="modal-body">
+<section class="page" id="page-user-form">
+  <div class="page-header">
+    <h2>
+      <button class="btn btn-outline btn-sm form-page-back-btn" onclick="closeUserModal()"><i data-feather="arrow-left"></i> Kembali</button>
+      &nbsp;&nbsp;<span id="userModalTitle" style="font-size:20px">Tambah Pengguna</span>
+    </h2>
+  </div>
+  <div class="form-page-body">
       <input type="hidden" id="userModalId" />
       <div class="form-row">
         <div class="form-group">
@@ -1685,21 +1686,21 @@
       </div>
       <p id="userModalError" style="color:#dc2626;font-size:12px;margin:4px 0 0;display:none"></p>
     </div>
-    <div class="modal-footer">
+    <div class="form-action-bar">
       <button class="btn btn-outline" onclick="closeUserModal()">Batal</button>
       <button class="btn btn-primary" id="btnSaveUser" onclick="saveUserModal()">Simpan</button>
     </div>
-  </div>
-</div>
+</section>
 
 <!-- ===== MODAL: ADD/EDIT ROLE ===== -->
-<div class="modal-overlay" id="roleModal" style="display:none">
-  <div class="modal-box">
-    <div class="modal-header">
-      <h3 id="roleModalTitle">Tambah Role</h3>
-      <button class="modal-close" onclick="closeRoleModal()"><i data-feather="x"></i></button>
-    </div>
-    <div class="modal-body">
+<section class="page" id="page-role-form">
+  <div class="page-header">
+    <h2>
+      <button class="btn btn-outline btn-sm form-page-back-btn" onclick="closeRoleModal()"><i data-feather="arrow-left"></i> Kembali</button>
+      &nbsp;&nbsp;<span id="roleModalTitle" style="font-size:20px">Tambah Role</span>
+    </h2>
+  </div>
+  <div class="form-page-body">
       <input type="hidden" id="roleModalId" />
       <div class="form-group" style="margin-bottom:12px">
         <label>Nama Role <span style="color:red">*</span></label>
@@ -1715,12 +1716,11 @@
       </div>
       <p id="roleModalError" style="color:#dc2626;font-size:12px;margin:8px 0 0;display:none"></p>
     </div>
-    <div class="modal-footer">
+    <div class="form-action-bar">
       <button class="btn btn-outline" onclick="closeRoleModal()">Batal</button>
       <button class="btn btn-primary" id="btnSaveRole" onclick="saveRoleModal()">Simpan</button>
     </div>
-  </div>
-</div>
+</section>
 
 <!-- ===== MODAL: CHANGE PASSWORD ===== -->
 <div class="modal-overlay" id="changePasswordModal" style="display:none">
@@ -2285,13 +2285,14 @@
 </div>
 
 <!-- ===== PURCHASE: Vendor Modal ===== -->
-<div class="modal-overlay" id="purchaseVendorModal" style="display:none">
-  <div class="modal-box">
-    <div class="modal-header">
-      <h3 id="vendorModalTitle">Tambah Vendor</h3>
-      <button class="modal-close" onclick="closeVendorModal()"><i data-feather="x"></i></button>
-    </div>
-    <div class="modal-body">
+<section class="page" id="page-vendor-form">
+  <div class="page-header">
+    <h2>
+      <button class="btn btn-outline btn-sm form-page-back-btn" onclick="closeVendorModal()"><i data-feather="arrow-left"></i> Kembali</button>
+      &nbsp;&nbsp;<span id="vendorModalTitle" style="font-size:20px">Tambah Vendor</span>
+    </h2>
+  </div>
+  <div class="form-page-body">
       <div class="form-group">
         <label>Nama Vendor <span style="color:red">*</span></label>
         <input type="text" id="vendorName" placeholder="CV Sumber Bahan..." />
@@ -2328,15 +2329,14 @@
         <select id="vendorPayableCoa" class="j-select"><!-- JS renders --></select>
       </div>
     </div>
-    <div class="modal-footer">
+    <div class="form-action-bar">
       <button class="btn btn-outline" onclick="closeVendorModal()">Batal</button>
       <button class="btn btn-danger" id="btnDeleteVendor" onclick="deleteVendorItem(_editingVendorId)" style="display:none">
         <i data-feather="trash-2"></i> Hapus
       </button>
       <button class="btn btn-primary" onclick="saveVendorFromModal()">Simpan</button>
     </div>
-  </div>
-</div>
+</section>
 
 <!-- ===== PURCHASE: Vendor Bill Modal ===== -->
 <section class="page" id="page-bill-form">
@@ -2467,13 +2467,14 @@
 </section>
 
 <!-- ===== SALES: Customer Modal ===== -->
-<div class="modal-overlay" id="salesCustomerModal" style="display:none">
-  <div class="modal-box">
-    <div class="modal-header">
-      <h3 id="customerModalTitle">Tambah Customer</h3>
-      <button class="modal-close" onclick="closeCustomerModal()"><i data-feather="x"></i></button>
-    </div>
-    <div class="modal-body">
+<section class="page" id="page-customer-form">
+  <div class="page-header">
+    <h2>
+      <button class="btn btn-outline btn-sm form-page-back-btn" onclick="closeCustomerModal()"><i data-feather="arrow-left"></i> Kembali</button>
+      &nbsp;&nbsp;<span id="customerModalTitle" style="font-size:20px">Tambah Customer</span>
+    </h2>
+  </div>
+  <div class="form-page-body">
       <div class="form-group">
         <label>Nama Customer <span style="color:red">*</span></label>
         <input type="text" id="custName" placeholder="PT Pelanggan Setia..." />
@@ -2510,15 +2511,14 @@
         <select id="custReceivableCoa" class="j-select"><!-- JS renders --></select>
       </div>
     </div>
-    <div class="modal-footer">
+    <div class="form-action-bar">
       <button class="btn btn-outline" onclick="closeCustomerModal()">Batal</button>
       <button class="btn btn-danger" id="btnDeleteCustomer" onclick="deleteCustomerItem(_editingCustomerId)" style="display:none">
         <i data-feather="trash-2"></i> Hapus
       </button>
       <button class="btn btn-primary" onclick="saveCustomerFromModal()">Simpan</button>
     </div>
-  </div>
-</div>
+</section>
 
 <!-- ===== SALES: Customer Invoice Modal ===== -->
 <section class="page" id="page-invoice-form">
@@ -2945,15 +2945,15 @@
 <script src="js/storage.js?v=3"></script>
 <script src="js/license.js?v=2"></script>
 <script src="js/auth.js?v=9"></script>
-<script src="js/users.js?v=1"></script>
+<script src="js/users.js?v=2"></script>
 <script src="js/coa.js?v=8"></script>
 <script src="js/parser.js?v=7"></script>
 <script src="js/journal.js?v=8"></script>
 <script src="js/reports.js?v=7"></script>
 <script src="js/export.js?v=6"></script>
 <script src="js/pos.js?v=10"></script>
-<script src="js/purchase.js?v=13"></script>
-<script src="js/sales.js?v=7"></script>
+<script src="js/purchase.js?v=14"></script>
+<script src="js/sales.js?v=8"></script>
 <script src="js/inventory.js?v=2"></script>
 <script src="js/inventory-extras.js?v=1"></script>
 <script src="js/inventory-operations.js?v=4"></script>

@@ -330,13 +330,13 @@ function showCustomerModal(id) {
   document.getElementById('custReceivableCoa').innerHTML = _coaOptsSales(c?.receivableCoa || '1-1200', 'piutang');
   const btnDel = document.getElementById('btnDeleteCustomer');
   if (btnDel) btnDel.style.display = c ? 'inline-flex' : 'none';
-  document.getElementById('salesCustomerModal').style.display = 'flex';
+  navigateTo('customer-form');
   if (typeof feather !== 'undefined') feather.replace();
 }
 
 function closeCustomerModal() {
-  document.getElementById('salesCustomerModal').style.display = 'none';
   _editingCustomerId = null;
+  if (typeof navigateTo === 'function') navigateTo('customer-master');
 }
 
 function saveCustomerFromModal() {

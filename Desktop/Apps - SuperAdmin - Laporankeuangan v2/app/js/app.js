@@ -258,11 +258,11 @@ function updateGroupActiveState(page) {
                           'customer-master', 'customer-invoices', 'customer-payments', 'customer-report',
                           'sales-orders', 'delivery-orders', 'rmas',
                           'so-form', 'do-form', 'rma-form',
-                          'invoice-form', 'customer-payment-form'];
+                          'invoice-form', 'customer-payment-form', 'customer-form'];
   const purchasePages  = ['purchase-vendors', 'purchase-bills', 'purchase-payments', 'purchase-report',
                           'purchase-orders', 'goods-receipts',
                           'po-form', 'gr-form',
-                          'bill-form', 'vendor-payment-form'];
+                          'bill-form', 'vendor-payment-form', 'vendor-form'];
   const mfgPages       = ['bom-master', 'mfg-orders', 'work-centers', 'bom-form', 'mo-form'];
   const group = salesPages.includes(page) ? 'sales'
     : purchasePages.includes(page) ? 'purchase'
@@ -375,6 +375,11 @@ function navigateTo(page) {
     'customer-payment-form': 'Penerimaan Customer Form',
     'vendor-payment-form':   'Pembayaran Vendor Form',
     'journal-form':          'Jurnal Manual Form',
+    'customer-form':         'Customer Form',
+    'vendor-form':           'Vendor Form',
+    'coa-form':              'Akun Form',
+    'user-form':             'User Form',
+    'role-form':             'Role Form',
   };
   document.getElementById('pageTitle').textContent = titles[page] || page;
   AppState.currentPage = page;
@@ -1486,12 +1491,12 @@ function openCOAModal(editCode = null) {
     onCOATypeChange(); // set default normal balance
   }
 
-  modal.style.display = 'flex';
+  navigateTo('coa-form');
 }
 
 function closeCOAModal() {
-  document.getElementById('coaModal').style.display = 'none';
   _coaEditCode = null;
+  if (typeof navigateTo === 'function') navigateTo('coa');
 }
 
 function onCOATypeChange() {
@@ -2803,19 +2808,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (e.target === document.getElementById('splitModal')) closeSplitModal();
   });
 
-  // User modal close on overlay click
-  document.getElementById('userModal').addEventListener('click', (e) => {
-    if (e.target === document.getElementById('userModal')) closeUserModal();
-  });
+  // (Sprint F4) userModal & roleModal sekarang form pages, click-outside tidak perlu.
 
   // Change password modal close on overlay click
   document.getElementById('changePasswordModal').addEventListener('click', (e) => {
     if (e.target === document.getElementById('changePasswordModal')) closeChangePasswordModal();
-  });
-
-  // Role modal close on overlay click
-  document.getElementById('roleModal').addEventListener('click', (e) => {
-    if (e.target === document.getElementById('roleModal')) closeRoleModal();
   });
 
   // COA filter tabs

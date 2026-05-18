@@ -317,7 +317,7 @@ function showVendorModal(id) {
     document.getElementById('vendorPayableCoa').innerHTML = _coaOptsPurchase(v?.payableCoa || '2-1100', 'liabilitas');
     const btnDel = document.getElementById('btnDeleteVendor');
     if (btnDel) btnDel.style.display = v ? 'inline-flex' : 'none';
-    document.getElementById('purchaseVendorModal').style.display = 'flex';
+    navigateTo('vendor-form');
     if (typeof feather !== 'undefined') feather.replace();
   } catch(e) {
     console.error('[Purchase] showVendorModal error:', e);
@@ -326,8 +326,8 @@ function showVendorModal(id) {
 }
 
 function closeVendorModal() {
-  document.getElementById('purchaseVendorModal').style.display = 'none';
   _editingVendorId = null;
+  if (typeof navigateTo === 'function') navigateTo('purchase-vendors');
 }
 
 function saveVendorFromModal() {

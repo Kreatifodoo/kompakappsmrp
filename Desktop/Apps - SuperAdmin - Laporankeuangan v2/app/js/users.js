@@ -62,14 +62,14 @@ function openRoleModal(roleId = null) {
   // Lock nama untuk built-in role
   document.getElementById('roleModalName').readOnly = !!(role && role.isBuiltIn);
 
-  document.getElementById('roleModal').style.display = 'flex';
+  navigateTo('role-form');
   if (!role || !role.isBuiltIn) {
     setTimeout(() => document.getElementById('roleModalName').focus(), 100);
   }
 }
 
 function closeRoleModal() {
-  document.getElementById('roleModal').style.display = 'none';
+  if (typeof navigateTo === 'function') navigateTo('roles');
 }
 
 function saveRoleModal() {
@@ -403,12 +403,12 @@ function openUserModal(userId = null) {
   const roleSelect = document.getElementById('userModalRole');
   if (roleSelect) roleSelect.disabled = !!(user && user.isSuperAdmin);
 
-  document.getElementById('userModal').style.display = 'flex';
+  navigateTo('user-form');
   setTimeout(() => document.getElementById('userModalUsername').focus(), 100);
 }
 
 function closeUserModal() {
-  document.getElementById('userModal').style.display = 'none';
+  if (typeof navigateTo === 'function') navigateTo('users');
 }
 
 async function saveUserModal() {
