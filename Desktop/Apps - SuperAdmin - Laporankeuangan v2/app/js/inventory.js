@@ -398,3 +398,204 @@ function switchInventoryTab(tab) {
   InventoryState.activeTab = tab;
   renderInventoryPage();
 }
+
+
+// ════════════════════════════════════════════════════════════════
+// Master Gudang (Sprint F7) — separate page with locations
+// ════════════════════════════════════════════════════════════════
+
+async function renderWarehouseMaster() {
+  const wrap = document.getElementById('page-warehouse-master');
+  if (!wrap) return;
+  let warehouses = [];
+  try {
+    warehouses = await Api.warehouses.list();
+  } catch (e) {
+    showToast('Gagal load gudang: ' + e.message, 'error');
+    warehouses = [];
+  }
+
+  // Fetch location count for each warehouse (parallel)
+  const locCounts = await Promise.all(
+    warehouses.map(w => Api.warehouses.locations.list(w.id).then(l => l.length).catch(() => 0))
+  );
+
+  wrap.innerHTML = `
+    <div class="page-header">
+      <h2>Master Gudang <small style="font-size:11px;color:#15803d;font-weight:normal">⚡ live dari backend</small></h2>
+      <div class="page-actions">
+        <button class="btn btn-outline" onclick="renderWarehouseMaster()"><i data-feather="refresh-cw"></i> Refresh</button>
+        <button class="btn btn-primary" onclick="showWarehouseModal(null)"><i data-feather="plus"></i> Tambah Gudang</button>
+      </div>
+    </div>
+    ${warehouses.length === 0 ? `
+      <div class="table-card" style="padding:48px;text-align:center;color:#6b7280">
+        Belum ada gudang. Klik <strong>"Tambah Gudang"</strong>.
+      </div>
+    ` : `
+      <div class="table-card">
+        <table class="data-table">
+          <thead><tr>
+            <th>Kode</th><th>Nama</th>
+            <th style="text-align:center">Default</th>
+            <th style="text-align:center">Status</th>
+            <th style="text-align:right">Locations</th>
+            <th style="text-align:center">Aksi</th>
+          </tr></thead>
+          <tbody>
+            ${warehouses.map((w, i) => `
+              <tr>
+                <td><code>${_escInv(w.code)}</code></td>
+                <td>${_escInv(w.name)}</td>
+                <td style="text-align:center">${w.is_default ? '<span style="color:#10b981">✓ Default</span>' : '—'}</td>
+                <td style="text-align:center">${w.is_active ? '<span style="color:#10b981">Aktif</span>' : '<span style="color:#ef4444">Nonaktif</span>'}</td>
+                <td style="text-align:right">${locCounts[i]}</td>
+                <td style="text-align:center;white-space:nowrap">
+                  <button class="btn btn-sm btn-outline" onclick="showWarehouseModal('${w.id}')">Edit</button>
+                  <button class="btn btn-sm btn-info" style="margin-left:4px" onclick="showLocationsModal('${w.id}','${_escInv(w.name)}')">📍 Locations</button>
+                </td>
+              </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+    `}
+  `;
+  if (typeof feather !== 'undefined') feather.replace();
+}
+
+// ─── Locations management modal (within a warehouse) ────
+let _locWhId = null;
+let _locList = [];
+
+async function showLocationsModal(warehouseId, warehouseName) {
+  _locWhId = warehouseId;
+  try {
+    _locList = await Api.warehouses.locations.list(warehouseId);
+  } catch (e) {
+    showToast('Gagal load locations: ' + e.message, 'error');
+    _locList = [];
+  }
+  const html = `
+    <div class="modal-backdrop" id="locModalBackdrop" onclick="if(event.target===this)closeLocationsModal()">
+      <div class="modal-content" style="max-width:720px">
+        <div class="modal-header">
+          <h3>Locations / Rak — ${_escInv(warehouseName)}</h3>
+          <button class="modal-close" onclick="closeLocationsModal()">×</button>
+        </div>
+        <div class="modal-body">
+          <p style="font-size:12px;color:#6b7280;margin-bottom:12px">
+            💡 Lokasi (rak / bin / zone) di dalam gudang ini. Stock balance tetap di level gudang;
+            lokasi sebagai referensi organisasi.
+          </p>
+          <table class="data-table" id="locTable">
+            <thead><tr>
+              <th style="width:120px">Code</th>
+              <th>Name</th>
+              <th>Notes</th>
+              <th style="text-align:center;width:80px">Aktif</th>
+              <th style="width:80px"></th>
+            </tr></thead>
+            <tbody id="locTableBody"></tbody>
+          </table>
+          <button class="btn btn-sm btn-outline" onclick="addLocationLine()" style="margin-top:8px">+ Tambah Lokasi</button>
+          <div id="locErr" class="form-error" style="display:none;margin-top:8px"></div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-outline" onclick="closeLocationsModal()">Tutup</button>
+          <button class="btn btn-primary" onclick="saveAllLocations()">Simpan Semua</button>
+        </div>
+      </div>
+    </div>`;
+  document.body.insertAdjacentHTML('beforeend', html);
+  _renderLocTable();
+  if (typeof feather !== 'undefined') feather.replace();
+}
+
+function _renderLocTable() {
+  const body = document.getElementById('locTableBody');
+  if (!body) return;
+  if (!_locList.length) {
+    body.innerHTML = `<tr><td colspan="5" style="text-align:center;color:#9ca3af;padding:24px">— belum ada lokasi —</td></tr>`;
+    return;
+  }
+  body.innerHTML = _locList.map((l, idx) => `
+    <tr data-idx="${idx}">
+      <td><input class="form-control" value="${_escInv(l.code || '')}" data-field="code" placeholder="RAK-A1" onchange="_locUpdField(${idx},'code',this.value)"></td>
+      <td><input class="form-control" value="${_escInv(l.name || '')}" data-field="name" placeholder="Rak A baris 1" onchange="_locUpdField(${idx},'name',this.value)"></td>
+      <td><input class="form-control" value="${_escInv(l.notes || '')}" data-field="notes" placeholder="opsional" onchange="_locUpdField(${idx},'notes',this.value)"></td>
+      <td style="text-align:center"><input type="checkbox" ${l.is_active !== false ? 'checked' : ''} onchange="_locUpdField(${idx},'is_active',this.checked)"></td>
+      <td style="text-align:center">
+        ${l.id ? `<button class="btn btn-sm btn-danger" onclick="_locRemoveSaved(${idx})">Hapus</button>` : `<button class="btn btn-sm btn-outline" onclick="_locRemoveNew(${idx})">×</button>`}
+      </td>
+    </tr>`).join('');
+}
+
+function _locUpdField(idx, field, value) {
+  if (!_locList[idx]) return;
+  _locList[idx][field] = value;
+  _locList[idx]._dirty = true;
+}
+
+function addLocationLine() {
+  _locList.push({ code: '', name: '', notes: '', is_active: true, _new: true });
+  _renderLocTable();
+}
+
+function _locRemoveNew(idx) {
+  _locList.splice(idx, 1);
+  _renderLocTable();
+}
+
+async function _locRemoveSaved(idx) {
+  const loc = _locList[idx];
+  if (!loc?.id) return _locRemoveNew(idx);
+  if (!confirm(`Hapus lokasi ${loc.code}?`)) return;
+  try {
+    await Api.warehouses.locations.delete(_locWhId, loc.id);
+    _locList.splice(idx, 1);
+    _renderLocTable();
+    showToast('Lokasi dihapus', 'warning');
+  } catch (e) { showToast('Gagal hapus: ' + e.message, 'error'); }
+}
+
+async function saveAllLocations() {
+  const errEl = document.getElementById('locErr');
+  errEl.style.display = 'none';
+  for (const loc of _locList) {
+    if (!loc.code || !loc.name) {
+      errEl.textContent = 'Setiap baris butuh Code & Name'; errEl.style.display='block';
+      return;
+    }
+  }
+  // Process: new → POST, dirty existing → PATCH
+  let created = 0, updated = 0;
+  try {
+    for (let i = 0; i < _locList.length; i++) {
+      const l = _locList[i];
+      if (l._new) {
+        const res = await Api.warehouses.locations.create(_locWhId, {
+          code: l.code, name: l.name, notes: l.notes || null, is_active: l.is_active !== false,
+        });
+        _locList[i] = res;
+        created++;
+      } else if (l._dirty && l.id) {
+        await Api.warehouses.locations.update(_locWhId, l.id, {
+          code: l.code, name: l.name, notes: l.notes || null, is_active: l.is_active !== false,
+        });
+        delete l._dirty;
+        updated++;
+      }
+    }
+    showToast(`Locations saved: ${created} baru, ${updated} update`, 'success');
+    closeLocationsModal();
+    renderWarehouseMaster();
+  } catch (e) {
+    errEl.textContent = e.message; errEl.style.display='block';
+  }
+}
+
+function closeLocationsModal() {
+  document.getElementById('locModalBackdrop')?.remove();
+  _locWhId = null;
+  _locList = [];
+}

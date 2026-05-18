@@ -175,6 +175,7 @@ const FLYOUT_GROUPS = {
     label: 'Inventory',
     items: [
       { page: 'inventory',            icon: 'package',         label: 'Items & Gudang' },
+      { page: 'warehouse-master',     icon: 'home',            label: 'Master Gudang' },
       { page: 'inv-ops',               icon: 'truck',          label: 'Operasi Stok' },
       { page: 'inv-op-master',         icon: 'sliders',        label: 'Master Operasi' },
       { page: 'inventory-movements',  icon: 'refresh-cw',      label: 'Pergerakan Stok' },
@@ -275,7 +276,8 @@ function updateGroupActiveState(page) {
                           'inv-op-master', 'inv-onhand', 'inv-valuation', 'inv-stockcard',
                           'inv-reorder', 'inv-slowmoving', 'inv-costing', 'inv-lots',
                           'transfer-form', 'custom-op-form',
-                          'item-form', 'warehouse-form', 'movement-form'];
+                          'item-form', 'warehouse-form', 'movement-form',
+                          'warehouse-master'];
   const group = salesPages.includes(page) ? 'sales'
     : purchasePages.includes(page) ? 'purchase'
     : mfgPages.includes(page) ? 'manufacturing'
@@ -406,6 +408,7 @@ function navigateTo(page) {
     'wc-form':               'Work Center Form',
     'payment-form':          'Pembayaran Form',
     'movement-form':         'Pergerakan Stok Form',
+    'warehouse-master':      'Master Gudang',
   };
   document.getElementById('pageTitle').textContent = titles[page] || page;
   AppState.currentPage = page;
@@ -444,6 +447,7 @@ function navigateTo(page) {
   if (page === 'inv-slowmoving')     { if (typeof renderSlowMovingPage    === 'function') renderSlowMovingPage(); }
   if (page === 'inv-costing')        { if (typeof renderCostingMethodPage === 'function') renderCostingMethodPage(); }
   if (page === 'inv-lots')           { if (typeof renderLotsPage          === 'function') renderLotsPage(); }
+  if (page === 'warehouse-master')   { if (typeof renderWarehouseMaster   === 'function') renderWarehouseMaster(); }
   if (page === 'inv-ops')            { if (typeof renderStockOpsPage === 'function') renderStockOpsPage(); }
   if (page === 'inv-op-master')      { if (typeof renderStockOpsMasterPage === 'function') renderStockOpsMasterPage(); }
   if (page === 'account-mappings')   { if (typeof renderAccountMappingsPage === 'function') renderAccountMappingsPage(); }

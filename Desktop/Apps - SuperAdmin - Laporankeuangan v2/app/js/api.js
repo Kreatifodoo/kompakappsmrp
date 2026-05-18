@@ -205,6 +205,13 @@ const Api = {
     get:    (id)     => Api.get(`/warehouses/${id}`),
     create: (body)   => Api.post('/warehouses', body),
     update: (id, b)  => Api.patch(`/warehouses/${id}`, b),
+    // Locations within a warehouse (Sprint F7)
+    locations: {
+      list:   (whId, params) => Api.get(`/warehouses/${whId}/locations` + _qs(params)),
+      create: (whId, body)   => Api.post(`/warehouses/${whId}/locations`, body),
+      update: (whId, locId, body) => Api.patch(`/warehouses/${whId}/locations/${locId}`, body),
+      delete: (whId, locId)  => Api.delete(`/warehouses/${whId}/locations/${locId}`),
+    },
   },
   stockMovements: {
     list:   (params) => Api.get('/stock-movements' + _qs(params)),
