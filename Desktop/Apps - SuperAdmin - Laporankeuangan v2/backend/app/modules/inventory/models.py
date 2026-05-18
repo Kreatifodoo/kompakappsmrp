@@ -83,6 +83,9 @@ class Item(Base):
     default_unit_cost: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=Decimal("0"), nullable=False)
     min_stock: Mapped[Decimal] = mapped_column(Numeric(18, 4), default=Decimal("0"), nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    # Sprint Lot/Batch
+    is_lot_tracked: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    shelf_life_days: Mapped[int | None] = mapped_column(Integer)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -145,6 +148,11 @@ class StockMovement(Base):
     total_cost: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
     source: Mapped[str] = mapped_column(String(30), nullable=False, default="adjustment")
     source_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    # Sprint Lot/Batch: links to the lot debited/credited by this movement.
+    # Nullable; populated only for movements on lot-tracked items.
+    lot_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("stock_lots.id", ondelete="RESTRICT")
+    )
     notes: Mapped[str | None] = mapped_column(String(500))
     qty_after: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
     avg_cost_after: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
@@ -354,3 +362,49 @@ class CustomInventoryOperation(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC))
 
+
+
+# ═══════════════════════════════════════════════════════════════════
+# StockLot — lot / batch tracking (per item × warehouse × lot_no)
+# ═══════════════════════════════════════════════════════════════════
+
+class StockLot(Base):
+    __tablename__ = "stock_lots"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id", "item_id", "warehouse_id", "lot_no",
+            name="uq_lot_tenant_item_wh_no",
+        ),
+        Index("ix_lot_tenant_item_wh", "tenant_id", "item_id", "warehouse_id"),
+        Index("ix_lot_expiry", "tenant_id", "expiry_date"),
+        CheckConstraint("qty_received >= 0", name="ck_lot_received_nonneg"),
+        CheckConstraint("qty_remaining >= 0", name="ck_lot_remaining_nonneg"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("tenants.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    item_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("items.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    warehouse_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("warehouses.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    lot_no: Mapped[str] = mapped_column(String(60), nullable=False)
+    mfg_date: Mapped[date | None] = mapped_column(Date)
+    expiry_date: Mapped[date | None] = mapped_column(Date)
+    qty_received: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
+    qty_remaining: Mapped[Decimal] = mapped_column(
+        Numeric(18, 4), nullable=False, default=Decimal("0")
+    )
+    notes: Mapped[str | None] = mapped_column(String(500))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )

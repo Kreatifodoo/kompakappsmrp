@@ -26,6 +26,7 @@ from app.modules.identity.models import Tenant
 from app.modules.inventory.models import (
     Item,
     StockCostLayer,
+    StockLot,
     StockMovement,
     StockTransfer,
     StockTransferLine,
@@ -150,6 +151,10 @@ class InventoryService:
             notes=payload.notes,
             source=source,
             source_id=source_id,
+            lot_id=getattr(payload, "lot_id", None),
+            lot_no=getattr(payload, "lot_no", None),
+            mfg_date=getattr(payload, "mfg_date", None),
+            expiry_date=getattr(payload, "expiry_date", None),
         )
 
         # Post balanced journal entry if contra_account_id provided
@@ -260,6 +265,10 @@ class InventoryService:
         notes: str | None,
         source: str,
         source_id: UUID | None,
+        lot_id: UUID | None = None,
+        lot_no: str | None = None,
+        mfg_date=None,           # noqa: ANN001
+        expiry_date=None,        # noqa: ANN001
     ) -> StockMovement:
         bal = await self.repo.upsert_balance(item.id, warehouse.id)
         method = await self._get_costing_method()
@@ -363,8 +372,136 @@ class InventoryService:
         movement.total_cost = total_cost
         movement.qty_after = bal.on_hand_qty
         movement.avg_cost_after = bal.avg_cost
+
+        # Sprint Lot/Batch: attach a lot row when the item is lot-tracked.
+        # Inflow → create (or find by lot_no) the destination lot, +qty.
+        # Outflow → pick the named lot or FEFO-resolve, validate, -qty.
+        if item.is_lot_tracked:
+            try:
+                resolved_lot = await self._handle_lot_for_movement(
+                    item=item, warehouse=warehouse, movement=movement,
+                    direction=direction, qty=qty,
+                    lot_id=lot_id, lot_no=lot_no,
+                    mfg_date=mfg_date, expiry_date=expiry_date,
+                )
+                movement.lot_id = resolved_lot.id if resolved_lot else None
+            except ValidationError:
+                raise
+
         await self.session.flush()
         return movement
+
+    # ─── Lot/Batch helpers ──────────────────────────────────
+    async def _handle_lot_for_movement(
+        self, *, item: Item, warehouse: Warehouse, movement: StockMovement,
+        direction: str, qty: Decimal,
+        lot_id: UUID | None, lot_no: str | None,
+        mfg_date=None, expiry_date=None,  # noqa: ANN001
+    ) -> "StockLot | None":
+        """Resolve and update a StockLot row for one movement. Caller has
+        already validated balances + posted the movement; we just record
+        the lot dimension and decrement/increment qty_remaining.
+        """
+        from datetime import timedelta
+        if direction in ("in", "adjust_in"):
+            # Compute auto lot_no when blank: AUTO-{YYYYMMDD}-{seq}
+            if not lot_no:
+                today_str = movement.movement_date.strftime("%Y%m%d")
+                count_stmt = select(StockLot).where(
+                    StockLot.tenant_id == self.tenant_id,
+                    StockLot.item_id == item.id,
+                    StockLot.warehouse_id == warehouse.id,
+                    StockLot.lot_no.like(f"AUTO-{today_str}-%"),
+                )
+                existing = list((await self.session.execute(count_stmt)).scalars().all())
+                lot_no = f"AUTO-{today_str}-{len(existing) + 1:04d}"
+            # Auto-stamp expiry if blank + shelf_life_days set
+            if expiry_date is None and item.shelf_life_days:
+                expiry_date = movement.movement_date + timedelta(days=int(item.shelf_life_days))
+            # Check if lot_no exists already (allow add-on receipt)
+            stmt = select(StockLot).where(
+                StockLot.tenant_id == self.tenant_id,
+                StockLot.item_id == item.id,
+                StockLot.warehouse_id == warehouse.id,
+                StockLot.lot_no == lot_no,
+            )
+            lot = (await self.session.execute(stmt)).scalar_one_or_none()
+            if lot:
+                lot.qty_received = _q4(lot.qty_received + qty)
+                lot.qty_remaining = _q4(lot.qty_remaining + qty)
+                # Update dates if provided
+                if mfg_date is not None: lot.mfg_date = mfg_date
+                if expiry_date is not None: lot.expiry_date = expiry_date
+            else:
+                lot = StockLot(
+                    tenant_id=self.tenant_id,
+                    item_id=item.id,
+                    warehouse_id=warehouse.id,
+                    lot_no=lot_no,
+                    mfg_date=mfg_date,
+                    expiry_date=expiry_date,
+                    qty_received=qty,
+                    qty_remaining=qty,
+                )
+                self.session.add(lot)
+            await self.session.flush()
+            return lot
+        elif direction in ("out", "adjust_out"):
+            if lot_id is not None:
+                stmt = select(StockLot).where(
+                    StockLot.id == lot_id,
+                    StockLot.tenant_id == self.tenant_id,
+                )
+                lot = (await self.session.execute(stmt)).scalar_one_or_none()
+                if not lot:
+                    raise ValidationError(f"Lot {lot_id} not found")
+                if lot.item_id != item.id or lot.warehouse_id != warehouse.id:
+                    raise ValidationError("Lot does not match item/warehouse")
+                if lot.qty_remaining < qty:
+                    raise ValidationError(
+                        f"Lot {lot.lot_no} has only {lot.qty_remaining} remaining (need {qty})"
+                    )
+                lot.qty_remaining = _q4(lot.qty_remaining - qty)
+                await self.session.flush()
+                return lot
+            # Auto-FEFO: pick lots sorted by expiry NULLS LAST, mfg NULLS LAST,
+            # created_at — consume from oldest-expiring first.
+            from sqlalchemy import asc, nulls_last
+            stmt = (
+                select(StockLot).where(
+                    StockLot.tenant_id == self.tenant_id,
+                    StockLot.item_id == item.id,
+                    StockLot.warehouse_id == warehouse.id,
+                    StockLot.qty_remaining > 0,
+                )
+                .order_by(
+                    nulls_last(asc(StockLot.expiry_date)),
+                    nulls_last(asc(StockLot.mfg_date)),
+                    asc(StockLot.created_at),
+                )
+            )
+            lots = list((await self.session.execute(stmt)).scalars().all())
+            if not lots:
+                raise ValidationError(
+                    f"No available lot for item {item.sku} in warehouse {warehouse.code} (lot-tracked)"
+                )
+            remaining_to_take = qty
+            primary_lot = None
+            for lot in lots:
+                if remaining_to_take <= 0:
+                    break
+                take = min(lot.qty_remaining, remaining_to_take)
+                lot.qty_remaining = _q4(lot.qty_remaining - take)
+                remaining_to_take = _q4(remaining_to_take - take)
+                if primary_lot is None:
+                    primary_lot = lot
+            if remaining_to_take > 0:
+                raise ValidationError(
+                    f"Lot stock insufficient: short by {remaining_to_take} for item {item.sku}"
+                )
+            await self.session.flush()
+            return primary_lot
+        return None
 
     async def _weighted_avg_from_layers(self, item_id: UUID, warehouse_id: UUID) -> Decimal:
         """Compute the qty-weighted blended cost of remaining FIFO/LIFO

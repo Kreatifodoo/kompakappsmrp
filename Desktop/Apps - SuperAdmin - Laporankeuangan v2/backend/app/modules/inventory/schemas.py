@@ -44,6 +44,8 @@ class ItemCreate(BaseModel):
     default_unit_price: Decimal = Field(default=Decimal("0"), ge=0)
     default_unit_cost: Decimal = Field(default=Decimal("0"), ge=0)
     min_stock: Decimal = Field(default=Decimal("0"), ge=0)
+    is_lot_tracked: bool = False
+    shelf_life_days: int | None = Field(default=None, ge=0)
 
 
 class ItemUpdate(BaseModel):
@@ -54,6 +56,8 @@ class ItemUpdate(BaseModel):
     default_unit_cost: Decimal | None = Field(default=None, ge=0)
     min_stock: Decimal | None = Field(default=None, ge=0)
     is_active: bool | None = None
+    is_lot_tracked: bool | None = None
+    shelf_life_days: int | None = Field(default=None, ge=0)
 
 
 class ItemOut(BaseModel):
@@ -69,6 +73,8 @@ class ItemOut(BaseModel):
     default_unit_cost: Decimal
     min_stock: Decimal
     is_active: bool
+    is_lot_tracked: bool = False
+    shelf_life_days: int | None = None
 
 
 # ─── Stock movement ───────────────────────────────────────
@@ -104,6 +110,13 @@ class StockMovementCreate(BaseModel):
     # "manual_receipt", "stock_usage", "return_delivery"). Defaults to
     # "manual_{direction}" when journal is posted.
     operation: str | None = Field(default=None, max_length=50)
+    # Lot/Batch (only used when item.is_lot_tracked=true). On inflow, supply
+    # lot_no/mfg_date/expiry_date to label the new lot (else auto-generated).
+    # On outflow, supply lot_id to pick a specific lot (else auto-FEFO).
+    lot_id: UUID | None = None
+    lot_no: str | None = Field(default=None, max_length=60)
+    mfg_date: date | None = None
+    expiry_date: date | None = None
 
 
 class StockMovementOut(BaseModel):
@@ -117,6 +130,7 @@ class StockMovementOut(BaseModel):
     qty: Decimal
     unit_cost: Decimal
     total_cost: Decimal
+    lot_id: UUID | None = None
     source: str
     source_id: UUID | None
     notes: str | None
@@ -419,3 +433,19 @@ class CustomInvOpOut(BaseModel):
     is_active: bool
     created_at: datetime
     updated_at: datetime
+
+
+# ─── Stock Lot / Batch ───────────────────────────────────
+class StockLotOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    item_id: UUID
+    warehouse_id: UUID
+    lot_no: str
+    mfg_date: date | None
+    expiry_date: date | None
+    qty_received: Decimal
+    qty_remaining: Decimal
+    notes: str | None
+    created_at: datetime

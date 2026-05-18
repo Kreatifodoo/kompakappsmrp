@@ -638,3 +638,56 @@ async def delete_custom_inv_op(
         raise NotFoundError("Custom operation not found")
     op.is_active = False
     await session.flush()
+
+
+# ─── Stock Lots / Batches (Sprint Lot) ───────────────────
+from sqlalchemy import select as _sel, asc as _asc, nulls_last as _nulls_last
+from datetime import date as _date2, timedelta as _td
+from app.modules.inventory.models import StockLot
+from app.modules.inventory.schemas import StockLotOut
+
+
+@router.get("/stock-lots", response_model=list[StockLotOut])
+async def list_stock_lots(
+    item_id: UUID | None = Query(default=None),
+    warehouse_id: UUID | None = Query(default=None),
+    include_depleted: bool = Query(default=False, description="Include lots with qty_remaining=0"),
+    expiring_within_days: int | None = Query(default=None, ge=0, le=3650),
+    limit: int = Query(default=200, le=1000),
+    current: CurrentUser = Depends(require_permission("inventory.read")),
+    session: AsyncSession = Depends(get_write_session),
+) -> list[StockLotOut]:
+    conds = [StockLot.tenant_id == current.tenant_id]
+    if item_id: conds.append(StockLot.item_id == item_id)
+    if warehouse_id: conds.append(StockLot.warehouse_id == warehouse_id)
+    if not include_depleted: conds.append(StockLot.qty_remaining > 0)
+    if expiring_within_days is not None:
+        cutoff = _date2.today() + _td(days=expiring_within_days)
+        conds.append(StockLot.expiry_date != None)  # noqa: E711
+        conds.append(StockLot.expiry_date <= cutoff)
+    stmt = (
+        _sel(StockLot).where(*conds)
+        .order_by(
+            _nulls_last(_asc(StockLot.expiry_date)),
+            _nulls_last(_asc(StockLot.mfg_date)),
+            _asc(StockLot.created_at),
+        )
+        .limit(limit)
+    )
+    rows = (await session.execute(stmt)).scalars().all()
+    return [StockLotOut.model_validate(r) for r in rows]
+
+
+@router.get("/stock-lots/{lot_id}", response_model=StockLotOut)
+async def get_stock_lot(
+    lot_id: UUID,
+    current: CurrentUser = Depends(require_permission("inventory.read")),
+    session: AsyncSession = Depends(get_write_session),
+) -> StockLotOut:
+    stmt = _sel(StockLot).where(
+        StockLot.id == lot_id, StockLot.tenant_id == current.tenant_id
+    )
+    lot = (await session.execute(stmt)).scalar_one_or_none()
+    if not lot:
+        raise NotFoundError("Lot not found")
+    return StockLotOut.model_validate(lot)
