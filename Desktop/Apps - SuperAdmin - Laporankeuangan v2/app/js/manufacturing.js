@@ -1651,3 +1651,305 @@ function exportMOCostReportCSV() {
   document.body.appendChild(a); a.click(); a.remove();
   URL.revokeObjectURL(url);
 }
+
+
+// ════════════════════════════════════════════════════════════════
+// SUBCONTRACTING / MAKLON
+// ════════════════════════════════════════════════════════════════
+
+let _scoComponents = [];
+
+function _scoStatusBadge(status) {
+  const map = {
+    draft:     ['#6b7280', 'Draft'],
+    issued:    ['#f59e0b', 'Issued (di-maklon-kan)'],
+    received:  ['#10b981', 'Received'],
+    cancelled: ['#ef4444', 'Cancelled'],
+  };
+  const [c, label] = map[status] || ['#6b7280', status || '-'];
+  return `<span style="display:inline-block;padding:2px 8px;background:${c}20;color:${c};border-radius:6px;font-size:11px;font-weight:600">${label}</span>`;
+}
+
+async function _scoEnsureSuppliers() {
+  if (!MfgState.suppliers || !MfgState.suppliers.length) {
+    try { MfgState.suppliers = await Api.suppliers.list({limit: 500}); } catch { MfgState.suppliers = []; }
+  }
+}
+
+async function renderSubcontractPage() {
+  await _mfgEnsureMasters();
+  await _scoEnsureSuppliers();
+  const status = document.getElementById('scoFilterStatus')?.value || '';
+  let list = [];
+  try {
+    list = await Api.subcontracts.list({ status: status || undefined, limit: 200 });
+  } catch (e) { showToast('Gagal load SCO: ' + e.message, 'error'); }
+  const wrap = document.getElementById('scoTableWrap');
+  if (!wrap) return;
+  if (!list.length) {
+    wrap.innerHTML = `<div style="padding:48px;text-align:center;color:#6b7280">Belum ada Subcontract Order. Klik <strong>"Buat SCO"</strong>.</div>`;
+    return;
+  }
+  const itemMap = Object.fromEntries(MfgState.items.map(i => [i.id, i.name]));
+  const supMap  = Object.fromEntries((MfgState.suppliers || []).map(s => [s.id, s.name]));
+  wrap.innerHTML = `
+    <table class="data-table">
+      <thead><tr>
+        <th>No SCO</th><th>Tanggal</th><th>Supplier (Maklon)</th><th>Output</th>
+        <th style="text-align:right">Qty Plan</th>
+        <th style="text-align:right">Received</th>
+        <th style="text-align:right">Fee/unit</th>
+        <th>Status</th>
+        <th style="text-align:center">Aksi</th>
+      </tr></thead>
+      <tbody>
+      ${list.map(s => `
+        <tr>
+          <td><code>${_mfgEsc(s.sco_no)}</code></td>
+          <td>${s.sco_date || '-'}</td>
+          <td>${_mfgEsc(supMap[s.supplier_id] || s.supplier_id?.slice(0,8))}</td>
+          <td>${_mfgEsc(itemMap[s.output_item_id] || s.output_item_id?.slice(0,8))}</td>
+          <td style="text-align:right">${s.qty_planned}</td>
+          <td style="text-align:right">${s.qty_received || 0}</td>
+          <td style="text-align:right">${_mfgFmtRp(s.fee_per_unit)}</td>
+          <td>${_scoStatusBadge(s.status)}</td>
+          <td style="text-align:center;white-space:nowrap">
+            <button class="btn btn-sm btn-outline" onclick="showSubcontractDetail('${s.id}')">Detail</button>
+            ${s.status === 'draft'  ? `<button class="btn btn-sm btn-primary" style="margin-left:4px" onclick="issueSubcontract('${s.id}')">Kirim Bahan</button>` : ''}
+            ${s.status === 'issued' ? `<button class="btn btn-sm btn-success" style="margin-left:4px" onclick="showReceiveSubcontractModal('${s.id}')">Terima FG</button>` : ''}
+            ${['draft','issued'].includes(s.status) ? `<button class="btn btn-sm btn-danger" style="margin-left:4px" onclick="cancelSubcontract('${s.id}')">Cancel</button>` : ''}
+          </td>
+        </tr>`).join('')}
+      </tbody>
+    </table>`;
+}
+
+function showSubcontractForm() {
+  _scoComponents = [{ item_id: '', qty_planned: 1 }];
+  navigateTo('subcontract-form');
+}
+
+function exitSubcontractForm() {
+  if (_scoComponents.some(c => c.item_id) && !confirm('Perubahan belum disimpan. Yakin keluar?')) return;
+  _scoComponents = [];
+  navigateTo('subcontracts');
+}
+
+async function renderSubcontractForm() {
+  await _mfgEnsureMasters();
+  await _scoEnsureSuppliers();
+  const stockItems = MfgState.items.filter(i => i.type === 'stock');
+  const itemOpts = stockItems.map(i => `<option value="${i.id}">${_mfgEsc(i.name)} (${_mfgEsc(i.sku || '-')})</option>`).join('');
+  const whOpts = MfgState.warehouses.map(w => `<option value="${w.id}">${_mfgEsc(w.name)}</option>`).join('');
+  const supOpts = (MfgState.suppliers || []).map(s => `<option value="${s.id}">${_mfgEsc(s.name)}</option>`).join('');
+
+  document.getElementById('scoFormTitle').textContent = 'Buat Subcontract / Maklon';
+  const body = document.getElementById('scoFormBody');
+  if (!body) return;
+  body.innerHTML = `
+    <p style="font-size:12px;color:#6b7280;margin-bottom:12px">
+      💡 Workflow: kirim bahan baku ke maklon → terima barang jadi. Saat kirim:
+      <strong>Dr WIP / Cr Inventory</strong>. Saat terima: <strong>Dr Inventory FG /
+      Cr WIP (bahan) / Cr AP (fee maklon)</strong>.
+    </p>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:16px">
+      <div><label>Tanggal SCO</label><input type="date" id="scoDate" value="${_mfgToday()}" class="form-control"></div>
+      <div><label>Expected Return</label><input type="date" id="scoExpReturn" class="form-control"></div>
+      <div><label>Supplier (Maklon)</label>
+        <select id="scoSupplier" class="form-control"><option value="">— pilih —</option>${supOpts}</select>
+      </div>
+      <div><label>Output Item (Hasil Jadi)</label>
+        <select id="scoOutput" class="form-control"><option value="">— pilih —</option>${itemOpts}</select>
+      </div>
+      <div><label>Qty Plan (output)</label>
+        <input type="number" step="1" id="scoQtyPlan" value="1" class="form-control">
+      </div>
+      <div><label>Fee per Unit (Rp)</label>
+        <input type="number" step="100" id="scoFeePerUnit" value="0" class="form-control">
+      </div>
+      <div><label>Warehouse</label>
+        <select id="scoWarehouse" class="form-control">${whOpts}</select>
+      </div>
+    </div>
+    <h4>Komponen yang Dikirim ke Maklon</h4>
+    <table class="data-table">
+      <thead><tr>
+        <th style="width:50%">Item</th>
+        <th style="width:120px">Qty Kirim</th>
+        <th></th>
+      </tr></thead>
+      <tbody id="scoCompBody"></tbody>
+    </table>
+    <button class="btn btn-sm btn-outline" onclick="_scoAddComp()" style="margin-top:8px">+ Tambah komponen</button>
+    <div style="margin-top:16px"><label>Notes</label><textarea id="scoNotes" class="form-control" rows="2"></textarea></div>
+  `;
+  _scoRenderComps(itemOpts);
+  if (typeof feather !== 'undefined') feather.replace();
+}
+
+function _scoRenderComps(itemOpts) {
+  const opts = itemOpts || MfgState.items.filter(i => i.type === 'stock')
+    .map(i => `<option value="${i.id}">${_mfgEsc(i.name)}</option>`).join('');
+  const body = document.getElementById('scoCompBody');
+  if (!body) return;
+  body.innerHTML = _scoComponents.map((c, idx) => `
+    <tr>
+      <td><select class="form-control" onchange="_scoUpdComp(${idx},'item_id',this.value)"><option value="">— pilih —</option>${opts.replace(`value="${c.item_id}"`, `value="${c.item_id}" selected`)}</select></td>
+      <td><input type="number" step="0.01" value="${c.qty_planned}" class="form-control" onchange="_scoUpdComp(${idx},'qty_planned',parseFloat(this.value)||0)"></td>
+      <td><button class="btn btn-sm btn-danger" onclick="_scoRmComp(${idx})">×</button></td>
+    </tr>`).join('');
+}
+
+function _scoUpdComp(i, k, v) { _scoComponents[i][k] = v; }
+function _scoAddComp() { _scoComponents.push({item_id:'', qty_planned:1}); _scoRenderComps(); }
+function _scoRmComp(i) { _scoComponents.splice(i,1); if (!_scoComponents.length) _scoAddComp(); else _scoRenderComps(); }
+
+async function submitSubcontractForm(issueNow) {
+  const sco_date     = document.getElementById('scoDate').value;
+  const supplier_id  = document.getElementById('scoSupplier').value;
+  const output_item_id = document.getElementById('scoOutput').value;
+  const warehouse_id = document.getElementById('scoWarehouse').value;
+  const qty_planned  = parseFloat(document.getElementById('scoQtyPlan').value) || 0;
+  const fee_per_unit = parseFloat(document.getElementById('scoFeePerUnit').value) || 0;
+  const exp_return   = document.getElementById('scoExpReturn').value;
+  const notes        = document.getElementById('scoNotes').value;
+
+  if (!supplier_id || !output_item_id || !warehouse_id) { showToast('Supplier, output item, & warehouse wajib', 'error'); return; }
+  if (qty_planned <= 0) { showToast('Qty plan harus > 0', 'error'); return; }
+  const valid = _scoComponents.filter(c => c.item_id && c.qty_planned > 0);
+  if (!valid.length) { showToast('Minimal 1 komponen valid', 'error'); return; }
+  if (valid.some(c => c.item_id === output_item_id)) {
+    showToast('Output item tidak boleh sama dengan komponen', 'error'); return;
+  }
+
+  const payload = {
+    sco_date, supplier_id, output_item_id, warehouse_id,
+    qty_planned, fee_per_unit,
+    expected_return_date: exp_return || null,
+    notes: notes || null,
+    components: valid.map(c => ({ item_id: c.item_id, qty_planned: c.qty_planned })),
+  };
+  try {
+    const res = await Api.subcontracts.create(payload, issueNow ? {issue_now:'true'} : {});
+    showToast(`SCO ${res.sco_no} ${issueNow?'di-issue (bahan dikirim)':'tersimpan'}`, 'success');
+    _scoComponents = [];
+    navigateTo('subcontracts');
+  } catch (e) { showToast('Gagal: ' + e.message, 'error'); }
+}
+
+async function issueSubcontract(id) {
+  if (!confirm('Kirim bahan ke maklon? Stock akan keluar + journal Dr WIP / Cr Inventory.')) return;
+  try {
+    await Api.subcontracts.issue(id);
+    showToast('SCO di-issue, bahan dikirim ke maklon', 'success');
+    renderSubcontractPage();
+  } catch (e) { showToast('Gagal: ' + e.message, 'error'); }
+}
+
+async function cancelSubcontract(id) {
+  const reason = prompt('Alasan cancel?');
+  if (!reason) return;
+  try {
+    await Api.subcontracts.cancel(id, {reason});
+    showToast('SCO di-cancel', 'warning');
+    renderSubcontractPage();
+  } catch (e) { showToast('Gagal: ' + e.message, 'error'); }
+}
+
+async function showReceiveSubcontractModal(id) {
+  try {
+    const sco = await Api.subcontracts.get(id);
+    const html = `
+    <div class="modal-backdrop" id="scoRecvModal" onclick="if(event.target===this)this.remove()">
+      <div class="modal-content" style="max-width:520px">
+        <div class="modal-header">
+          <h3>Terima FG dari Maklon — ${_mfgEsc(sco.sco_no)}</h3>
+          <button class="modal-close" onclick="document.getElementById('scoRecvModal').remove()">×</button>
+        </div>
+        <div class="modal-body">
+          <p style="color:#6b7280;font-size:13px">Plan: ${sco.qty_planned} unit (toleransi +20%). Fee/unit default: ${_mfgFmtRp(sco.fee_per_unit)}.</p>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px">
+            <div><label>Qty Diterima</label>
+              <input type="number" step="0.01" id="scoRecvQty" value="${sco.qty_planned}" class="form-control">
+            </div>
+            <div><label>Fee per Unit (override)</label>
+              <input type="number" step="100" id="scoRecvFee" value="${sco.fee_per_unit}" class="form-control">
+            </div>
+            <div><label>Tanggal Terima</label>
+              <input type="date" id="scoRecvDate" value="${_mfgToday()}" class="form-control">
+            </div>
+          </div>
+          <p style="font-size:12px;color:#6b7280;margin-top:12px">
+            Journal: Dr Inventory FG (mat + fee) / Cr WIP (mat) / Cr AP (fee_total). Fee terbukukan sebagai hutang ke supplier.
+          </p>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-outline" onclick="document.getElementById('scoRecvModal').remove()">Tutup</button>
+          <button class="btn btn-success" onclick="submitReceiveSubcontract('${sco.id}')">Terima FG</button>
+        </div>
+      </div>
+    </div>`;
+    document.body.insertAdjacentHTML('beforeend', html);
+  } catch (e) { showToast('Gagal load SCO: ' + e.message, 'error'); }
+}
+
+async function submitReceiveSubcontract(id) {
+  const qty_received = parseFloat(document.getElementById('scoRecvQty').value) || 0;
+  const fee_per_unit = parseFloat(document.getElementById('scoRecvFee').value) || 0;
+  const receipt_date = document.getElementById('scoRecvDate').value || _mfgToday();
+  if (qty_received <= 0) { showToast('Qty harus > 0', 'error'); return; }
+  try {
+    const res = await Api.subcontracts.receive(id, { qty_received, fee_per_unit, receipt_date });
+    showToast(`SCO ${res.sco_no} received · fee total ${_mfgFmtRp(res.fee_total)}`, 'success');
+    document.getElementById('scoRecvModal')?.remove();
+    renderSubcontractPage();
+  } catch (e) { showToast('Gagal: ' + e.message, 'error'); }
+}
+
+async function showSubcontractDetail(id) {
+  try {
+    const s = await Api.subcontracts.get(id);
+    const itemMap = Object.fromEntries(MfgState.items.map(i => [i.id, i.name]));
+    const supMap  = Object.fromEntries((MfgState.suppliers || []).map(x => [x.id, x.name]));
+    const compHtml = (s.components || []).map((c, idx) => `
+      <tr>
+        <td>${idx+1}</td>
+        <td>${_mfgEsc(itemMap[c.item_id] || c.item_id?.slice(0,8))}</td>
+        <td style="text-align:right">${c.qty_planned}</td>
+        <td style="text-align:right">${c.qty_issued || 0}</td>
+        <td style="text-align:right">${_mfgFmtRp(c.unit_cost)}</td>
+        <td style="text-align:right">${_mfgFmtRp((parseFloat(c.qty_issued||0))*(parseFloat(c.unit_cost||0)))}</td>
+      </tr>`).join('');
+    const totalRaw = (s.components || []).reduce((acc,c) => acc + (parseFloat(c.qty_issued||0))*(parseFloat(c.unit_cost||0)), 0);
+    const html = `
+    <div class="modal-backdrop" id="scoDetailBackdrop" onclick="if(event.target===this)this.remove()">
+      <div class="modal-content" style="max-width:820px">
+        <div class="modal-header">
+          <h3>${_mfgEsc(s.sco_no)} — ${_scoStatusBadge(s.status)}</h3>
+          <button class="modal-close" onclick="document.getElementById('scoDetailBackdrop').remove()">×</button>
+        </div>
+        <div class="modal-body">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+            <div><strong>Tanggal:</strong> ${s.sco_date}</div>
+            <div><strong>Maklon:</strong> ${_mfgEsc(supMap[s.supplier_id] || s.supplier_id?.slice(0,8))}</div>
+            <div><strong>Output:</strong> ${_mfgEsc(itemMap[s.output_item_id] || s.output_item_id?.slice(0,8))}</div>
+            <div><strong>Qty Plan / Received:</strong> ${s.qty_planned} / ${s.qty_received || 0}</div>
+            <div><strong>Fee/unit:</strong> ${_mfgFmtRp(s.fee_per_unit)}</div>
+            <div><strong>Fee Total:</strong> ${s.fee_total != null ? _mfgFmtRp(s.fee_total) : '—'}</div>
+            <div><strong>Issue Journal:</strong> ${s.issue_journal_entry_id ? `<code>${_mfgEsc(s.issue_journal_entry_id.slice(0,8))}</code>` : '-'}</div>
+            <div><strong>Receipt Journal:</strong> ${s.receipt_journal_entry_id ? `<code>${_mfgEsc(s.receipt_journal_entry_id.slice(0,8))}</code>` : '-'}</div>
+          </div>
+          <h4>Komponen</h4>
+          <table class="data-table">
+            <thead><tr><th>#</th><th>Item</th><th>Plan</th><th>Issued</th><th>Unit Cost</th><th>Total</th></tr></thead>
+            <tbody>${compHtml}</tbody>
+            <tfoot><tr><th colspan="5" style="text-align:right">Total Bahan Dikirim</th><th style="text-align:right">${_mfgFmtRp(totalRaw)}</th></tr></tfoot>
+          </table>
+          ${s.cancel_reason ? `<p style="margin-top:12px;color:#ef4444"><strong>Cancel:</strong> ${_mfgEsc(s.cancel_reason)}</p>` : ''}
+          ${s.notes ? `<p style="margin-top:12px"><strong>Notes:</strong> ${_mfgEsc(s.notes)}</p>` : ''}
+        </div>
+      </div>
+    </div>`;
+    document.body.insertAdjacentHTML('beforeend', html);
+  } catch (e) { showToast('Gagal: ' + e.message, 'error'); }
+}

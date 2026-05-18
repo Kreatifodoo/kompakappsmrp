@@ -194,6 +194,7 @@ const FLYOUT_GROUPS = {
       { page: 'bom-master',   icon: 'list',       label: 'BOM Master' },
       { page: 'mfg-orders',   icon: 'cpu',        label: 'Manufacturing Order' },
       { page: 'mfg-scraps',   icon: 'trash-2',    label: 'Scrap / Spoilage' },
+      { page: 'subcontracts',   icon: 'send',      label: 'Subcontract / Maklon' },
       { page: 'mo-cost-report', icon: 'pie-chart', label: 'MO Cost Analysis' },
     ]
   },
@@ -266,7 +267,8 @@ function updateGroupActiveState(page) {
                           'po-form', 'gr-form',
                           'bill-form', 'vendor-payment-form', 'vendor-form'];
   const mfgPages       = ['bom-master', 'mfg-orders', 'work-centers', 'bom-form', 'mo-form',
-                          'mfg-scraps', 'scrap-form', 'mo-cost-report'];
+                          'mfg-scraps', 'scrap-form', 'mo-cost-report',
+                          'subcontracts', 'subcontract-form'];
   const inventoryPages = ['inventory', 'inventory-movements', 'inventory-transfers', 'inv-ops',
                           'inv-op-master', 'inv-onhand', 'inv-valuation', 'inv-stockcard',
                           'inv-reorder', 'inv-slowmoving', 'inv-costing',
@@ -393,6 +395,8 @@ function navigateTo(page) {
     'mfg-scraps':            'Scrap / Spoilage',
     'scrap-form':            'Scrap Form',
     'mo-cost-report':        'MO Cost Analysis',
+    'subcontracts':          'Subcontracting / Maklon',
+    'subcontract-form':      'Subcontract Form',
   };
   document.getElementById('pageTitle').textContent = titles[page] || page;
   AppState.currentPage = page;
@@ -463,6 +467,8 @@ function navigateTo(page) {
   if (page === 'mfg-scraps')        { if (typeof renderScrapPage           === 'function') renderScrapPage(); }
   if (page === 'scrap-form')        { if (typeof renderScrapForm           === 'function') renderScrapForm(); }
   if (page === 'mo-cost-report')    { if (typeof renderMOCostReport        === 'function') renderMOCostReport(); }
+  if (page === 'subcontracts')      { if (typeof renderSubcontractPage     === 'function') renderSubcontractPage(); }
+  if (page === 'subcontract-form')  { if (typeof renderSubcontractForm     === 'function') renderSubcontractForm(); }
   // Sprint F1: separate form pages for Manufacturing
   if (page === 'bom-form')          { if (typeof renderBOMForm             === 'function') renderBOMForm(); }
   if (page === 'mo-form')           { if (typeof renderMOForm              === 'function') renderMOForm(); }

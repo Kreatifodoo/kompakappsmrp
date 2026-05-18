@@ -380,6 +380,16 @@ const Api = {
     updateOperations: (id, body) => Api.post(`/manufacturing-orders/${id}/operations/update`, body),
   },
 
+  // ── Manufacturing: Subcontracting / Maklon ────────────────
+  subcontracts: {
+    list:    (params) => Api.get('/subcontracts' + _qs(params)),
+    get:     (id)     => Api.get(`/subcontracts/${id}`),
+    create:  (body, opts) => Api.post('/subcontracts' + _qs(opts), body),
+    issue:   (id)     => Api.post(`/subcontracts/${id}/issue`),
+    receive: (id, b)  => Api.post(`/subcontracts/${id}/receive`, b),
+    cancel:  (id, b)  => Api.post(`/subcontracts/${id}/cancel`, b || {reason:'Cancelled from UI'}),
+  },
+
   // ── Manufacturing: MO Cost Analysis Report ────────────────
   mfgReports: {
     moCostAnalysis: (p) => Api.get('/reports/mfg-mo-cost-analysis' + _qs(p)),

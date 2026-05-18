@@ -2883,6 +2883,41 @@
   </div>
 </section>
 
+<section class="page" id="page-subcontracts">
+  <div class="page-header">
+    <h2>Subcontracting / Maklon <small style="font-size:11px;color:#15803d;font-weight:normal">⚡ live dari backend</small></h2>
+    <div class="page-actions">
+      <button class="btn btn-outline" onclick="renderSubcontractPage()"><i data-feather="refresh-cw"></i> Refresh</button>
+      <button class="btn btn-primary" onclick="showSubcontractForm()"><i data-feather="plus"></i> Buat SCO</button>
+    </div>
+  </div>
+  <div class="report-filter-bar" style="margin-bottom:16px;gap:8px">
+    <select id="scoFilterStatus" class="j-select" onchange="renderSubcontractPage()">
+      <option value="">Semua Status</option>
+      <option value="draft">Draft</option>
+      <option value="issued">Issued (di-maklon-kan)</option>
+      <option value="received">Received</option>
+      <option value="cancelled">Cancelled</option>
+    </select>
+  </div>
+  <div class="table-card"><div id="scoTableWrap"></div></div>
+</section>
+
+<section class="page" id="page-subcontract-form">
+  <div class="page-header">
+    <h2>
+      <button class="btn btn-outline btn-sm form-page-back-btn" onclick="exitSubcontractForm()"><i data-feather="arrow-left"></i> Kembali</button>
+      &nbsp;&nbsp;<span id="scoFormTitle" style="font-size:20px">Buat Subcontract Order</span>
+    </h2>
+  </div>
+  <div class="form-page-body" id="scoFormBody"></div>
+  <div class="form-action-bar">
+    <button class="btn btn-outline" onclick="exitSubcontractForm()">Batal</button>
+    <button class="btn btn-primary" onclick="submitSubcontractForm(false)">Simpan Draft</button>
+    <button class="btn btn-success" onclick="submitSubcontractForm(true)">Simpan + Kirim Bahan</button>
+  </div>
+</section>
+
 <section class="page" id="page-mo-cost-report">
   <div class="page-header">
     <h2>MO Cost Analysis <small style="font-size:11px;color:#15803d;font-weight:normal">⚡ live dari backend</small></h2>
@@ -3028,7 +3063,7 @@
 <div id="sidebar-tooltip"></div>
 
 <!-- Scripts -->
-<script src="js/api.js?v=13"></script>
+<script src="js/api.js?v=14"></script>
 <script src="js/backend-sync.js?v=4"></script>
 <script src="js/backend-loader.js?v=2"></script>
 <script src="js/realtime.js?v=3"></script>
@@ -3053,8 +3088,8 @@
 <script src="js/payments.js?v=2"></script>
 <script src="js/orders.js?v=2"></script>
 <script src="js/fulfillment.js?v=4"></script>
-<script src="js/manufacturing.js?v=6"></script>
-<script src="js/app.js?v=41"></script>
+<script src="js/manufacturing.js?v=7"></script>
+<script src="js/app.js?v=42"></script>
 <!-- Feather Icons -->
 <script src="https://cdn.jsdelivr.net/npm/feather-icons/dist/feather.min.js"></script>
 <script>
