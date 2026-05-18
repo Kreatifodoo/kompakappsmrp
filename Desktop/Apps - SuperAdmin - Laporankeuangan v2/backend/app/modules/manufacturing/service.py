@@ -1057,3 +1057,101 @@ class ScrapService:
         except Exception:
             pass
         return scrap
+
+
+# ═══════════════════════════════════════════════════════════════════
+# MO Cost Analysis Report (Sprint M-Reports)
+# ═══════════════════════════════════════════════════════════════════
+
+class MOCostAnalysisService:
+    """Aggregates per-MO cost breakdown: material actual vs standard,
+    variance, labor, scrap (via mo_id), total + unit cost.
+
+    All values are computed from already-posted data; this is a
+    read-only report.
+    """
+
+    def __init__(self, session: AsyncSession, tenant_id: UUID):
+        self.session = session
+        self.tenant_id = tenant_id
+        self.repo = ManufacturingRepository(session, tenant_id)
+
+    async def analyze(
+        self,
+        *,
+        date_from: date | None = None,
+        date_to: date | None = None,
+        status: str | None = None,
+        limit: int = 500,
+    ) -> list[dict]:
+        from app.modules.manufacturing.models import MfgScrap, MfgScrapLine
+        # Date filter: by done_at if filtering, else planned_start fallback
+        # Use planned_start which is always set
+        mos = await self.repo.list_mos(
+            status=status,
+            date_from=date_from,
+            date_to=date_to,
+            limit=limit,
+        )
+        if not mos:
+            return []
+
+        # Pre-fetch scrap totals per MO in one query
+        from sqlalchemy import select, func as sa_func
+        mo_ids = [m.id for m in mos]
+        scrap_rows = (
+            await self.session.execute(
+                select(
+                    MfgScrap.mo_id.label("mo_id"),
+                    sa_func.coalesce(sa_func.sum(MfgScrapLine.qty * MfgScrapLine.unit_cost), 0).label("total"),
+                )
+                .join(MfgScrapLine, MfgScrapLine.scrap_id == MfgScrap.id)
+                .where(
+                    MfgScrap.tenant_id == self.tenant_id,
+                    MfgScrap.mo_id.in_(mo_ids),
+                    MfgScrap.status == "posted",
+                )
+                .group_by(MfgScrap.mo_id)
+            )
+        ).all()
+        scrap_by_mo: dict[UUID, Decimal] = {r.mo_id: Decimal(str(r.total)) for r in scrap_rows}
+
+        out: list[dict] = []
+        for mo in mos:
+            material_actual = sum(
+                ((c.qty_issued or Decimal("0")) * (c.unit_cost or Decimal("0")))
+                for c in (mo.components or [])
+            )
+            material_std = mo.std_total_cost  # may be None
+            variance = mo.variance_amount     # may be None
+            labor = mo.labor_total_cost or Decimal("0")
+            scrap_total = scrap_by_mo.get(mo.id, Decimal("0"))
+            total_cost = (material_actual + labor).quantize(CENT)
+            qty_produced = mo.qty_produced or Decimal("0")
+            unit_cost = (total_cost / qty_produced).quantize(QTY4) if qty_produced > 0 else None
+            variance_pct = None
+            if material_std and material_std != 0 and variance is not None:
+                variance_pct = float(
+                    (variance / material_std * Decimal("100")).quantize(Decimal("0.01"))
+                )
+            out.append({
+                "mo_id": str(mo.id),
+                "mo_no": mo.mo_no,
+                "item_id": str(mo.item_id),
+                "warehouse_id": str(mo.warehouse_id),
+                "status": mo.status,
+                "qty_planned": float(mo.qty_planned),
+                "qty_produced": float(qty_produced),
+                "planned_start": mo.planned_start.isoformat() if mo.planned_start else None,
+                "done_at": mo.done_at.isoformat() if mo.done_at else None,
+                "material_actual": float(material_actual.quantize(CENT) if isinstance(material_actual, Decimal) else Decimal(str(material_actual))),
+                "material_std":    float(material_std) if material_std is not None else None,
+                "variance":        float(variance) if variance is not None else None,
+                "variance_pct":    variance_pct,
+                "labor":           float(labor),
+                "scrap_total":     float(scrap_total),
+                "total_cost":      float(total_cost),
+                "unit_cost":       float(unit_cost) if unit_cost is not None else None,
+                "costing_mode":    "standard" if material_std is not None else "actual",
+            })
+        return out

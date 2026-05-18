@@ -385,3 +385,38 @@ async def void_scrap(
     scrap = await svc.void_scrap(scrap_id, payload.reason)
     refreshed = await svc.repo.get_scrap(scrap.id)
     return MfgScrapOut.model_validate(refreshed or scrap)
+
+
+# ─── MO Cost Analysis Report ─────────────────────────────
+from app.modules.manufacturing.service import MOCostAnalysisService  # noqa: E402
+
+
+@router.get("/reports/mfg-mo-cost-analysis")
+async def mo_cost_analysis(
+    date_from: _date | None = Query(default=None),
+    date_to: _date | None = Query(default=None),
+    status: str | None = Query(default=None, description="Filter MO status (default: all)"),
+    limit: int = Query(default=500, le=2000),
+    current: CurrentUser = Depends(require_permission("mfg.read")),
+    session: AsyncSession = Depends(get_write_session),
+) -> dict:
+    svc = MOCostAnalysisService(session, current.tenant_id)
+    rows = await svc.analyze(
+        date_from=date_from, date_to=date_to,
+        status=status, limit=limit,
+    )
+    # Totals row
+    sum_keys = ("material_actual", "material_std", "variance", "labor", "scrap_total", "total_cost")
+    totals = {k: 0.0 for k in sum_keys}
+    for r in rows:
+        for k in sum_keys:
+            v = r.get(k)
+            if v is not None:
+                totals[k] += float(v)
+    return {
+        "date_from": date_from.isoformat() if date_from else None,
+        "date_to":   date_to.isoformat() if date_to else None,
+        "rows":      rows,
+        "totals":    totals,
+        "count":     len(rows),
+    }

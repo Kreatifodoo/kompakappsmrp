@@ -1514,3 +1514,140 @@ async function showScrapDetail(id) {
     document.body.insertAdjacentHTML('beforeend', html);
   } catch (e) { showToast('Gagal: ' + e.message, 'error'); }
 }
+
+
+// ════════════════════════════════════════════════════════════════
+// MO Cost Analysis Report
+// ════════════════════════════════════════════════════════════════
+
+let _moCostLastReport = null;
+
+async function renderMOCostReport() {
+  await _mfgEnsureMasters();
+  // Default date range: last 90 days
+  const fromEl = document.getElementById('moCostFrom');
+  const toEl   = document.getElementById('moCostTo');
+  if (fromEl && !fromEl.value) {
+    const d = new Date(); d.setDate(d.getDate() - 90);
+    fromEl.value = d.toISOString().slice(0,10);
+  }
+  if (toEl && !toEl.value) {
+    toEl.value = new Date().toISOString().slice(0,10);
+  }
+  const params = {
+    date_from: fromEl?.value || undefined,
+    date_to:   toEl?.value   || undefined,
+    status:    document.getElementById('moCostStatus')?.value || undefined,
+    limit:     500,
+  };
+  let resp;
+  try {
+    resp = await Api.mfgReports.moCostAnalysis(params);
+  } catch (e) {
+    showToast('Gagal load report: ' + e.message, 'error');
+    return;
+  }
+  _moCostLastReport = resp;
+
+  const itemMap = Object.fromEntries(MfgState.items.map(i => [i.id, i.name]));
+  const t = resp.totals || {};
+
+  // KPI cards
+  const kpiEl = document.getElementById('moCostKpi');
+  if (kpiEl) {
+    kpiEl.innerHTML = `
+      <div class="kpi-card"><div class="kpi-label">MO terhitung</div><div class="kpi-value">${resp.count}</div></div>
+      <div class="kpi-card"><div class="kpi-label">Total Material (Actual)</div><div class="kpi-value" style="color:#3b82f6">${_mfgFmtRp(t.material_actual)}</div></div>
+      <div class="kpi-card"><div class="kpi-label">Total Labor</div><div class="kpi-value" style="color:#06b6d4">${_mfgFmtRp(t.labor)}</div></div>
+      <div class="kpi-card"><div class="kpi-label">Total Scrap Loss</div><div class="kpi-value" style="color:#ef4444">${_mfgFmtRp(t.scrap_total)}</div></div>
+      <div class="kpi-card"><div class="kpi-label">Variance</div><div class="kpi-value" style="color:${(t.variance||0) > 0 ? '#ef4444' : '#10b981'}">${(t.variance||0) >= 0 ? '+' : ''}${_mfgFmtRp(t.variance)}</div></div>
+      <div class="kpi-card"><div class="kpi-label">Total HPP Produksi</div><div class="kpi-value" style="color:#10b981">${_mfgFmtRp(t.total_cost)}</div></div>
+    `;
+  }
+
+  const wrap = document.getElementById('moCostTableWrap');
+  if (!wrap) return;
+  if (!resp.rows.length) {
+    wrap.innerHTML = `<div style="padding:48px;text-align:center;color:#6b7280">Tidak ada MO dalam rentang tanggal/filter ini.</div>`;
+    return;
+  }
+  wrap.innerHTML = `
+    <table class="data-table">
+      <thead><tr>
+        <th>No MO</th><th>Output Item</th>
+        <th style="text-align:right">Qty Plan</th>
+        <th style="text-align:right">Qty Produced</th>
+        <th>Mode</th>
+        <th style="text-align:right">Material Actual</th>
+        <th style="text-align:right">Material Std</th>
+        <th style="text-align:right">Variance</th>
+        <th style="text-align:right">Var %</th>
+        <th style="text-align:right">Labor</th>
+        <th style="text-align:right">Scrap Loss</th>
+        <th style="text-align:right">Total HPP</th>
+        <th style="text-align:right">Unit Cost</th>
+        <th>Done At</th>
+      </tr></thead>
+      <tbody>
+      ${resp.rows.map(r => {
+        const varColor = r.variance == null ? '#6b7280' : (r.variance > 0 ? '#ef4444' : r.variance < 0 ? '#10b981' : '#6b7280');
+        return `<tr>
+          <td><code style="cursor:pointer" onclick="showMODetail('${r.mo_id}')">${_mfgEsc(r.mo_no)}</code></td>
+          <td>${_mfgEsc(itemMap[r.item_id] || r.item_id?.slice(0,8))}</td>
+          <td style="text-align:right">${r.qty_planned}</td>
+          <td style="text-align:right">${r.qty_produced}</td>
+          <td>${r.costing_mode === 'standard' ? '<span style="color:#06b6d4;font-size:11px">📊 std</span>' : '<span style="color:#6b7280;font-size:11px">actual</span>'}</td>
+          <td style="text-align:right">${_mfgFmtRp(r.material_actual)}</td>
+          <td style="text-align:right">${r.material_std != null ? _mfgFmtRp(r.material_std) : '—'}</td>
+          <td style="text-align:right;color:${varColor}">${r.variance != null ? (r.variance >= 0 ? '+' : '') + _mfgFmtRp(r.variance) : '—'}</td>
+          <td style="text-align:right;color:${varColor}">${r.variance_pct != null ? r.variance_pct.toFixed(2) + '%' : '—'}</td>
+          <td style="text-align:right">${_mfgFmtRp(r.labor)}</td>
+          <td style="text-align:right;color:${r.scrap_total > 0 ? '#ef4444' : '#9ca3af'}">${_mfgFmtRp(r.scrap_total)}</td>
+          <td style="text-align:right;font-weight:600">${_mfgFmtRp(r.total_cost)}</td>
+          <td style="text-align:right">${r.unit_cost != null ? _mfgFmtRp(r.unit_cost) : '—'}</td>
+          <td>${r.done_at ? r.done_at.slice(0,10) : '-'}</td>
+        </tr>`;
+      }).join('')}
+      </tbody>
+      <tfoot>
+        <tr style="background:#f8fafc;font-weight:600">
+          <th colspan="5" style="text-align:right">TOTAL</th>
+          <th style="text-align:right">${_mfgFmtRp(t.material_actual)}</th>
+          <th style="text-align:right">${_mfgFmtRp(t.material_std)}</th>
+          <th style="text-align:right">${(t.variance || 0) >= 0 ? '+' : ''}${_mfgFmtRp(t.variance)}</th>
+          <th></th>
+          <th style="text-align:right">${_mfgFmtRp(t.labor)}</th>
+          <th style="text-align:right">${_mfgFmtRp(t.scrap_total)}</th>
+          <th style="text-align:right">${_mfgFmtRp(t.total_cost)}</th>
+          <th colspan="2"></th>
+        </tr>
+      </tfoot>
+    </table>`;
+  if (typeof feather !== 'undefined') feather.replace();
+}
+
+function exportMOCostReportCSV() {
+  if (!_moCostLastReport || !_moCostLastReport.rows.length) {
+    showToast('Tidak ada data untuk di-export', 'error');
+    return;
+  }
+  const itemMap = Object.fromEntries(MfgState.items.map(i => [i.id, i.name]));
+  const headers = ['MO No','Output Item','Qty Plan','Qty Produced','Mode','Material Actual','Material Std','Variance','Var %','Labor','Scrap Loss','Total HPP','Unit Cost','Done At'];
+  const rows = _moCostLastReport.rows.map(r => [
+    r.mo_no, itemMap[r.item_id] || r.item_id?.slice(0,8),
+    r.qty_planned, r.qty_produced, r.costing_mode,
+    r.material_actual, r.material_std ?? '', r.variance ?? '', r.variance_pct ?? '',
+    r.labor, r.scrap_total, r.total_cost, r.unit_cost ?? '',
+    r.done_at?.slice(0,10) || '',
+  ]);
+  const csv = [headers, ...rows].map(r => r.map(c => {
+    const s = String(c ?? '');
+    return s.includes(',') || s.includes('"') ? `"${s.replace(/"/g,'""')}"` : s;
+  }).join(',')).join('\n');
+  const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `mo-cost-analysis-${new Date().toISOString().slice(0,10)}.csv`;
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+}

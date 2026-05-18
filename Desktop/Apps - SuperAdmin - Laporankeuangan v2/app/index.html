@@ -2883,6 +2883,32 @@
   </div>
 </section>
 
+<section class="page" id="page-mo-cost-report">
+  <div class="page-header">
+    <h2>MO Cost Analysis <small style="font-size:11px;color:#15803d;font-weight:normal">⚡ live dari backend</small></h2>
+    <div class="page-actions">
+      <button class="btn btn-outline" onclick="renderMOCostReport()"><i data-feather="refresh-cw"></i> Refresh</button>
+      <button class="btn btn-outline" onclick="exportMOCostReportCSV()"><i data-feather="download"></i> Export CSV</button>
+    </div>
+  </div>
+  <div class="report-filter-bar" style="margin-bottom:16px;flex-wrap:wrap;gap:8px">
+    <label style="font-size:12px;color:#6b7280">Dari:</label>
+    <input type="date" id="moCostFrom" class="date-input">
+    <label style="font-size:12px;color:#6b7280">Sampai:</label>
+    <input type="date" id="moCostTo" class="date-input">
+    <select id="moCostStatus" class="j-select">
+      <option value="done" selected>Done</option>
+      <option value="">Semua Status</option>
+      <option value="confirmed">Confirmed</option>
+      <option value="in_progress">In Progress</option>
+      <option value="cancelled">Cancelled</option>
+    </select>
+    <button class="btn btn-primary btn-sm" onclick="renderMOCostReport()">Apply</button>
+  </div>
+  <div class="kpi-cards" id="moCostKpi" style="margin-bottom:16px"></div>
+  <div class="table-card"><div id="moCostTableWrap"></div></div>
+</section>
+
 <section class="page" id="page-mfg-scraps">
   <div class="page-header">
     <h2>Scrap / Spoilage <small style="font-size:11px;color:#15803d;font-weight:normal">⚡ live dari backend</small></h2>
@@ -3002,7 +3028,7 @@
 <div id="sidebar-tooltip"></div>
 
 <!-- Scripts -->
-<script src="js/api.js?v=12"></script>
+<script src="js/api.js?v=13"></script>
 <script src="js/backend-sync.js?v=4"></script>
 <script src="js/backend-loader.js?v=2"></script>
 <script src="js/realtime.js?v=3"></script>
@@ -3027,8 +3053,8 @@
 <script src="js/payments.js?v=2"></script>
 <script src="js/orders.js?v=2"></script>
 <script src="js/fulfillment.js?v=4"></script>
-<script src="js/manufacturing.js?v=5"></script>
-<script src="js/app.js?v=40"></script>
+<script src="js/manufacturing.js?v=6"></script>
+<script src="js/app.js?v=41"></script>
 <!-- Feather Icons -->
 <script src="https://cdn.jsdelivr.net/npm/feather-icons/dist/feather.min.js"></script>
 <script>

@@ -380,6 +380,11 @@ const Api = {
     updateOperations: (id, body) => Api.post(`/manufacturing-orders/${id}/operations/update`, body),
   },
 
+  // ── Manufacturing: MO Cost Analysis Report ────────────────
+  mfgReports: {
+    moCostAnalysis: (p) => Api.get('/reports/mfg-mo-cost-analysis' + _qs(p)),
+  },
+
   // ── Manufacturing: Scrap (Sprint M6) ──────────────────────
   mfgScraps: {
     list:   (params) => Api.get('/mfg-scraps' + _qs(params)),
