@@ -824,6 +824,15 @@ function initAuth() {
     hideLoginScreen();
     applyUserPermissions();
     initIdleDetection();
+    // Auto-open Realtime WebSocket when we land on an existing backend
+    // session (page refresh case). On fresh login this is wired in the
+    // login handler instead.
+    if (typeof Api !== 'undefined' && Api.isLoggedIn && Api.isLoggedIn()
+        && typeof Realtime !== 'undefined') {
+      try { Realtime.connect(); } catch (e) {
+        console.warn('[Auth] Realtime auto-reconnect failed:', e?.message);
+      }
+    }
   } else {
     showLoginScreen();
   }
