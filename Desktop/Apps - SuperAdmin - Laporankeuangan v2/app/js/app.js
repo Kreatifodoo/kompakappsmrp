@@ -409,6 +409,7 @@ function navigateTo(page) {
     'payment-form':          'Pembayaran Form',
     'movement-form':         'Pergerakan Stok Form',
     'warehouse-master':      'Master Gudang',
+    'import':                'Import',
   };
   document.getElementById('pageTitle').textContent = titles[page] || page;
   AppState.currentPage = page;

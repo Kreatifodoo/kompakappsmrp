@@ -61,40 +61,36 @@ let _impCfg = null;
 let _impRows = [];          // [{ raw: {col: val}, errors: [], warnings: [], status: 'pending'|'ok'|'error'|'imported'|'failed' }]
 let _impCtx = {};           // shared context across rows (caches: existing customers, accounts, etc.)
 
-// ─── Wizard entrypoint ────────────────────────────────────────
+// ─── Wizard entrypoint (Sprint F8: full page, not modal) ──────
 async function openImportWizard(config) {
   _impCfg = config;
   _impRows = [];
   _impCtx = {};
+  // Remember origin page so "Kembali" / onComplete can route back
+  window._impOriginPage = (typeof AppState !== 'undefined' && AppState.currentPage) || 'dashboard';
 
-  const html = `
-    <div class="modal-backdrop" id="impWizardBackdrop" onclick="if(event.target===this)closeImportWizard()">
-      <div class="modal-content" style="max-width:1080px;max-height:90vh">
-        <div class="modal-header">
-          <h3>📥 Import ${_escImp(config.title)}</h3>
-          <button class="modal-close" onclick="closeImportWizard()">×</button>
-        </div>
-        <div class="modal-body" id="impBody" style="max-height:75vh;overflow-y:auto">
-          <!-- Step content rendered here -->
-        </div>
-      </div>
-    </div>`;
-  document.body.insertAdjacentHTML('beforeend', html);
+  // Set page title
+  const titleEl = document.getElementById('impPageTitle');
+  if (titleEl) titleEl.textContent = `📥 Import ${config.title}`;
+
+  // Navigate to the import page
+  navigateTo('import');
 
   // Preload any reference data needed by validators
   if (typeof config.preload === 'function') {
     try { await config.preload(_impCtx); } catch (e) { console.warn('[import] preload failed', e); }
   }
-
   _impStep1Upload();
   if (typeof feather !== 'undefined') feather.replace();
 }
 
 function closeImportWizard() {
-  document.getElementById('impWizardBackdrop')?.remove();
+  const origin = window._impOriginPage || 'dashboard';
   _impCfg = null;
   _impRows = [];
   _impCtx = {};
+  window._impOriginPage = null;
+  if (typeof navigateTo === 'function') navigateTo(origin);
 }
 
 function _escImp(s) {
@@ -368,10 +364,18 @@ async function _impStep3Execute() {
       ` : ''}
 
       <div style="margin-top:24px;text-align:right">
-        <button class="btn btn-primary" onclick="closeImportWizard(); ${_impCfg.onComplete ? _impCfg.onComplete.toString().replace(/^\(\)\s*=>\s*/, '') : ''}">
+        <button class="btn btn-primary" onclick="_impFinish()">
           Tutup & Refresh
         </button>
       </div>
     `;
   }, 300);
+}
+
+function _impFinish() {
+  const onComplete = _impCfg?.onComplete;
+  closeImportWizard();
+  if (onComplete && typeof window[onComplete] === 'function') {
+    try { window[onComplete](); } catch (e) { console.warn('[import] onComplete failed', e); }
+  }
 }
