@@ -787,6 +787,9 @@ async function _loadLotsTable() {
         <td style="text-align:right">${l.qty_received}</td>
         <td style="text-align:right;font-weight:600">${l.qty_remaining}</td>
         <td>${(l.created_at || '').slice(0,10)}</td>
+        <td style="text-align:center">
+          <button class="btn btn-sm btn-outline" onclick="showLotTraceability('${l.id}')">🔍 Trace</button>
+        </td>
       </tr>`;
   }).join('');
 
@@ -798,7 +801,144 @@ async function _loadLotsTable() {
         <th style="text-align:right">Qty Received</th>
         <th style="text-align:right">Qty Remaining</th>
         <th>Created</th>
+        <th></th>
       </tr></thead>
       <tbody>${rows}</tbody>
     </table>`;
+}
+
+// ── Lot traceability modal (where-from / where-used) ───
+const _LOT_SRC_LABEL = {
+  mfg_issue: '🏭 MO Issue', mfg_receipt: '🏭 MO Receipt',
+  mfg_issue_void: '↩ MO Issue Void', mfg_receipt_void: '↩ MO Receipt Void',
+  mfg_scrap: '🗑 Scrap', mfg_scrap_void: '↩ Scrap Void',
+  subcontract_issue: '🚚 Subcon Issue', subcontract_receipt: '📥 Subcon Receipt',
+  subcontract_issue_void: '↩ Subcon Issue Void',
+  delivery_order: '🚚 Delivery Order', delivery_order_void: '↩ DO Void',
+  goods_receipt: '📥 Goods Receipt', goods_receipt_void: '↩ GR Void',
+  customer_return: '↩ Customer Return', customer_return_void: '↩↩ Cust Return Void',
+  supplier_return: '↪ Supplier Return', supplier_return_void: '↪↪ Sup Return Void',
+  sales_invoice: '🧾 Sales Invoice', void_sales_invoice: '↩ SI Void',
+  purchase_invoice: '🧾 Purchase Invoice', void_purchase_invoice: '↩ PI Void',
+  stock_transfer: '🔁 Stock Transfer', void_stock_transfer: '↩ Transfer Void',
+  manual: '✋ Manual', adjustment: '⚖ Adjustment',
+  inv_op_receipt: '📥 Op Receipt', inv_op_delivery: '🚚 Op Delivery',
+  inv_op_usage: '⚙ Op Usage', inv_op_adjust_in: '⚖+ Op Adjust In',
+  inv_op_adjust_out: '⚖− Op Adjust Out',
+  inv_op_return_receipt: '↩ Op Return Receipt',
+  inv_op_return_delivery: '↪ Op Return Delivery',
+  custom_op: '🔧 Custom Op',
+};
+
+async function showLotTraceability(lotId) {
+  let data;
+  try {
+    data = await Api.stockLots.traceability(lotId);
+  } catch (e) {
+    showToast('Gagal load traceability: ' + e.message, 'error');
+    return;
+  }
+  const items = window._lotsItemsCache || [];
+  const itemMap = Object.fromEntries(items.map(i => [i.id, i]));
+  const whs = window._lotsWhsCache || [];
+  const whMap = Object.fromEntries(whs.map(w => [w.id, w.name]));
+  const lot = data.lot;
+  const sum = data.summary;
+  const it = itemMap[lot.item_id];
+
+  const renderRow = (m) => `
+    <tr>
+      <td>${m.movement_date}</td>
+      <td>${_escInv(_LOT_SRC_LABEL[m.source] || m.source)}</td>
+      <td>${m.source_doc_no ? `<code>${_escInv(m.source_doc_no)}</code>` : (m.source_id ? `<code style="color:#9ca3af">${_escInv(m.source_id.slice(0,8))}</code>` : '-')}</td>
+      <td>${m.source_doc_date || '-'}</td>
+      <td style="text-align:right">${m.qty}</td>
+      <td style="text-align:right">${_fmtInv(m.unit_cost)}</td>
+      <td style="text-align:right">${_fmtInv(m.total_cost)}</td>
+      <td>${_escInv(m.notes || '')}</td>
+    </tr>`;
+
+  const inflowRows  = data.inflows.length ? data.inflows.map(renderRow).join('')
+                     : '<tr><td colspan="8" style="text-align:center;color:#9ca3af;padding:24px">— belum ada inflow —</td></tr>';
+  const outflowRows = data.outflows.length ? data.outflows.map(renderRow).join('')
+                     : '<tr><td colspan="8" style="text-align:center;color:#9ca3af;padding:24px">— belum ada outflow / barang masih utuh —</td></tr>';
+
+  const html = `
+    <div class="modal-backdrop" id="lotTraceModal" onclick="if(event.target===this)this.remove()">
+      <div class="modal-content" style="max-width:980px">
+        <div class="modal-header">
+          <h3>Lot Traceability — <code>${_escInv(lot.lot_no)}</code></h3>
+          <button class="modal-close" onclick="document.getElementById('lotTraceModal').remove()">×</button>
+        </div>
+        <div class="modal-body">
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:16px;padding:12px;background:#f8fafc;border-radius:8px">
+            <div><strong>Item:</strong> ${_escInv(it?.name || lot.item_id?.slice(0,8))}<br><small>${_escInv(it?.sku || '')}</small></div>
+            <div><strong>Warehouse:</strong> ${_escInv(whMap[lot.warehouse_id] || '-')}</div>
+            <div><strong>Created:</strong> ${(lot.created_at || '').slice(0,10)}</div>
+            <div><strong>Mfg Date:</strong> ${lot.mfg_date || '-'}</div>
+            <div><strong>Expiry:</strong> ${lot.expiry_date || '-'}</div>
+            <div><strong>Movements:</strong> ${sum.movement_count}</div>
+          </div>
+          <div class="kpi-cards" style="margin-bottom:16px">
+            <div class="kpi-card"><div class="kpi-label">Total Inflow</div><div class="kpi-value" style="color:#10b981">${sum.total_in}</div></div>
+            <div class="kpi-card"><div class="kpi-label">Total Outflow</div><div class="kpi-value" style="color:#ef4444">${sum.total_out}</div></div>
+            <div class="kpi-card"><div class="kpi-label">Remaining</div><div class="kpi-value" style="color:#3b82f6">${sum.remaining}</div></div>
+          </div>
+
+          <h4 style="margin:16px 0 8px;color:#10b981">📥 Where-From — Asal Lot (Inflows)</h4>
+          <table class="data-table" style="font-size:13px">
+            <thead><tr>
+              <th>Tanggal</th><th>Source</th><th>Document No</th><th>Doc Date</th>
+              <th style="text-align:right">Qty</th>
+              <th style="text-align:right">Unit Cost</th>
+              <th style="text-align:right">Total</th>
+              <th>Notes</th>
+            </tr></thead>
+            <tbody>${inflowRows}</tbody>
+          </table>
+
+          <h4 style="margin:20px 0 8px;color:#ef4444">📤 Where-Used — Konsumsi Lot (Outflows)</h4>
+          <table class="data-table" style="font-size:13px">
+            <thead><tr>
+              <th>Tanggal</th><th>Source</th><th>Document No</th><th>Doc Date</th>
+              <th style="text-align:right">Qty</th>
+              <th style="text-align:right">Unit Cost</th>
+              <th style="text-align:right">Total</th>
+              <th>Notes</th>
+            </tr></thead>
+            <tbody>${outflowRows}</tbody>
+          </table>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-outline" onclick="exportLotTraceabilityCSV('${lot.id}')">Export CSV</button>
+          <button class="btn btn-primary" onclick="document.getElementById('lotTraceModal').remove()">Tutup</button>
+        </div>
+      </div>
+    </div>`;
+  document.body.insertAdjacentHTML('beforeend', html);
+  window._lastTraceability = data;
+  if (typeof feather !== 'undefined') feather.replace();
+}
+
+function exportLotTraceabilityCSV(lotId) {
+  const data = window._lastTraceability;
+  if (!data || data.lot.id !== lotId) {
+    showToast('Data traceability tidak ditemukan', 'error');
+    return;
+  }
+  const headers = ['Direction','Date','Source','DocNo','DocDate','Qty','UnitCost','Total','Notes'];
+  const allRows = [
+    ...data.inflows.map(m => ['INFLOW',  m.movement_date, m.source, m.source_doc_no || '', m.source_doc_date || '', m.qty, m.unit_cost, m.total_cost, m.notes || '']),
+    ...data.outflows.map(m => ['OUTFLOW', m.movement_date, m.source, m.source_doc_no || '', m.source_doc_date || '', m.qty, m.unit_cost, m.total_cost, m.notes || '']),
+  ];
+  const csv = [headers, ...allRows].map(r => r.map(c => {
+    const s = String(c ?? '');
+    return s.includes(',') || s.includes('"') ? `"${s.replace(/"/g,'""')}"` : s;
+  }).join(',')).join('\n');
+  const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `lot-trace-${data.lot.lot_no}.csv`;
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
 }

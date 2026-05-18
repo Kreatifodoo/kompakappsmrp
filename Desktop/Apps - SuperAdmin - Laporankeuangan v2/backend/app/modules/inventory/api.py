@@ -691,3 +691,120 @@ async def get_stock_lot(
     if not lot:
         raise NotFoundError("Lot not found")
     return StockLotOut.model_validate(lot)
+
+
+# ─── Lot Traceability (where-from / where-used) ──────────
+@router.get("/stock-lots/{lot_id}/traceability")
+async def lot_traceability(
+    lot_id: UUID,
+    current: CurrentUser = Depends(require_permission("inventory.read")),
+    session: AsyncSession = Depends(get_write_session),
+) -> dict:
+    """Where-from / where-used drill-down for one lot.
+
+    Returns the lot, all inflows (origin documents that created the
+    lot), and all outflows (downstream documents that consumed the
+    lot), each enriched with a human-readable source label like
+    'GR-2026-00005' when we can resolve the source_id."""
+    from app.modules.inventory.models import StockMovement
+    from sqlalchemy import text
+    from collections import defaultdict
+
+    # Lot itself
+    lot_stmt = _sel(StockLot).where(
+        StockLot.id == lot_id, StockLot.tenant_id == current.tenant_id
+    )
+    lot = (await session.execute(lot_stmt)).scalar_one_or_none()
+    if not lot:
+        raise NotFoundError("Lot not found")
+
+    # All movements on this lot
+    mvm_stmt = (
+        _sel(StockMovement)
+        .where(
+            StockMovement.tenant_id == current.tenant_id,
+            StockMovement.lot_id == lot_id,
+        )
+        .order_by(StockMovement.movement_date.asc(), StockMovement.created_at.asc())
+    )
+    movements = list((await session.execute(mvm_stmt)).scalars().all())
+
+    # Bulk-resolve source labels per source table
+    by_src: dict[str, list[UUID]] = defaultdict(list)
+    for m in movements:
+        if m.source_id:
+            by_src[m.source].append(m.source_id)
+
+    label_map: dict[tuple[str, UUID], dict] = {}
+
+    async def _resolve(source: str, ids: list[UUID], table: str, no_col: str, date_col: str | None = None):
+        if not ids: return
+        sql = f"SELECT id, {no_col}{', ' + date_col if date_col else ''} FROM {table} WHERE id = ANY(:ids)"
+        rows = (await session.execute(text(sql), {"ids": list(ids)})).all()
+        for r in rows:
+            label_map[(source, r[0])] = {
+                "doc_no": r[1],
+                "date": (r[2].isoformat() if (date_col and r[2]) else None),
+            }
+
+    # Manufacturing
+    await _resolve("mfg_issue",         by_src.get("mfg_issue", []),         "manufacturing_orders", "mo_no", "planned_start")
+    await _resolve("mfg_receipt",       by_src.get("mfg_receipt", []),       "manufacturing_orders", "mo_no", "planned_start")
+    await _resolve("mfg_issue_void",    by_src.get("mfg_issue_void", []),    "manufacturing_orders", "mo_no", "planned_start")
+    await _resolve("mfg_receipt_void",  by_src.get("mfg_receipt_void", []),  "manufacturing_orders", "mo_no", "planned_start")
+    await _resolve("mfg_scrap",         by_src.get("mfg_scrap", []),         "mfg_scraps",           "scrap_no", "scrap_date")
+    await _resolve("mfg_scrap_void",    by_src.get("mfg_scrap_void", []),    "mfg_scraps",           "scrap_no", "scrap_date")
+    await _resolve("subcontract_issue",      by_src.get("subcontract_issue", []),      "subcontract_orders", "sco_no", "sco_date")
+    await _resolve("subcontract_receipt",    by_src.get("subcontract_receipt", []),    "subcontract_orders", "sco_no", "sco_date")
+    await _resolve("subcontract_issue_void", by_src.get("subcontract_issue_void", []), "subcontract_orders", "sco_no", "sco_date")
+    # Fulfillment
+    await _resolve("delivery_order",      by_src.get("delivery_order", []),      "delivery_orders", "do_no", "delivery_date")
+    await _resolve("delivery_order_void", by_src.get("delivery_order_void", []), "delivery_orders", "do_no", "delivery_date")
+    await _resolve("goods_receipt",       by_src.get("goods_receipt", []),       "goods_receipts",  "gr_no", "receipt_date")
+    await _resolve("goods_receipt_void",  by_src.get("goods_receipt_void", []),  "goods_receipts",  "gr_no", "receipt_date")
+    await _resolve("customer_return",      by_src.get("customer_return", []),      "rmas", "rma_no", "rma_date")
+    await _resolve("supplier_return",      by_src.get("supplier_return", []),      "rmas", "rma_no", "rma_date")
+    await _resolve("customer_return_void", by_src.get("customer_return_void", []), "rmas", "rma_no", "rma_date")
+    await _resolve("supplier_return_void", by_src.get("supplier_return_void", []), "rmas", "rma_no", "rma_date")
+    # Sales / Purchase invoices
+    await _resolve("sales_invoice",         by_src.get("sales_invoice", []),         "sales_invoices",    "invoice_no", "invoice_date")
+    await _resolve("void_sales_invoice",    by_src.get("void_sales_invoice", []),    "sales_invoices",    "invoice_no", "invoice_date")
+    await _resolve("purchase_invoice",      by_src.get("purchase_invoice", []),      "purchase_invoices", "invoice_no", "invoice_date")
+    await _resolve("void_purchase_invoice", by_src.get("void_purchase_invoice", []), "purchase_invoices", "invoice_no", "invoice_date")
+    # Stock transfer
+    await _resolve("stock_transfer",      by_src.get("stock_transfer", []),      "stock_transfers", "transfer_no", "transfer_date")
+    await _resolve("void_stock_transfer", by_src.get("void_stock_transfer", []), "stock_transfers", "transfer_no", "transfer_date")
+
+    def _serialize(m, is_inflow: bool) -> dict:
+        info = label_map.get((m.source, m.source_id)) if m.source_id else None
+        return {
+            "movement_id":     str(m.id),
+            "direction":       m.direction,
+            "is_inflow":       is_inflow,
+            "movement_date":   m.movement_date.isoformat(),
+            "qty":             float(m.qty),
+            "unit_cost":       float(m.unit_cost),
+            "total_cost":      float(m.total_cost),
+            "source":          m.source,
+            "source_id":       str(m.source_id) if m.source_id else None,
+            "source_doc_no":   info["doc_no"] if info else None,
+            "source_doc_date": info["date"] if info else None,
+            "notes":           m.notes,
+        }
+
+    inflows  = [_serialize(m, True)  for m in movements if m.direction in ("in", "adjust_in")]
+    outflows = [_serialize(m, False) for m in movements if m.direction in ("out", "adjust_out")]
+    total_in  = sum(x["qty"] for x in inflows)
+    total_out = sum(x["qty"] for x in outflows)
+
+    return {
+        "lot": StockLotOut.model_validate(lot).model_dump(mode="json"),
+        "summary": {
+            "total_in":       total_in,
+            "total_out":      total_out,
+            "remaining":      float(lot.qty_remaining),
+            "movement_count": len(movements),
+        },
+        "inflows":  inflows,
+        "outflows": outflows,
+    }

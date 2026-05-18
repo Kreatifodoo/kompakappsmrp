@@ -215,8 +215,9 @@ const Api = {
   },
   // Lot / Batch
   stockLots: {
-    list:   (params) => Api.get('/stock-lots' + _qs(params)),
-    get:    (id)     => Api.get(`/stock-lots/${id}`),
+    list:         (params) => Api.get('/stock-lots' + _qs(params)),
+    get:          (id)     => Api.get(`/stock-lots/${id}`),
+    traceability: (id)     => Api.get(`/stock-lots/${id}/traceability`),
   },
   stockTransfers: {
     list:   (params) => Api.get('/stock-transfers' + _qs(params)),
